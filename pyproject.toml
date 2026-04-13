@@ -16,6 +16,9 @@ dependencies = [
     "python-dotenv>=1.0",
     "tqdm>=4.66",
     "click>=8.1",
+    "anthropic>=0.39",             # Claude API for LLM scoring + stance
+    "scipy>=1.13",                 # bimodality tests (GMM/BIC)
+    "scikit-learn>=1.4",           # GaussianMixture for distribution analysis
 ]
 
 [project.optional-dependencies]

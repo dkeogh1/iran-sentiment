@@ -1,26 +1,24 @@
 # iran-sentiment
 
 Sentiment analysis of US political messaging during the 2026 Iran war
-(Feb 1 -- Apr 10, 2026). Tracks how the Trump administration, MAGA
-influencer ecosystem, opposition voices, and media covered 40 days of
-sustained combat -- including the "MAGA civil war" split between pro-
-and anti-war factions within Trump's own base.
+(Feb 1 -- Apr 10, 2026). Tracks the Trump administration, MAGA
+influencers (both pro- and anti-war), opposition voices, and media
+across X and Truth Social over 40 days of conflict.
 
-## Key findings
+## Findings
 
-**5,796 tweets** from 12 X/Twitter accounts across 5 political tiers,
-plus **57,055 Truth Social replies** to 3 key Trump posts, scored with
-both VADER (rule-based baseline) and RoBERTa
+5,796 tweets from 12 X/Twitter accounts across 5 political tiers, plus
+57,055 Truth Social replies to 3 Trump posts, scored with VADER
+(rule-based baseline) and RoBERTa
 (`cardiffnlp/twitter-roberta-base-sentiment-latest`).
 
-### The tier divergence is the story
+### Tier divergence
 
 ![Tier comparison](docs/figures/tier_comparison_score_transformer.png)
 
-Administration accounts (POTUS, SecRubio, PeteHegseth) are the **only
-tier with net-positive sentiment** (+0.16 RoBERTa mean), maintaining a
-consistently optimistic, triumphal frame throughout the conflict.
-Every other tier is net-negative:
+Administration accounts (POTUS, SecRubio, PeteHegseth) are the only
+tier with net-positive sentiment (+0.16 RoBERTa mean). Every other
+tier is net-negative:
 
 | Tier | RoBERTa mean | n |
 |------|-------------|---|
@@ -31,69 +29,65 @@ Every other tier is net-negative:
 | opposition | -0.297 | 81 |
 
 The MAGA anti-war voices (Tucker Carlson, Candace Owens, Alex Jones,
-MTG) score more negatively than the pro-war MAGA accounts (Levin,
-Loomer), but both factions are net-negative -- the "pro-war" influencers
-are more hawkish in framing but still more critical in tone than the
-administration itself.
+MTG) score more negatively than the pro-war accounts (Levin, Loomer),
+but both factions are net-negative. The "pro-war" influencers are more
+hawkish in framing but more critical in tone than the administration.
 
-### Audience pushback visible in replies
+### Reply stance classification
 
-A stratified 500-reply LLM stance classification on Trump's three most
-significant Truth Social posts found:
+A stratified 500-reply sample from Trump's three most-replied Truth
+Social posts, classified by Claude Haiku into stance categories:
 
-- **~31-37% pro-war supportive** across all three posts
-- **~18-26% anti-war opposition** (moral/political grounds)
-- **~7-11% "betrayal" framing** ("voted 3x for you, losing me as a
-  supporter") -- the within-MAGA civil war signal
-- Sentiment turns **most negative** on "A whole civilisation will die
-  tonight" (-0.34 mean) vs. the "Power Plant Day" escalation (-0.23)
+- 31-37% pro-war supportive across all three posts
+- 18-26% anti-war opposition (moral/political grounds)
+- 7-11% "betrayal" framing ("voted 3x for you, losing me as a
+  supporter") -- the within-MAGA split
+- Replies are most negative on "A whole civilisation will die tonight"
+  (-0.34 mean) vs. the "Power Plant Day" escalation (-0.23)
 
 ### Per-account detail
 
 ![Account heatmap](docs/figures/account_heatmap_score_transformer.png)
 
-Notable patterns:
-- **@SecRubio** has the highest individual mean (+0.26) and the most
-  volatile swings, spiking to +0.86 the week of Mar 9
-- **@SenSanders** is the most negative account (-0.30) but VADER
-  paradoxically scores him *positive* (+0.11) because anti-war language
-  ("peace", "diplomacy", "humanity") is lexically positive -- a known
-  VADER weakness for this domain
-- **@TuckerCarlson** barely posts (~70 tweets) but crosses from positive
-  to negative mid-conflict
+- @SecRubio has the highest individual mean (+0.26) and the widest
+  swings, reaching +0.86 the week of Mar 9
+- @SenSanders is the most negative account (-0.30), though VADER
+  scores him positive (+0.11) because anti-war language ("peace",
+  "diplomacy") is lexically positive -- a known limitation of
+  rule-based sentiment on war rhetoric
+- @TuckerCarlson posts infrequently (~70 tweets) but shifts from
+  positive to negative mid-conflict
 
 ## Methodology
 
 ### Data collection
 
-- **X/Twitter**: v2 API, per-account JSONL caching, capped at 500
+- X/Twitter: v2 API, per-account JSONL caching, capped at 500
   tweets/account to control cost ($0.005/read)
-- **Truth Social**: Authenticated API via `curl_cffi` (Cloudflare
-  bypass), paginated reply collection for tracked posts
-- **Window**: Feb 1 -- Apr 10, 2026 (with pre-war context events back
-  to Jun 2025)
+- Truth Social: authenticated API via `curl_cffi` (Cloudflare bypass),
+  paginated reply collection for tracked posts
+- Window: Feb 1 -- Apr 10, 2026, with pre-war context events back to
+  Jun 2025
 
 ### Sentiment scoring
 
-Three scorers run in order of cost:
+Three scorers, in order of cost:
 
-1. **VADER** -- rule-based lexicon baseline. Fast but naive: can't
-   distinguish "we destroyed their nuclear facility" (triumphant) from
-   "destroyed" (negative lexical). Included as a baseline to demonstrate
-   why lexicon-based sentiment fails on war rhetoric.
-2. **RoBERTa** -- `cardiffnlp/twitter-roberta-base-sentiment-latest`,
-   fine-tuned on Twitter text. The primary signal. Batched inference on
-   CPU with memory checkpointing (the pipeline was designed for a mini
-   PC with limited RAM).
-3. **Claude Haiku** -- optional LLM-based scoring and stance
-   classification. Used for the 500-reply stance sample, not the full
-   dataset.
+1. VADER -- rule-based lexicon baseline. Fast but can't distinguish
+   "we destroyed their nuclear facility" (triumphant) from "destroyed"
+   (negative lexical). Included to show why lexicon-based sentiment
+   fails on war rhetoric.
+2. RoBERTa -- `cardiffnlp/twitter-roberta-base-sentiment-latest`,
+   fine-tuned on Twitter text. Primary signal. Batched CPU inference
+   with memory checkpointing (pipeline runs on a mini PC).
+3. Claude Haiku -- optional LLM scoring and stance classification.
+   Used for the 500-reply stance sample, not the full dataset.
 
 ### Event overlay
 
-24 key events are catalogued in `config/timeline.py` (military strikes,
-diplomatic moments, polling, media events) and overlaid on all
-time-series plots to correlate sentiment shifts with real-world triggers.
+24 events are catalogued in `config/timeline.py` (military strikes,
+diplomatic moments, polling, media events) and overlaid on time-series
+plots.
 
 ## Setup
 
@@ -161,22 +155,20 @@ data/                     # gitignored -- not included in repo
 
 ## Limitations
 
-- **Small account sample**: 12 X accounts across 5 tiers. The tiers are
-  illustrative, not representative -- expanding to more accounts per
-  tier would improve statistical power.
-- **VADER is misleading on war rhetoric**: included as a baseline to
-  demonstrate the problem, not as a reliable signal. RoBERTa is the
-  primary scorer.
-- **RoBERTa score vs. label can disagree**: the weighted score is a
-  continuous signal (good for aggregation), while the label is an
-  argmax (good for categorical counts). See `sentiment.py` docstring.
-- **Truth Social reply coverage**: the API may truncate very large
-  reply trees. Coverage is validated per-post during collection.
-- **No causal claims**: this is observational sentiment tracking, not
-  causal inference. The event overlays show correlation, not causation.
+- 12 X accounts across 5 tiers is illustrative, not representative.
+  More accounts per tier would improve statistical power.
+- VADER is included as a baseline to show the problem, not as a
+  reliable signal on war rhetoric. RoBERTa is the primary scorer.
+- RoBERTa's weighted score and argmax label can disagree. The
+  weighted score is better for aggregation; the label is better for
+  categorical breakdowns. See `sentiment.py` docstring.
+- Truth Social's API may truncate large reply trees. Coverage is
+  validated per-post during collection.
+- This is observational sentiment tracking, not causal inference. Event
+  overlays show correlation, not causation.
 
 ## Cost
 
-X API reads are $0.005/tweet. The full dataset (~5,800 tweets) cost
-approximately $29. The 500-reply stance classification used Claude
-Haiku tokens. Truth Social API access is free.
+X API reads cost $0.005/tweet. The full dataset (~5,800 tweets) cost
+roughly $29. The 500-reply stance classification used Claude Haiku
+tokens. Truth Social API access is free.
