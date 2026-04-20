@@ -5,13 +5,16 @@ Tiers encode political stance so that plots can group them.
 Handles marked with ✓ have been verified against the live X API.
 
 Tier definitions:
-  admin         - official Trump administration accounts
-  maga_prowar   - pro-Trump influencers supporting the Iran war
-  maga_antiwar  - pro-Trump influencers *opposing* the Iran war
-                  (the MAGA civil war — the most interesting signal)
-  opposition    - Democratic / progressive anti-war voices
-  media         - journalists covering the conflict (neutral baseline)
-  iran_official - Iranian government-linked accounts
+  admin                - official Trump administration accounts
+  maga_prowar          - pro-Trump influencers supporting the Iran war
+  maga_antiwar         - pro-Trump influencers *opposing* the Iran war
+                         (the MAGA civil war — the most interesting signal)
+  opposition           - Democratic / progressive anti-war voices
+  media                - journalists covering the conflict (neutral baseline)
+  religious_authority  - Pope Leo XIV / Vatican / USCCB — moral/religious
+                         counter-voice that cross-pressures Catholic
+                         conservatives normally aligned with MAGA
+  iran_official        - Iranian government-linked accounts
 """
 
 # ── X (Twitter) handles ─────────────────────────────────────────────
@@ -20,11 +23,11 @@ X_ACCOUNTS: dict[str, list[str]] = {
         "POTUS",          # ✓ Trump (personal POTUS account)
         "SecRubio",       # ✓ Marco Rubio — Secretary of State
         "PeteHegseth",    # ✓ Pete Hegseth — Secretary of Defense
+        "VP",             # JD Vance — lead negotiator in Apr Islamabad talks
+        "StateDept",      # official State Dept readouts
+        "WhiteHouse",     # official WH messaging on blockade/ceasefire
         # Optional expansion (uncomment and verify):
-        # "VP",            # JD Vance
-        # "StateDept",
         # "DOD",
-        # "WhiteHouse",
     ],
     "maga_prowar": [
         "LauraLoomer",    # ✓ far-right influencer, pro-strikes
@@ -52,6 +55,11 @@ X_ACCOUNTS: dict[str, list[str]] = {
         # "richard_engel",
         # "NatashaBertrand",
     ],
+    "religious_authority": [
+        "Pontifex",       # ✓ Pope Leo XIV (inherited from Francis)
+        "USCCB",          # ✓ US Conference of Catholic Bishops (Coakley pres.)
+        "VaticanNews",    # ✓ official Vatican press
+    ],
     # Not yet collected:
     # "iran_official": [...],
 }
@@ -75,12 +83,13 @@ TRUTH_SOCIAL_ACCOUNTS: dict[str, list[str]] = {
 # tracked-account signal.
 SEARCH_TERMS: list[str] = [
     "Iran war",
+    "Iran ceasefire",     # Apr 8 truce + Vance negotiations public reaction
+    "Strait of Hormuz",   # Apr 13 US naval blockade reaction
+    "Pope Leo Iran",      # Pope's anti-war statements + Trump's attacks back
     # Heavier searches — uncomment to expand (each adds ~$0.75 to run):
     # "Iran strikes",
-    # "Iran ceasefire",
     # "#IranWar",
     # "#NoWarWithIran",
-    # "Strait of Hormuz",
     # "Power Plant Day",
 ]
 

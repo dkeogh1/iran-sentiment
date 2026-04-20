@@ -314,7 +314,13 @@ def collect_replies_cmd(force: bool, slug: str | None):
 @main.command()
 @click.option("--llm", is_flag=True, help="Also run Claude LLM scoring (slow, costs tokens)")
 @click.option("--no-transformer", is_flag=True, help="Skip the RoBERTa phase")
-def analyze(llm: bool, no_transformer: bool):
+@click.option("--llm-tiers", default=None,
+              help="Comma-separated tiers to LLM-score (e.g. "
+                   "'religious_authority,opposition'). Only used with --llm.")
+@click.option("--llm-accounts", default=None,
+              help="Comma-separated handles to LLM-score. Only used with --llm.")
+def analyze(llm: bool, no_transformer: bool,
+            llm_tiers: str | None, llm_accounts: str | None):
     """Run sentiment scoring on all cached X data."""
     from src.collectors.x_collector import load_all_cached
     from src.analysis.sentiment import analyze as run_analyze, save
@@ -325,11 +331,16 @@ def analyze(llm: bool, no_transformer: bool):
         click.secho("No cached data — run `collect` first.", fg="yellow")
         return
 
+    tiers_list = [t.strip() for t in llm_tiers.split(",")] if llm_tiers else None
+    accounts_list = [a.strip() for a in llm_accounts.split(",")] if llm_accounts else None
+
     df = run_analyze(
         posts,
         use_vader=True,
         use_transformer=not no_transformer,
         use_llm=llm,
+        llm_tiers=tiers_list,
+        llm_accounts=accounts_list,
     )
     out = save(df)
     click.secho(f"✓ Scored {len(df)} tweets → {out}", fg="green")

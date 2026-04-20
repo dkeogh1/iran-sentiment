@@ -224,8 +224,121 @@ EVENTS: list[Event] = [
         category="diplomatic",
         impact="dovish",
     ),
+
+    # ── Fragile ceasefire & Vance negotiations ──────────────────────
+    Event(
+        date=date(2026, 4, 9),
+        label="Lebanon flare; Hormuz still closed",
+        description="Israel resumes major Lebanon strikes; Netanyahu says "
+        "ceasefire 'does not include Lebanon'. Iran blockade of Strait of "
+        "Hormuz not lifted as agreed; Iran accuses US/Israel of violations.",
+        category="military",
+        impact="polarizing",
+    ),
+    Event(
+        date=date(2026, 4, 11),
+        label="Vance arrives Islamabad",
+        description="VP Vance arrives in Islamabad with envoy Witkoff and "
+        "Kushner for direct talks with Iranian FM Araghchi and parliament "
+        "speaker Ghalibaf, mediated by Pakistan.",
+        category="diplomatic",
+        impact="dovish",
+    ),
+    Event(
+        date=date(2026, 4, 12),
+        label="Talks collapse after 21 hours",
+        description="Vance leaves Pakistan after 21-hour marathon yields no "
+        "deal. Sticking points: Iran uranium enrichment freeze, frozen "
+        "asset release. Trump announces US naval blockade of Iran.",
+        category="diplomatic",
+        impact="polarizing",
+    ),
+    Event(
+        date=date(2026, 4, 13),
+        label="US blockade of Hormuz begins",
+        description="US Navy begins blockading ships entering/exiting Iranian "
+        "ports. Trump warns Iranian ships approaching the blockade will be "
+        "'eliminated'.",
+        category="military",
+        impact="hawkish",
+    ),
+    Event(
+        date=date(2026, 4, 15),
+        label="Framework deal nears",
+        description="US officials say negotiators are close to a framework "
+        "agreement before Apr 21 ceasefire expiry. Trump: war 'very close "
+        "to over', 'we've beaten them militarily, totally'.",
+        category="diplomatic",
+        impact="dovish",
+    ),
+    Event(
+        date=date(2026, 4, 16),
+        label="Israel-Lebanon 10-day ceasefire",
+        description="Trump announces 10-day ceasefire between Israel and "
+        "Lebanon, easing one of the main flashpoints threatening the "
+        "broader US-Iran truce.",
+        category="diplomatic",
+        impact="dovish",
+    ),
+
+    # ── Pope Leo XIV / Vatican axis ─────────────────────────────────
+    Event(
+        date=date(2026, 3, 1),
+        label="Pope: 'spiral of violence'",
+        description="Pope Leo XIV's first major Iran-war intervention — "
+        "calls on parties to halt the 'spiral of violence' across Iran "
+        "and the Middle East.",
+        category="political",
+        impact="dovish",
+    ),
+    Event(
+        date=date(2026, 4, 4),
+        label="Pope: 'not in God's name'",
+        description="CNN analysis frames Pope Leo as actively pushing back "
+        "on divine justifications of war, drawing the Vatican into open "
+        "moral conflict with the Trump administration's framing.",
+        category="political",
+        impact="dovish",
+    ),
+    Event(
+        date=date(2026, 4, 7),
+        label="St Peter's peace vigil",
+        description="Pope Leo leads peace vigil at St. Peter's Basilica "
+        "and demands leaders 'cease fire'. Hours later, US-Iran "
+        "announce 2-week ceasefire.",
+        category="political",
+        impact="dovish",
+    ),
+    Event(
+        date=date(2026, 4, 11),
+        label="Pope: 'delusion of omnipotence'",
+        description="Pope Leo denounces 'delusion of omnipotence' fueling "
+        "US-Israel war and calls Trump's threat to annihilate Iranian "
+        "civilization 'truly unacceptable'. Same day Vance arrives in "
+        "Islamabad for talks.",
+        category="political",
+        impact="dovish",
+    ),
+    Event(
+        date=date(2026, 4, 13),
+        label="Pope on Africa tour, defies Trump",
+        description="Pope Leo brushes off Trump criticism while beginning "
+        "Africa tour — vows to continue peace appeals despite escalating "
+        "Vatican-Washington tensions.",
+        category="political",
+        impact="dovish",
+    ),
+    Event(
+        date=date(2026, 4, 15),
+        label="Trump attacks Pope Leo",
+        description="Trump again publicly attacks Pope Leo over Iran war "
+        "stance, days after calling him 'weak on crime'. CBS reports the "
+        "Pope's stance is 'inspiring American cardinals to speak out'.",
+        category="political",
+        impact="polarizing",
+    ),
 ]
 
 # Date range for primary analysis window
 ANALYSIS_START = date(2026, 2, 1)
-ANALYSIS_END = date(2026, 4, 10)
+ANALYSIS_END = date(2026, 4, 21)
