@@ -50,11 +50,32 @@ def _save_jsonl(path: Path, records: list[dict]) -> None:
             f.write(json.dumps(r) + "\n")
 
 
+def _append_jsonl(path: Path, records: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "a") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+
+
 def _load_jsonl(path: Path) -> list[dict]:
     if not path.exists():
         return []
     with open(path) as f:
         return [json.loads(line) for line in f]
+
+
+def _latest_created_at(records: list[dict]) -> datetime | None:
+    """Return the max created_at across cached records, or None if empty."""
+    timestamps = []
+    for r in records:
+        ts = r.get("created_at")
+        if not ts:
+            continue
+        try:
+            timestamps.append(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+        except ValueError:
+            continue
+    return max(timestamps) if timestamps else None
 
 
 # ── User timeline collection ───────────────────────────────────────
@@ -71,30 +92,54 @@ def collect_user(
     """
     Pull tweets from a user's timeline with a hard cap.
 
-    If a cached file already exists for this handle and `force` is False,
-    the cached data is returned without hitting the API.
+    Behavior when a cache file exists:
+      - force=True   : ignore cache, re-fetch the whole [start, end] window,
+                       overwrite the cache.
+      - force=False  : incremental — fetch only tweets created after the
+                       latest cached one (capped at max_tweets new) and
+                       append them to the cache. Returns the full merged
+                       set so downstream code sees both old and new.
     """
     cache = _account_cache_path(handle)
-    if cache.exists() and not force:
-        existing = _load_jsonl(cache)
-        logger.info("@%s: cached (%d tweets) — skipping", handle, len(existing))
-        return existing
+    existing = _load_jsonl(cache) if cache.exists() else []
+
+    # Incremental path — narrow the window to (latest_cached, end]
+    incremental = bool(existing) and not force
+    if incremental:
+        latest = _latest_created_at(existing)
+        if latest is None:
+            # Cache exists but has no parseable timestamps — fall back to full pull
+            incremental = False
+        else:
+            # +1 second so we don't refetch the boundary tweet
+            from datetime import timedelta, timezone
+            window_start = latest + timedelta(seconds=1)
+            # Strip timezone for the API formatter below
+            if window_start.tzinfo is not None:
+                window_start = window_start.astimezone(timezone.utc).replace(tzinfo=None)
+            if window_start >= end:
+                logger.info("@%s: cached up to %s — already past window end, skipping",
+                            handle, latest.isoformat())
+                return existing
+            start = window_start
+            logger.info("@%s: incremental from %s (cached: %d)",
+                        handle, start.isoformat(), len(existing))
 
     try:
         user = client.get_user(username=handle)
     except tweepy.errors.HTTPException as e:
         logger.error("@%s: lookup failed — %s", handle, e)
-        return []
+        return existing
 
     if not user.data:
         logger.warning("@%s: not found", handle)
-        return []
+        return existing
 
-    tweets: list[dict] = []
+    new_tweets: list[dict] = []
     pagination_token = None
 
-    while len(tweets) < max_tweets:
-        remaining = max_tweets - len(tweets)
+    while len(new_tweets) < max_tweets:
+        remaining = max_tweets - len(new_tweets)
         per_page = min(100, remaining)
 
         resp = client.get_users_tweets(
@@ -108,9 +153,9 @@ def collect_user(
 
         if resp.data:
             for tweet in resp.data:
-                if len(tweets) >= max_tweets:
+                if len(new_tweets) >= max_tweets:
                     break
-                tweets.append({
+                new_tweets.append({
                     "id": str(tweet.id),
                     "user": handle,
                     "tier": tier,
@@ -121,16 +166,26 @@ def collect_user(
                     "platform": "x",
                 })
 
-        if resp.meta and resp.meta.get("next_token") and len(tweets) < max_tweets:
+        if resp.meta and resp.meta.get("next_token") and len(new_tweets) < max_tweets:
             pagination_token = resp.meta["next_token"]
         else:
             break
 
-    capped = " (CAPPED)" if len(tweets) >= max_tweets else ""
-    logger.info("@%s [%s]: %d tweets%s", handle, tier, len(tweets), capped)
+    capped = " (CAPPED)" if len(new_tweets) >= max_tweets else ""
 
-    _save_jsonl(cache, tweets)
-    return tweets
+    if incremental:
+        if new_tweets:
+            _append_jsonl(cache, new_tweets)
+            logger.info("@%s [%s]: +%d new tweets%s (total: %d)",
+                        handle, tier, len(new_tweets), capped,
+                        len(existing) + len(new_tweets))
+        else:
+            logger.info("@%s [%s]: no new tweets since last fetch", handle, tier)
+        return existing + new_tweets
+
+    logger.info("@%s [%s]: %d tweets%s", handle, tier, len(new_tweets), capped)
+    _save_jsonl(cache, new_tweets)
+    return new_tweets
 
 
 # ── Keyword search collection ──────────────────────────────────────
@@ -145,32 +200,50 @@ def collect_search(
     Run a recent-search query. The /search/recent endpoint only
     returns the last ~7 days of tweets, so this is a near-realtime
     public sentiment proxy rather than historical data.
+
+    Behavior matches collect_user: if a cache exists and not force,
+    fetch only tweets newer than the latest cached one and append.
     """
     cache = _search_cache_path(query)
-    if cache.exists() and not force:
-        existing = _load_jsonl(cache)
-        logger.info("search '%s': cached (%d tweets) — skipping", query, len(existing))
-        return existing
+    existing = _load_jsonl(cache) if cache.exists() else []
 
-    tweets: list[dict] = []
+    incremental = bool(existing) and not force
+    start_time = None
+    if incremental:
+        latest = _latest_created_at(existing)
+        if latest is not None:
+            from datetime import timedelta, timezone
+            start_time = latest + timedelta(seconds=1)
+            if start_time.tzinfo is not None:
+                start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+            logger.info("search '%s': incremental from %s (cached: %d)",
+                        query, start_time.isoformat(), len(existing))
+        else:
+            incremental = False
+
+    new_tweets: list[dict] = []
     pagination_token = None
 
-    while len(tweets) < max_total:
-        remaining = max_total - len(tweets)
+    while len(new_tweets) < max_total:
+        remaining = max_total - len(new_tweets)
         per_page = min(100, remaining)
 
-        resp = client.search_recent_tweets(
+        kwargs = dict(
             query=query,
             max_results=max(10, per_page),
             next_token=pagination_token,
             tweet_fields=["created_at", "author_id", "public_metrics", "lang"],
         )
+        if start_time is not None:
+            kwargs["start_time"] = start_time.isoformat() + "Z"
+
+        resp = client.search_recent_tweets(**kwargs)
 
         if resp.data:
             for tweet in resp.data:
-                if len(tweets) >= max_total:
+                if len(new_tweets) >= max_total:
                     break
-                tweets.append({
+                new_tweets.append({
                     "id": str(tweet.id),
                     "author_id": str(tweet.author_id),
                     "user": f"search:{query}",
@@ -182,14 +255,23 @@ def collect_search(
                     "platform": "x",
                 })
 
-        if resp.meta and resp.meta.get("next_token") and len(tweets) < max_total:
+        if resp.meta and resp.meta.get("next_token") and len(new_tweets) < max_total:
             pagination_token = resp.meta["next_token"]
         else:
             break
 
-    logger.info("search '%s': %d tweets", query, len(tweets))
-    _save_jsonl(cache, tweets)
-    return tweets
+    if incremental:
+        if new_tweets:
+            _append_jsonl(cache, new_tweets)
+            logger.info("search '%s': +%d new (total: %d)",
+                        query, len(new_tweets), len(existing) + len(new_tweets))
+        else:
+            logger.info("search '%s': no new tweets since last fetch", query)
+        return existing + new_tweets
+
+    logger.info("search '%s': %d tweets", query, len(new_tweets))
+    _save_jsonl(cache, new_tweets)
+    return new_tweets
 
 
 # ── Orchestration ───────────────────────────────────────────────────
