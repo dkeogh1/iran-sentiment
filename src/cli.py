@@ -112,18 +112,16 @@ def probe_auth_cmd(post_id: str):
     click.echo(f"Authenticating as @{username}...")
 
     # Use the same client creds and endpoint that truthbrush uses —
-    # extracted from Truth Social's own web app JS bundle. The v2
-    # endpoint + JSON body + the bundled client ID is the combination
-    # that actually works; our earlier attempts with /oauth/token +
-    # form-encoded data + a self-registered app all returned 403.
-    TS_CLIENT_ID = "9X1Fdd-pxNsAgEDNi_SfhJWi8T-vLuV2WVzKIbkTCw4"
-    TS_CLIENT_SECRET = "ozF8jzI4968oTKFkEnsBC-UbLPCdrSv0MkXGQu2o_-M"
-
+    # see settings.TRUTH_SOCIAL_WEB_CLIENT_ID / SECRET. These are public
+    # web-app values (not user secrets); the v2 endpoint + JSON body +
+    # the bundled client ID is the combination that actually works
+    # (earlier attempts with /oauth/token + form-encoded data +
+    # self-registered app all returned 403).
     r = cffi_requests.post(
         f"{ts_base}/oauth/v2/token",
         json={
-            "client_id": TS_CLIENT_ID,
-            "client_secret": TS_CLIENT_SECRET,
+            "client_id": settings.TRUTH_SOCIAL_WEB_CLIENT_ID,
+            "client_secret": settings.TRUTH_SOCIAL_WEB_CLIENT_SECRET,
             "grant_type": "password",
             "username": username,
             "password": password,

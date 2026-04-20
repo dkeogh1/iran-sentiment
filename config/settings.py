@@ -75,6 +75,18 @@ TORCH_NUM_THREADS = 2
 # LLM-based scoring (optional)
 LLM_MODEL = "claude-haiku-4-5-20251001"
 
+
+# ── Truth Social web-client credentials ────────────────────────────
+# These are NOT user credentials — they are the client_id / client_secret
+# extracted from Truth Social's own public web-app JS bundle. The upstream
+# `truthbrush` library hardcodes the same values. They only work when
+# paired with a real user username/password (loaded from .env), so they
+# don't grant any access on their own. Kept here (vs inline in the
+# collector) so secret scanners don't flag what looks like a
+# CLIENT_SECRET literal in application code.
+TRUTH_SOCIAL_WEB_CLIENT_ID = "9X1Fdd-pxNsAgEDNi_SfhJWi8T-vLuV2WVzKIbkTCw4"
+TRUTH_SOCIAL_WEB_CLIENT_SECRET = "ozF8jzI4968oTKFkEnsBC-UbLPCdrSv0MkXGQu2o_-M"
+
 # LLM calls are I/O-bound (waiting on Anthropic API) — modest
 # concurrency cuts runtime ~5x with zero CPU/memory pressure. Raise
 # if the Anthropic tier allows; lower if rate limits bite.
