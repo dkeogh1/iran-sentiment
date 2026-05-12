@@ -5,7 +5,7 @@ All tunables (paths, budget caps, batch sizes, model names) live here so
 that scripts can stay thin and data-driven.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -31,7 +31,13 @@ REPLY_SENTIMENT_OUTPUT = PROCESSED_DIR / "reply_sentiment.parquet"
 
 # ── Date window for data collection / analysis ────────────────────
 COLLECTION_START = datetime(2026, 2, 1)
-COLLECTION_END = datetime(2026, 4, 21)
+# End-of-window is "now" (evaluated at CLI startup), with a 30s buffer
+# because the X API rejects end_time values that are too close to the
+# current request time. Naive UTC to match COLLECTION_START's shape.
+COLLECTION_END = (
+    datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+    - timedelta(seconds=30)
+)
 
 
 # ── Budget caps (per-account) ──────────────────────────────────────

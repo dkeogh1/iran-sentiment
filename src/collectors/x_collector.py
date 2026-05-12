@@ -216,6 +216,23 @@ def collect_search(
             start_time = latest + timedelta(seconds=1)
             if start_time.tzinfo is not None:
                 start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+            # /search/recent only goes back ~7 days. If the cached
+            # latest is older than that, the API will 400. Clamp
+            # start_time forward to the window edge (with a 5-minute
+            # buffer for clock drift) and warn — there is no way to
+            # backfill the gap without the paid full-archive endpoint.
+            search_floor = (
+                datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+                - timedelta(days=7) + timedelta(minutes=5)
+            )
+            if start_time < search_floor:
+                logger.warning(
+                    "search '%s': cached latest %s is older than 7-day window; "
+                    "clamping start_time to %s — gap of %s unfetched",
+                    query, latest.isoformat(), search_floor.isoformat(),
+                    search_floor - start_time,
+                )
+                start_time = search_floor
             logger.info("search '%s': incremental from %s (cached: %d)",
                         query, start_time.isoformat(), len(existing))
         else:
