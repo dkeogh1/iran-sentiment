@@ -44,6 +44,8 @@ def _add_event_markers(ax: plt.Axes, y_top: float = 0.6) -> None:
         color = EVENT_CATEGORY_COLORS.get(event.category, "gray")
         ts = pd.Timestamp(event.date, tz="UTC")
         ax.axvline(ts, color=color, alpha=0.4, linestyle=":", linewidth=1)
+        if event.importance < settings.EVENT_LABEL_MIN_IMPORTANCE:
+            continue
         ax.annotate(
             event.label,
             xy=(ts, y_top),

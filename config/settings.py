@@ -40,6 +40,14 @@ COLLECTION_END = (
 )
 
 
+# ── Event overlays ─────────────────────────────────────────────────
+# Plots draw a marker line for every timeline event inside the analysis
+# window but only print a label for events at or above this importance
+# (1-5; pre-May events default to 3). Raise to 4 for a readable plot once
+# the window spans the whole war.
+EVENT_LABEL_MIN_IMPORTANCE = 3
+
+
 # ── Budget caps (per-account) ──────────────────────────────────────
 # X charges ~$0.005/read on pay-as-you-go. These caps guard against a
 # single prolific account (e.g. @marklevinshow posts 35+ times/day)

@@ -1,0 +1,1151 @@
+[
+ {
+  "period": "2026-05-12 to 2026-05-31",
+  "events": [
+   {
+    "date": "2026-05-12",
+    "label": "Trump: 'only thing that matters' is no Iran nuke",
+    "description": "Before departing the White House for his China state visit, Trump told reporters Americans' finances motivate his Iran negotiations 'not even a little bit' and that 'the only thing that matters' is that Iran cannot have a nuclear weapon. Regular gas averaged $4.50/gal that day and April CPI inflation had printed at 3.8%, the highest in nearly three years.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.cbsnews.com/news/trump-iran-americans-finances-nuclear-weapons/",
+     "https://www.nbcnews.com/politics/donald-trump/trump-not-thinking-american-finances-iran-talk-rcna344785",
+     "https://en.wikipedia.org/wiki/2026_Iran_war_ceasefire"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "NBC News (published Tue May 12, 2026, 3:33 PM EDT) confirms the remarks were made Tuesday May 12 on the South Lawn before the China trip, quotes 'Not even a little bit' and 'the only thing that matters', and gives $4.50 gas (AAA) and 3.8% April inflation. Date and substance match."
+   },
+   {
+    "date": "2026-05-15",
+    "label": "Trump-Xi: Iran can't have nuke, must reopen Hormuz",
+    "description": "During the May 13-15 Beijing state visit the White House readout (May 14) said both sides agreed 'Iran can never have a nuclear weapon' and that the Strait of Hormuz 'must remain open'. On departure May 15 Trump said his patience with Iran was running out, said Xi assured him China would not arm Iran, but said he had not asked Xi to pressure Tehran to reopen the strait; he returned without an Iran breakthrough.",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.usnews.com/news/world/articles/2026-05-15/trump-says-he-and-chinas-xi-agree-iran-cannot-have-nuclear-weapons",
+     "https://www.timesofisrael.com/liveblog_entry/trump-xi-agreed-strait-of-hormuz-must-remain-open-says-white-house/",
+     "https://moderndiplomacy.eu/2026/05/15/trump-and-xi-agree-iran-must-not-obtain-nuclear-weapons-amid-strait-of-hormuz-crisis/",
+     "https://www.bloomberg.com/news/articles/2026-05-15/trump-says-he-didn-t-ask-xi-to-pressure-iran-on-strait-of-hormuz"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Times of Israel liveblog (May 14) carries the White House readout of the two agreed points; Modern Diplomacy (May 15) confirms Trump's 'patience running out' line and the no-arms assurance; Bloomberg (May 15) headline says Trump did not ask Xi to pressure Iran on Hormuz, so description softened on that point. Agreement was announced May 14 but Trump's own remarks were May 15; May 15 kept as the summit's end date."
+   },
+   {
+    "date": "2026-05-15",
+    "label": "Israel-Lebanon truce extended 45 days",
+    "description": "After two days of US-facilitated talks in Washington, the State Department announced Israel and Lebanon agreed to extend their April 16 cessation of hostilities, due to expire May 17, by 45 days, with a fourth political round set for June 2-3 and a Pentagon security track May 29. Fighting continued: Israeli strikes killed at least 22 in three southern Lebanese towns on May 19 and six paramedics on May 22; Hezbollah remained outside the talks.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://en.wikipedia.org/wiki/2026_Israel%E2%80%93Lebanon_ceasefire",
+     "https://www.france24.com/en/middle-east/20260515-israel-lebanon-agree-to-extend-ceasefire-by-45-days-after-talks-in-washington",
+     "https://www.pbs.org/newshour/world/israel-and-lebanon-agree-to-45-day-extension-of-ceasefire-u-s-state-department-says"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "France24 (May 15) confirms the State Dept (spokesman Tommy Pigott) announced the 45-day extension Friday May 15; PBS adds the June 2-3 and May 29 follow-ups. Wikipedia ceasefire page confirms May 19 (22 killed) and May 22 (six paramedics) strikes. Minor fix: the truce was expiring Sunday May 17, not vaguely 'after Washington talks'."
+   },
+   {
+    "date": "2026-05-17",
+    "label": "MTG warns of 'political revolution' over troops",
+    "description": "Marjorie Taylor Greene posted on X: 'If you send in U.S. military troops into Iran, there is going to be a political revolution in America. WE. ARE. DONE. We said no more foreign wars and we meant it. The coalition will unite and be unstoppable... End this war. It's stupid.'",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://time.com/article/2026/05/18/american-political-revolution-over-iran-marjorie-taylor-greene-warns-trump/",
+     "https://www.middleeasteye.net/live-blog/live-blog-update/former-trump-ally-threatens-political-revolution-against-us-troop",
+     "https://x.com/FmrRepMTG/status/2056110918933545301"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Middle East Eye live-blog update (May 18, 06:38 BST) dates the post to May 17; decoding the X status ID 2056110918933545301 gives 2026-05-17 20:33 UTC. Time's May 18 article is next-day coverage. Date May 17 is correct."
+   },
+   {
+    "date": "2026-05-18",
+    "label": "Trump holds off 'planned Military attack'",
+    "description": "Trump posted on Truth Social Monday May 18 that the Emir of Qatar, Saudi Crown Prince and UAE President asked him to 'hold off on our planned Military attack of the Islamic Republic of Iran, which was scheduled for tomorrow' because 'serious negotiations are now taking place', and that he had ordered the military to be ready for 'a full, large scale assault' on a moment's notice. Qatar's foreign ministry spokesman the next day stressed the region 'must not be engulfed again in war' and that talks needed more time, without endorsing Trump's account of an imminent favorable deal.",
+    "category": "military",
+    "impact": "polarizing",
+    "importance": 4,
+    "sources": [
+     "https://www.armscontrol.org/act/2026-06/news/trump-says-us-iran-close-deal",
+     "https://www.euronews.com/2026/05/18/trump-i-called-off-attack-on-iran-planned-for-tuesday",
+     "https://www.cnbc.com/2026/05/18/trump-iran-attack-saudi-uae-qatar-deal.html",
+     "https://www.ibtimes.co.uk/trump-iran-strike-plan-exposed-allies-contradict-1797748"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Euronews (May 18) and CNBC (May 18) confirm the Monday May 18 Truth Social post and the 'scheduled for tomorrow' (Tuesday) wording; Arms Control Association also dates it May 18. IBTimes UK (May 19) reports Qatar's Majed Al-Ansari statement; added as context."
+   },
+   {
+    "date": "2026-05-19",
+    "label": "Senate advances Iran war powers resolution 50-47",
+    "description": "On the eighth attempt, the Senate voted 50-47 to discharge S.J.Res. 185, directing removal of US forces from hostilities against Iran, from committee. Republicans Collins, Murkowski, Paul and Cassidy joined Democrats; Fetterman was the lone Democrat opposed; Cornyn, Tillis and Tuberville did not vote. It was a procedural step, not final passage, and the first time the Senate advanced a limit on Trump's Iran war powers.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.cbsnews.com/news/senate-iran-war-powers-eighth-vote-trump/",
+     "https://www.stripes.com/theaters/middle_east/2026-05-19/senate-vote-us-forces-iran-21722666.html",
+     "https://www.lawfaremedia.org/article/what-congressional-resolutions-mean-for-the-war-in-iran"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Stars and Stripes (May 19) confirms date, 50-47 tally, the four GOP yes votes, Fetterman no, three GOP absences, and that it was a discharge vote. Lawfare identifies the measure as S.J.Res. 185 and confirms discharge, not passage."
+   },
+   {
+    "date": "2026-05-23",
+    "label": "Trump: deal 'largely negotiated', then walks back",
+    "description": "On Saturday May 23 Trump posted on Truth Social that an agreement with Iran 'has been largely negotiated' and would be 'announced shortly'; within 24 hours he said it was not 'even fully negotiated yet'. On Memorial Day (May 25) he said Iran's enriched uranium must be turned over to the US or 'destroyed in place or at another acceptable location'. Iran's foreign ministry said May 25 that no signing was imminent, and a senior Iranian source said Iran had not agreed to hand over its stockpile.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.nbcnews.com/politics/white-house/deal-no-deal-trumps-social-media-posts-add-confusion-iran-conflict-rcna346953",
+     "https://www.npr.org/2026/05/23/g-s1-124145/trump-iran-deal-strait-of-hormuz",
+     "https://www.newsnationnow.com/world/deal-with-iran-largely-negotiated-subject-to-finalization-trump/amp/",
+     "https://www.armscontrol.org/act/2026-06/news/trump-says-us-iran-close-deal"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "NPR's URL is dated 2026/05/23 (Saturday); NBC Washington confirms the 'largely negotiated' post came Saturday afternoon with the walk-back Sunday and the uranium post by end of Memorial Day (Mon May 25); Arms Control Association dates the post May 23 and Iran's foreign ministry pushback May 25. NewsNation adds the Reuters-sourced Iranian denial on uranium handover."
+   },
+   {
+    "date": "2026-05-25",
+    "label": "US 'self-defense' strikes near Bandar Abbas",
+    "description": "CENTCOM said US forces conducted 'self-defense strikes in southern Iran' against two IRGC boats attempting to lay mines in the Strait of Hormuz and a missile/SAM site near Bandar Abbas, saying it 'continues to defend our forces while using restraint during the ongoing ceasefire'. The IRGC claimed it downed an MQ-9 and forced another drone and an F-35 to flee, and warned of retaliation; on May 26 Iran's foreign ministry called the strikes a ceasefire violation and said Iran 'will not leave any act of hostility unanswered'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://theaviationist.com/2026/05/26/u-s-launches-defensive-strikes-in-iran/",
+     "https://www.cnn.com/2026/05/25/world/live-news/iran-war-us-peace-deal",
+     "https://www.armscontrol.org/act/2026-06/news/trump-says-us-iran-close-deal",
+     "https://en.wikipedia.org/wiki/2026_Iran_war_ceasefire"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "CNN May 25 live page (fetched via proxy) confirms CENTCOM's 'self-defense strikes in southern Iran today' on missile launch sites and mine-laying boats, the IRGC drone/fighter claim, and the foreign ministry's 'no act of aggression unanswered' line; Wikipedia ceasefire page (CENTCOM spokesman Tim Hawkins) and Arms Control Association independently date the strikes May 25 and Iran's 'ceasefire violation' statement May 26. The exact phrase 'a grave violation of the ceasefire' could not be verified, so wording was changed to what sources quote."
+   },
+   {
+    "date": "2026-05-28",
+    "label": "Tentative US-Iran MOU reached, Trump undecided",
+    "description": "US and Iranian negotiators reached a tentative memorandum extending the ceasefire 60 days for nuclear talks, requiring Iran to clear Hormuz mines within 30 days and forgo tolls, with the US gradually lifting its port blockade and easing sanctions on Iranian oil. Vance said negotiators were 'going back and forth on a couple of language points' and whether Trump would endorse it was 'still TBD'. On May 29 Trump posted his own terms (no nuclear weapon, toll-free Hormuz, uranium destroyed, no money 'until further notice') and ended a two-hour Situation Room meeting without a 'final determination'; Fars said his terms contradicted the text and that $12 billion in frozen assets was the 'most important part'.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 5,
+    "sources": [
+     "https://www.pbs.org/newshour/world/u-s-and-iranian-negotiators-reach-tentative-deal-to-extend-ceasefire-and-start-new-nuclear-talks",
+     "https://www.axios.com/2026/05/28/iran-war-us-peace-deal-close-vance",
+     "https://www.pbs.org/newshour/world/trump-meeting-with-aides-to-make-final-determination-on-moving-forward-with-iran-deal",
+     "https://www.cnbc.com/2026/05/29/trump-iran-deal-hormuz-nuclear-war.html",
+     "https://www.iranintl.com/en/202605297690"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "PBS/AP May 29 piece (not cited by researcher) confirms the May 28 tentative terms (60 days, mines within 30 days, no tolls, gradual blockade lifting, oil-sanctions easing) and Vance's Thursday-evening remarks; Axios (May 28, fetched via proxy) has the exact 'still TBD' quote; CNBC and Iran International (May 29) confirm the Situation Room meeting ended without a decision and the Fars pushback. Added Trump's May 29 terms and Fars response as they are part of the same episode."
+   },
+   {
+    "date": "2026-05-28",
+    "label": "Levin: 'finish him off', no deal with regime",
+    "description": "On his May 28 radio show Mark Levin attacked the reported MOU, saying it would immediately release 'billions and billions' in frozen funds that would fund the IRGC, contained 'no word about ballistic missiles', that the regime's jihadist ideology treats diplomacy as a tactical weapon and makes compliance impossible, and that 'a deal may be the worst way to attempt to end the war... Finish him off, for God's sakes.' He repeated on May 29 that 'unless this regime is destroyed, it'll be back and it'll be worse.'",
+    "category": "media",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.marklevinshow.com/2026/05/28/may-28th-2026/",
+     "https://www.marklevinshow.com/2026/05/29/may-29th-2026/",
+     "https://www.jns.org/opinion/mark-levin/deal-or-no-deal",
+     "https://www.youtube.com/watch?v=NDYMdprhO84"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "The cited May 28 show page (primary source) carries the quoted lines verbatim. Independent same-day press coverage could not be retrieved (The Hill and Mediaite blocked; Mediaite's 'finish off Iran' piece is about his June 13 Fox show, not May 28). Corroboration is Levin's own May 22 JNS op-ed and his May 29 show page making the same arguments. Substance and date stand on the primary source."
+   },
+   {
+    "date": "2026-05-30",
+    "label": "Hegseth: strikes resume if no 'great deal'",
+    "description": "At the Shangri-La Dialogue in Singapore on Saturday May 30, Hegseth said Trump was being patient but 'any deal will be a good one. A great one', that Iran knew the US expectations, and that the US was 'more than capable' of recommencing strikes with stockpiles 'more than suited' for it if Iran would not accept a deal ensuring it never gets a nuclear weapon.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/5/30/what-hegseths-comments-at-shangri-la-dialogue-say-about-us-foreign-policy",
+     "https://www.newsweek.com/us-ready-to-restart-attacks-on-iran-if-deal-falls-through-hegseth-12012217",
+     "https://www.globalsecurity.org/military/library/news/2026/05/mil-260530-rferl04.htm"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Newsweek (May 30) confirms the Saturday May 30 Shangri-La venue, the 'more than capable'/'stockpiles more than suited' lines and the 'any deal will be... a great one' quote, and notes the May 29 Situation Room meeting; Al Jazeera (May 30) and RFERL corroborate. Date and substance correct."
+   }
+  ],
+  "missed": [
+   "2026-05-27/28: US 'defensive' strikes on Iranian drone launch sites and a control station near the Strait of Hormuz (four drones shot down, a fifth launch from Bandar Abbas prevented); Iran fired a ballistic missile toward Kuwait late May 27 that Kuwaiti air defenses intercepted, and the IRGC claimed an attack on a US air base as 'a serious warning' \u2014 the sharpest exchange of the window, one day before the tentative MOU. Sources: https://www.cnn.com/2026/05/28/world/live-news/iran-war-us-news and https://www.cnn.com/2026/05/27/world/live-news/iran-war-us-news",
+   "2026-05-27: White House dismissed Iranian state-media reports of an agreed MOU as a 'complete fabrication'; Trump said 'I don't care about the midterms' and rejected sanctions relief for uranium surrender. Source: https://www.cnn.com/2026/05/27/world/live-news/iran-war-us-news",
+   "2026-05-19: Qatar's foreign ministry spokesman Majed Al-Ansari issued a statement that the region 'must not be engulfed again in war' and negotiations 'need more time', widely read as contradicting Trump's May 18 claim that Gulf leaders promised an imminent favorable deal. Source: https://www.ibtimes.co.uk/trump-iran-strike-plan-exposed-allies-contradict-1797748",
+   "2026-05-20: House Republican leadership postponed a scheduled floor vote on H.Con.Res. 86 (Iran war powers) amid concern it had enough support to pass; it eventually passed 215-208 on June 3. Source: https://www.lawfaremedia.org/article/what-congressional-resolutions-mean-for-the-war-in-iran",
+   "2026-05-25: Trump posted that any Iran deal must be linked to the Abraham Accords, 'mandatorily' requiring Saudi Arabia, Qatar and Pakistan (plus Egypt, Jordan, Turkey) to normalize with Israel; Rubio said disagreements were down to 'a word, a sentence' and that the US would 'confront the country another way' if talks fail; an Iranian delegation (Araghchi, Ghalibaf, Hemmati) was in Doha. Sources: https://en.wikipedia.org/wiki/2026_Iran_war_ceasefire and https://www.aljazeera.com/news/2026/5/25/rubio-says-us-will-find-another-way-if-iran-talks-fail",
+   "2026-05-26/27: Israel sharply escalated in Lebanon despite the extended truce \u2014 31 killed May 26 and at least 34 killed / 77 wounded May 27 (one of the deadliest days since the April ceasefire), 150+ Hezbollah targets in 24 hours, evacuation warnings for Tyre and operations beyond the 'Yellow Line'. Source: https://www.cnn.com/2026/05/28/world/live-news/iran-war-us-news",
+   "2026-05-13/14: Hormuz incidents \u2014 the Indian-flagged livestock carrier Haji Ali was hit by a projectile off Oman, caught fire and sank (14 crew rescued; India condemned the attack without naming a perpetrator), and on May 14 the IRGC seized the fishery vessel Hui Chuan (reportedly a 'floating armory') off Fujairah and took it to Iran. Source: https://en.wikipedia.org/wiki/2026_Strait_of_Hormuz_crisis",
+   "2026-05-15: Trump said a 20-year Iranian enrichment suspension 'is enough, but the level of guarantee from them is not enough' \u2014 an early signal of the enrichment-pause framework; and on May 12 the NYT reported US intelligence assessed Iran retained ~70% of its pre-war missile stockpile. Source: https://www.armscontrol.org/act/2026-06/news/trump-says-us-iran-close-deal",
+   "2026-05-28: Gas prices fell 3.3 cents in one day (to $4.43 national average), the largest single-day drop since 2008, on deal optimism. Source: https://www.cnn.com/2026/05/28/world/live-news/iran-war-us-news",
+   "Checked and not found (consistent with researcher's notes): no Iran-specific Pope Leo XIV statement or Trump-Pope clash inside May 12-31 (Newsweek 'reject war' piece is July 21; NPR 'not a just war' is June 6); the Harvard CAPS/Harris poll was fielded May 29-31 but released June 2 (https://harvardharrispoll.com/press-release-may-2026/), so it belongs to the next window. The Wikipedia Hormuz crisis page mentions a US attack on the Gambia-flagged Lian Star on May 29, cited by the IRGC for its June 1 attack, but no details could be verified."
+  ]
+ },
+ {
+  "period": "2026-06-01 to 2026-06-30",
+  "events": [
+   {
+    "date": "2026-06-17",
+    "label": "Islamabad MOU signed; blockade lifted",
+    "description": "Trump (remotely, from Versailles while dining with Macron during the G7 trip) and Iranian President Pezeshkian (in Tehran) signed the 14-point Islamabad Memorandum of Understanding: a 60-day ceasefire extension, toll-free reopening of the Strait of Hormuz for 60 days, removal of the US naval blockade (CENTCOM confirmed it ended June 18), a 60-day window for nuclear and sanctions talks, and a Gulf/private-backed reconstruction fund contingent on a final deal. The agreement had been announced by Trump and Pakistan PM Sharif on June 14 and preliminarily signed digitally June 14-15; the US Treasury's 60-day oil-sanctions waiver followed on June 22.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 5,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/6/17/iran-confirms-that-mou-has-been-signed-electronically-by-both-sides",
+     "https://www.cnbc.com/2026/06/17/trump-vance-iran-deal-nuclear-g7.html",
+     "https://www.npr.org/2026/06/18/nx-s1-5863027/us-iran-trump-memorandum-of-understanding-full-text",
+     "https://en.wikipedia.org/wiki/Islamabad_Memorandum",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_17",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_18",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_14"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia Current Events portal (June 14, 17, 18) confirms: June 14 Trump/Sharif announce deal; June 17 Baghaei says Pezeshkian and Trump 'remotely signed' during G7; June 18 CENTCOM confirms blockade ended. Islamabad_Memorandum article: Trump signed at Versailles, Pezeshkian in Tehran, digital signing June 14. Corrected description: 'immediate oil-sanctions waivers' is wrong - Treasury waiver came June 22 (portal June 22); leaders were not physically together."
+   },
+   {
+    "date": "2026-06-27",
+    "label": "US strikes Iran; Iran hits Kuwait, Bahrain",
+    "description": "After a drone struck the Singapore-flagged Ever Lovely near Hormuz on June 25, Trump called it a ceasefire violation and CENTCOM struck Iranian missile/drone storage and coastal radar sites on June 26; after the Panama-flagged tanker Kiku was hit, a second night of US strikes on June 27 targeted surveillance, air-defense, drone and minelayer sites. The IRGC fired missiles and drones at US facilities in Kuwait (Ali Al Salem) and Bahrain (Fifth Fleet) on June 27-28, the worst escalation since the MOU. On June 28 Axios reported both sides agreed to halt strikes near Hormuz, while Iran pulled out of scheduled technical talks.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 5,
+    "sources": [
+     "https://www.npr.org/2026/06/27/nx-s1-5872954/us-strikes-iran",
+     "https://www.npr.org/2026/06/28/g-s1-130748/us-iran-israel-lebanon-hormuz-strikes-bahrain-kuwait",
+     "https://www.cnbc.com/2026/06/26/us-strikes-iran-strait-of-hormuz-ceasefire.html",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_26",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_27",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_28",
+     "https://en.wikipedia.org/wiki/Timeline_of_the_2026_Iran_war"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia portal (June 25-28) and war-timeline sections 167-169 confirm the sequence: June 25 Ever Lovely hit; June 26 first US strikes; June 27 Kiku hit and second-night strikes plus IRGC counter-strikes on Bahrain/Kuwait; June 28 Iranian missiles/drones at Kuwait/Bahrain and US-Iran agreement to halt. June 27 kept as the peak date; treat June 25-28 as one episode. Added the June 28 halt agreement."
+   },
+   {
+    "date": "2026-06-23",
+    "label": "Senate passes Iran war powers 50-48",
+    "description": "The Senate passed the concurrent war powers resolution directing Trump to end hostilities with Iran, 50-48, with Republicans Rand Paul, Lisa Murkowski, Susan Collins and Bill Cassidy joining Democrats; following the House's June 3 vote, both chambers had now rebuked the war, though the measure has no force of law.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.npr.org/2026/06/23/nx-s1-5868599/senate-iran-war-powers-resolution",
+     "https://www.aljazeera.com/news/2026/6/24/us-senate-approves-iran-war-powers-resolution-what-that-means-for-trump",
+     "https://asil.org/ilib/congress-passes-resolution-to-end-the-united-states-involvement-in-iran/",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_23"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia Current Events portal lists the 50-48 vote under June 23 (citing Guardian, NBC, NPR). Al Jazeera's 'Tuesday June 24' is internally inconsistent: June 23, 2026 is the Tuesday; June 24 is a Wednesday. Al Jazeera fetch confirms the four Republican yes votes and non-binding status."
+   },
+   {
+    "date": "2026-06-03",
+    "label": "House passes Iran war powers 215-208",
+    "description": "The House passed a war powers resolution directing Trump to terminate US military involvement in Iran, 215-208, the first such measure to pass after earlier failures. The same day Rubio told the House Foreign Affairs Committee that Operation Epic Fury's initial phase had concluded, and Israel and Lebanon agreed to renew their ceasefire conditional on Hezbollah halting attacks; Hezbollah leader Naim Qassem rejected the terms on June 4.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.npr.org/2026/06/03/nx-s1-5845102/house-iran-war-powers-vote",
+     "https://politifact.com/article/2026/jun/04/war-powers-vote-house-senate-iran/",
+     "https://www.axios.com/2026/06/03/israel-lebanon-ceasefire-hezbollah-us",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_3",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_4"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia portal June 3 confirms the 215-208 House vote and the conditional Israel-Lebanon ceasefire renewal after a fourth round of talks; June 4 portal confirms Qassem's rejection. Could not independently verify 'four Republicans' from an uncited source, so that detail was dropped from the description."
+   },
+   {
+    "date": "2026-06-11",
+    "label": "Trump threatens Kharg Island, cancels strikes",
+    "description": "Amid a three-day US-Iran exchange (June 9 Apache downed by an Iranian drone; June 10 US Tomahawk strikes and Iranian missiles at the Fifth Fleet, Ali Al Salem and a base in Jordan), Trump vowed to hit Iran 'very hard tonight' and to seize Kharg Island and other oil infrastructure, then hours later announced he had canceled the strikes because 'talks are in progress with Iran'. The same day the IRGC hit US bases in Kuwait and Bahrain, Iran declared Hormuz closed, and Iran's foreign ministry called the ceasefire 'practically meaningless'; Iran denied a deal was finalized.",
+    "category": "military",
+    "impact": "polarizing",
+    "importance": 4,
+    "sources": [
+     "https://time.com/article/2026/06/11/trump-threatens-iran-strikes-oil-infrastructure-takeover/",
+     "https://www.washingtonpost.com/world/2026/06/11/iran-targets-five-us-bases-raising-fears-return-all-out-war/",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_11",
+     "https://en.wikipedia.org/wiki/Timeline_of_the_2026_Iran_war"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia portal June 11 confirms Trump canceled the evening's strikes after threatening to strike 'very hard tonight', IRGC strikes on Ali Al Salem and Sheikh Isa bases, and Iran's Hormuz closure declaration; war-timeline sections 162-164 supply the June 9-11 context. Kharg Island seizure threat rests on the cited Time piece (not fetched) but is consistent with the portal."
+   },
+   {
+    "date": "2026-06-07",
+    "label": "Iran fires missiles at Israel; ceasefire falters",
+    "description": "Iran launched ballistic missiles at northern Israel (Ramat David airbase) in retaliation for Israeli airstrikes on Beirut's southern suburbs that killed two, the first Iranian launches at Israel since the April ceasefire; Israel said it intercepted them. On June 8 Israel struck military sites in Tehran, Isfahan and Tabriz, its first strikes on Iran since April 7, then halted at Trump's request; Iran announced it had ceased operations but warned it would resume if Israeli attacks in Lebanon continued.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.cnn.com/2026/06/07/world/live-news/iran-war-trump-israel-lebanon",
+     "https://en.wikipedia.org/wiki/2026_Iran_war_ceasefire",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_7",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_8"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia portal June 7 confirms Iranian missile waves at Ramat David, 'first launches at Israel since the ceasefire began in April', and Beirut strikes killing 2; portal June 8 and timeline section 161 add Israel's retaliatory strikes on Iran and the halt at Trump's request, which the researcher omitted."
+   },
+   {
+    "date": "2026-06-17",
+    "label": "Tucker: MOU a 'humiliating loss'",
+    "description": "On his June 17 show (with Piers Morgan) Tucker Carlson called Trump's MOU with Iran 'a pretty humiliating loss for the United States', saying it was 'impossible to say this is in any sense a win' and 'why people opposed a regime change war'. From the pro-war side, Mark Levin attacked the same deal across June 12-23 ('Release the damn MoU', June 17; the nuclear issue buried at point 8 of 14; the regime must be 'pulled out by the roots'; war should resume after the midterms, June 18).",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 4,
+    "sources": [
+     "https://www.mediamatters.org/us-iran-relations/tucker-carlson-trumps-mou-iran-pretty-humiliating-loss-united-states",
+     "https://thehill.com/homenews/media/5921408-tucker-carlson-donald-trump-iran-war-negotiations/",
+     "https://thehill.com/media/5868059-mark-levin-criticizes-iran-deal/",
+     "https://news.google.com/rss/search?q=Tucker+Carlson+Iran+%22humiliating+loss%22&hl=en-US&gl=US&ceid=US:en",
+     "https://news.google.com/rss/search?q=Mark+Levin+Iran+memorandum+OR+MOU+OR+deal+June+2026&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Media Matters fetch: episode June 17, article June 18. Uncited Singju Post transcript ('Tucker Carlson Show w/ Piers Morgan on US-Iran MOU') dated June 17 via Google News RSS confirms the date. Levin: Jerusalem Post June 17 ('Release the damn MoU'), Washington Examiner June 18 (war should continue after 2026 elections), Washington Times June 23 - so the fold-in to June 17 is reasonable."
+   },
+   {
+    "date": "2026-06-06",
+    "label": "Pope Leo: Iran war not a 'just war'",
+    "description": "In the in-flight press conference on the papal plane to Spain (start of a six-day visit), Pope Leo XIV said 'in Iran, the criteria for a just war are not present' and that just-war theory 'dates back to centuries when it was impossible to imagine the weapons and destructive capacity available today', extending his May 25 encyclical Magnifica Humanitas, which called the doctrine 'outdated'. He reaffirmed the position in Spain on June 9.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.npr.org/2026/06/06/g-s1-126768/pope-leo-says-war-with-iran-is-not-a-just-war",
+     "https://www.sltrib.com/religion/2026/06/09/pope-leo-reaffirms-iran-is-not/",
+     "https://www.vaticannews.va/en/pope/news/2026-06/flight-presser-pope-leo-visit-spain-appeal-peace-journalists.html",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_6",
+     "https://en.wikipedia.org/wiki/Magnifica_Humanitas"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Vatican News flight-presser transcript (June 6) gives the exact quote; uncited Wikipedia portal June 6 confirms the Spain trip began that day; Magnifica_Humanitas article confirms May 25 publication and the 'outdated' just-war language. Category kept as 'political' (no religious category available)."
+   },
+   {
+    "date": "2026-06-24",
+    "label": "Quinnipiac: 60% say Iran war not worth it",
+    "description": "Quinnipiac (fielded June 18-22, released June 24) found 60% of voters said US military action against Iran was not worth it (34% worth it), Trump's Iran approval at 34/62, overall approval 38/55, and a record 48% saying the US is too supportive of Israel. Other June polls: Reuters/Ipsos (June 18-22) 24% said the war was worth its costs; CBS/YouGov (June 17-19) 69% said it did not justify its costs; AP-NORC (June 11-17) 34% approved of Trump's Iran handling.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://poll.qu.edu/poll-release?releaseid=3961",
+     "https://time.com/article/2026/06/25/us-iran-deal-mou-trump-approval-war-polls/",
+     "https://news.google.com/rss/search?q=Quinnipiac+Iran+war+%22not+worth+it%22&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Primary Quinnipiac release fetched: June 24 release, June 18-22 field dates, all numbers match. Uncited coverage via Google News RSS: The Hill, WDEF, JTA, CT Insider all June 24. The researcher's '59% support a deal' and '18% achieved goals' figures were NOT in the cited Time piece (which reports Reuters/Ipsos, CBS/YouGov, AP-NORC); replaced with the verified numbers."
+   },
+   {
+    "date": "2026-06-21",
+    "label": "B\u00fcrgenstock talks yield 60-day roadmap",
+    "description": "The first post-MOU US-Iran talks, led by VP Vance and Iranian parliament speaker Ghalibaf with Pakistan and Qatar mediating, were held at the B\u00fcrgenstock resort in Switzerland on June 21, running into June 22; the mediators' statement early June 22 announced a roadmap toward a final deal within 60 days, a plan to end military operations in Lebanon, and nuclear, sanctions and oversight working groups. The Treasury's 60-day oil-sanctions waiver followed on June 22. Iran pulled out of follow-on technical talks on June 28 after the US strikes; indirect technical talks began in Doha on June 30.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.npr.org/2026/06/21/g-s1-129222/us-iran-deal-lebanon-israel-strait-hormuz-jd-vance",
+     "https://www.cnbc.com/2026/06/22/us-iran-roadmap-final-deal-switzerland-talks-lebanon-deconfliction.html",
+     "https://www.dawn.com/news/2009504/us-iran-make-encouraging-progress-after-hours-long-talks-in-burgenstock-agree-on-roadmap-to-reach-final-peace-deal-in-60-days",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_21",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_22",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_28"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia portal June 21 confirms the B\u00fcrgenstock talks that day; portal June 22 records the mediators' roadmap announcement. Dawn fetch: talks began Sunday June 21 and stretched into Monday, joint statement issued early Monday June 22 local (still June 21 US time; CNBC/DW datelines June 21). Date kept June 21. Corrections: US delegation was Vance-led (researcher omitted); 'second technical round on June 28' is wrong - Iran withdrew from technical talks June 28 and Doha talks started June 30 (portal June 28, 30)."
+   },
+   {
+    "date": "2026-06-22",
+    "label": "Tucker: won't vote Republican in midterms",
+    "description": "In a 'Can't Be Censored' podcast interview recorded June 18 and published June 22, Tucker Carlson said there was 'no chance' he would support the Republican Party in the midterms, blaming the Iran war on pressure from Netanyahu and calling support for the party indefensible 'because it's immoral'. Marjorie Taylor Greene publicly backed his break with the GOP on June 24 ('We're done').",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.ibtimes.co.uk/tucker-carlson-leaves-gop-2026-1804381",
+     "https://www.ms.now/opinion/tucker-carlson-leaving-republican-party-israel-iran",
+     "https://news.google.com/rss/search?q=Tucker+Carlson+Republican+Party+midterms+%22no+chance%22&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "IBTimes fetch: recorded June 18, published/viral June 22. Uncited coverage via Google News RSS: Cleveland.com June 23, MassLive/Guardian/USA Today/Independent June 24; Guardian and USA Today June 24 report MTG joining the break. Bloomberg link not fetched (blocked)."
+   },
+   {
+    "date": "2026-06-18",
+    "label": "Trump: 'no limits' to my power; MOU is surrender",
+    "description": "In an Axios Show interview with Marc Caputo, Trump said the war had not taught him his power has limits ('I haven't learned that lesson yet... there are no limits'), claimed the US 'defeated them totally militarily' and that the MOU 'probably is unconditional surrender', while saying he took the deal to avoid a global depression from a closed Hormuz.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.axios.com/2026/06/18/trump-iran-war-power-no-limits",
+     "https://thehill.com/homenews/administration/5931777-trump-iran-war-power/",
+     "https://www.cnbc.com/2026/06/19/trump-claims-iran-deal-is-unconditional-surrender-axios-.html"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited CNBC (June 19) and HuffPost (June 19) via Brave results confirm the Axios interview published June 18 with the 'no limits' and 'unconditional surrender' quotes and the interviewer (Marc Caputo). Axios and Hill pages themselves returned 403."
+   },
+   {
+    "date": "2026-06-26",
+    "label": "Pope opens consistory: war 'never blessed by God'",
+    "description": "Opening a two-day extraordinary consistory of 178 cardinals (June 26-27), called to discuss the themes of Magnifica Humanitas including moving beyond just-war theory, Pope Leo XIV said 'war is never worthy of humanity, and it is never blessed by God' and urged the cardinals to act 'as human beings and not as beasts'; cardinals described frank discussions on war and proportionality.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://religionnews.com/2026/06/26/war-is-never-blessed-by-god-says-pope-leo-in-opening-cardinals-summit/",
+     "https://www.usccb.org/news/2026/pope-leo-tells-cardinals-war-never-blessed-god",
+     "https://www.vaticannews.va/en/pope/news/2026-06/pope-at-consistory-opening-mass-war-is-never-blessed-by-god.html",
+     "https://en.wikipedia.org/wiki/Magnifica_Humanitas"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited AP News, Catholic Review (June 26) and National Catholic Reporter (June 27) via Brave results confirm June 26 opening, 178 cardinals, exact quote. Uncited Magnifica_Humanitas Wikipedia article confirms the late-June extraordinary consistory was devoted to the encyclical's themes. RNS page returned 403."
+   },
+   {
+    "date": "2026-06-15",
+    "label": "MTG: '$300 BILLION TO IRAN??'",
+    "description": "As the deal was confirmed, Marjorie Taylor Greene posted on X: '$300 BILLION DOLLARS TO IRAN??!!! Trump agreed to give Iran $300 BILLION dollars for reconstruction cost after Trump bombed Iran', adding 'Americans are getting screwed again'. The MOU's fund is a private/Gulf-backed investment vehicle created only after a final deal; Vance said 'not a single cent of American money goes to Iran'. Same day, Iranian-Americans protested outside SoFi Stadium before Iran's 2-2 World Cup draw with New Zealand.",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 2,
+    "sources": [
+     "https://x.com/mtgreenee/status/2066565026396111106",
+     "https://www.yahoo.com/news/politics/articles/iran-300bn-trumps-iran-deal-182944760.html",
+     "https://news.google.com/rss/search?q=Marjorie+Taylor+Greene+%22300+billion%22+Iran&hl=en-US&gl=US&ceid=US:en",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_15"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Yahoo fetch confirms the post date June 15 and fund details. Uncited Times of India coverage dated June 16 via Google News RSS; uncited Wikipedia portal June 15 confirms the Iran-New Zealand match protests in Inglewood. Islamabad_Memorandum article lists the $300B fund as point 6."
+   },
+   {
+    "date": "2026-06-02",
+    "label": "Rubio first testimony since war began",
+    "description": "Secretary Rubio testified before the Senate Foreign Relations Committee (and a House Appropriations subcommittee the same afternoon) for the first time since the war began, a day after Tehran suspended talks over Israeli strikes in Lebanon. He said Iran 'has agreed to negotiate aspects of its nuclear program', that reopening Hormuz was the first step, and that sanctions relief would not be 'a signing bonus'; he faced sharp questioning, including from Sen. Shaheen over ignored information requests. He appeared before House Foreign Affairs on June 3.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.washingtonpost.com/national-security/2026/06/02/rubio-meet-with-congress-iran-ceasefire-falters/",
+     "https://www.pbs.org/newshour/politics/watch-live-rubio-testifies-on-capitol-hill-for-the-1st-time-since-start-of-iran-war",
+     "https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_2",
+     "https://news.google.com/rss/search?q=Rubio+testifies+Senate+Foreign+Relations+Iran+after:2026-06-01+before:2026-06-04&hl=en-US&gl=US&ceid=US:en"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Uncited Wikipedia portal June 2 confirms Rubio testified to Congress that day ('Iran has agreed to negotiate aspects of its nuclear program'); uncited C-SPAN and AP items dated June 2 via Google News RSS. PBS fetch: SFRC at 10am, House Appropriations subcommittee at 2pm on June 2. Portal June 1 confirms Iran's talks suspension the prior day."
+   }
+  ],
+  "missed": [
+   "2026-06-01: Iran suspends peace talks with the US and threatens to 'completely block' Hormuz after intensified US strikes and Israeli operations in Lebanon; Trump insists talks continue; Hezbollah accepts US 'mutual cessation' proposal. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_1",
+   "2026-06-03: Iranian drone/missile barrage on Kuwait and Bahrain; a drone strike on Kuwait International Airport kills 1 and injures 63 (Kuwait downs 13 missiles, 17 drones) during ongoing ceasefire talks. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_3",
+   "2026-06-08: Israel strikes military sites in Tehran, Isfahan, Tabriz and Kermanshah - first Israeli strikes on Iran since the April 7 ceasefire - then halts at Trump's request; Iran announces it has ceased operations against Israel but will resume if the Lebanon war continues. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_8",
+   "2026-06-09/10: A US Army AH-64 Apache is downed after colliding with an Iranian Shahed drone off Oman; CENTCOM launches 'self-defense' strikes and on June 10 fires 49 Tomahawks at Iranian targets while Iran hits the Fifth Fleet in Bahrain, Ali Al Salem and a base in Jordan; US fire on tanker M/T Settebello kills three Indian crew. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_9 and https://arstechnica.com/gadgets/2026/06/cheap-iranian-drone-downed-25-million-us-army-helicopter-maybe-by-chance/",
+   "2026-06-14: Trump and Pakistan PM Sharif announce an agreement to end the war, extend the ceasefire 60 days and reopen Hormuz; Trump orders the naval blockade (since April 13) ended; oil falls 5%. This announcement day is distinct from the June 17 signing and is the true 'war ends' news event. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_14",
+   "2026-06-16: Pope Leo XIV welcomes the interim US-Iran deal ('thanks be to God'), hoping it strengthens 'trust, security and stability' (Reuters, Al-Monitor June 16; The Hill June 17) - a dovish religious_authority data point the researcher missed. https://news.google.com/rss/search?q=Trump+%22Pope+Leo%22+Iran+after:2026-06-01+before:2026-07-01&hl=en-US&gl=US&ceid=US:en",
+   "2026-06-01/02 and 2026-06-18: Trump-Pope friction did occur in June, contrary to researcher note (7): June 1 Trump swipes at Pope Leo over his audience with 'useless' Chicago Mayor Brandon Johnson and suggests the Pope is unaware of Iran's nuclear stance (Fox 32, Zenit, Eurasia Review, Catholic Thing); June 18 Trump reverses course and invokes the Pope's welcome of the deal to sell it (Daily Beast, AlterNet), with Vance saying June 18 he has been in touch with the Pope (WaPo). https://news.google.com/rss/search?q=Trump+%22Pope+Leo%22+Iran+after:2026-06-01+before:2026-07-01&hl=en-US&gl=US&ceid=US:en",
+   "2026-06-19: Vance cancels his Switzerland trip at the last minute, collapsing the planned start of B\u00fcrgenstock talks; the US announces an Israel-Hezbollah ceasefire that begins June 19 after Israeli strikes kill at least 47 in southern Lebanon. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_19 and https://www.ibtimes.com/jd-vance-postpones-switzerland-trip-iran-talks-israel-hezbollah-continue-clashing-lebanon-3804311",
+   "2026-06-20: Iran's military declares Hormuz closed again over Israel's violations of the Islamabad Memorandum in Lebanon; Netanyahu says troops will stay in southern Lebanon; Trump threatens US tolls in Hormuz if no final deal in 60 days. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_20",
+   "2026-06-22: US Treasury lifts Iran sanctions and authorizes Iranian oil production and sales for 60 days; US crude falls to ~$74. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_22 and https://www.arabianbusiness.com/politics/us-iran-sanctions-60-days-strait-of-hormuz-shipping",
+   "2026-06-24: Marjorie Taylor Greene joins Tucker Carlson in breaking with the Republican Party ('We're done') over the Iran war (Guardian, USA Today June 24) - a maga_antiwar tier event. https://news.google.com/rss/search?q=Tucker+Carlson+Republican+Party+midterms+%22no+chance%22&hl=en-US&gl=US&ceid=US:en",
+   "2026-06-28: US and Iran agree to halt strikes near Hormuz (Axios) with Qatar-mediated talks set for Doha; Iran withdraws from technical talks citing the US strikes; June 30 Kushner and Witkoff arrive in Doha for indirect technical talks; Brent falls 21% over June, its largest monthly drop since March 2020. https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_28 and https://en.wikipedia.org/wiki/Portal:Current_events/2026_June_30",
+   "Note on researcher item (5): the ANSWER Coalition 'National March on Washington June 28 - No War on Iran' item is dated June 22, 2025 in Google News (the 2025 Israel-Iran war), not 2026; no 2026 march coverage found, so omission was correct."
+  ]
+ },
+ {
+  "period": "2026-07-01 to 2026-07-31",
+  "events": [
+   {
+    "date": "2026-07-01",
+    "label": "Doha talks; Vance says 'going well'",
+    "description": "Indirect US-Iran technical talks under the June 17 MOU were held in Doha on July 1, focused on the Strait of Hormuz and Iranian assets; Vance said the talks were going 'extremely well' and that Trump 'has options' if Iran rebuilt its nuclear program. Reuters reported the round concluded July 1-2. This was the last week before the ceasefire collapsed.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://www.cnn.com/2026/07/01/world/live-news/iran-war-trump",
+     "https://www.aljazeera.com/news/2026/7/1/us-iran-negotiations-whats-the-latest",
+     "https://www.middleeasteye.net/live-blog/live-blog-update/vance-iran-talks-going-extremely-well-trump-has-options-respond-threats",
+     "https://www.reuters.com/world/asia-pacific/us-iran-enter-technical-talks-secure-peace-deal-restart-shipping-2026-07-01/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Middle East Eye live blog dated 1 July 2026 (not cited by researcher) confirms Doha indirect talks and Vance's 'extremely well' remark; Reuters (Jul 1-2) confirms talks concluded in Doha. Could not verify the Qatar 'positive progress' phrasing or a specific claim that nuclear talks would 'start soon'; softened."
+   },
+   {
+    "date": "2026-07-01",
+    "label": "Carlson floats anti-war third party",
+    "description": "In a Columbia Journalism Review interview published July 1, Tucker Carlson said 'There's going to be a third party, and I'm going to do everything I can to bring that about,' called the two parties 'in lockstep solidarity,' and said 'I haven't spoken to him [Trump] since the regime-change war began.' Wider coverage followed July 1-2; in a July 17 Bloomberg interview he added that Vance would not have led the US to war.",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.cjr.org/the-interview/all-i-have-is-the-power-to-talk-and-be-heard-tucker-carlson-interview-pitying-trump-podcast-new-third-party-nicotine-pouch-alp-fox-news-fired-anti-war-gaza-immigration.php",
+     "https://wabcradio.com/2026/07/02/tucker-carlson-anti-war-third-party-iran/",
+     "https://www.washingtontimes.com/news/2026/jul/2/tucker-carlson-teases-third-political-party-im-going-everything-bring/",
+     "https://www.bloomberg.com/news/videos/2026-07-17/tucker-carlson-jd-vance-wouldn-t-have-led-us-to-war-video"
+    ],
+    "verdict": "date_corrected",
+    "verify_note": "Fetched the CJR interview itself (not cited): publication date July 1, 2026; quotes confirmed verbatim. Google News shows Forbes, Newsweek, Washington Examiner coverage dated Jul 1 and Guardian/Seattle Times Jul 2. Researcher's Jul 2 was the date of secondary coverage; corrected to Jul 1."
+   },
+   {
+    "date": "2026-07-08",
+    "label": "Trump: Iran MOU 'over' at NATO summit",
+    "description": "After Iran struck commercial vessels in the Strait of Hormuz on July 7 and the US hit 80+ Iranian targets overnight, Trump told reporters at the NATO summit in Ankara on July 8 that the June 17 memorandum of understanding was over ('I think it's over... I don't want to deal with them anymore. They're scum'). US strikes continued a second night and Iran retaliated against US bases in Bahrain and Kuwait and other Gulf states.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 5,
+    "sources": [
+     "https://www.npr.org/2026/07/08/nx-s1-5883929/trump-nato-iran-strikes-press-conference",
+     "https://abcnews.com/Politics/us-iran-ceasefire-mou-broke-timeline/story?id=134622392",
+     "https://www.aa.com.tr/en/world/trump-says-memorandum-of-understanding-with-iran-to-end-war-is-over/3990350",
+     "https://en.wikipedia.org/wiki/2026_Iran_war",
+     "https://www.cbsnews.com/news/trump-nato-leaders-news-conference-iran-strikes/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Anadolu Agency (Jul 8, not cited) confirms NATO summit in Ankara, 'I think it's over' and 'They're scum' quotes and the overnight US attack. Wikipedia 2026_Iran_war main article confirms 8 July MOU 'over' after Hormuz ship attacks; timeline gives CENTCOM 80+ targets on Jul 8. Rescinded oil license and 'about 90 targets' second night not independently verified but consistent."
+   },
+   {
+    "date": "2026-07-11",
+    "label": "US hits ~140 targets, largest strike package",
+    "description": "CENTCOM announced completion of a third round of strikes on about 140 Iranian military targets (missile and drone sites, ammunition storage, communications) after another Iranian attack on shipping; the strikes ran overnight July 11-12 local time. The IRGC Navy declared the Strait of Hormuz closed 'until further notice' and Iran fired on Bahrain, Kuwait, Qatar, Jordan and Oman.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.globalsecurity.org/military/library/news/2026/07/mil-260711-centcom01.htm",
+     "https://www.centcom.mil/MEDIA/PUBLIC-RELEASES/Article/4540919/us-forces-finish-latest-round-of-strikes-against-iran/",
+     "https://www.pbs.org/newshour/world/us-launches-more-strikes-on-iran-as-the-standoff-over-the-strait-of-hormuz-escalates",
+     "https://www.aljazeera.com/news/2026/7/12/us-launches-new-wave-of-strikes-against-iran-aimed-at-degrading-military"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "CENTCOM release 'U.S. Forces Finish Latest Round of Strikes Against Iran' is dated Jul 11 (Google News); PBS (Jul 12, not cited) confirms ~140 targets, three waves into Sunday Jul 12 local time, Iran's closure claim and retaliation on Bahrain, Kuwait, Qatar, Jordan, Oman. Wikipedia timeline files the 140-target figure under 12 July and the IRGC closure under 11 July. Kept Jul 11 (US/UTC announcement); note the Jul 11/12 straddle. UAE not confirmed among targets; replaced with Bahrain."
+   },
+   {
+    "date": "2026-07-11",
+    "label": "Sen. Lindsey Graham dies at 71",
+    "description": "Sen. Lindsey Graham, the Senate's most prominent Iran hawk, died suddenly on Saturday night July 11 in Washington at age 71, hours after returning from a trip to Ukraine; the medical examiner's preliminary finding (July 13) was aortic dissection. Gov. McMaster appointed his sister Darline Graham to the seat on July 13.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.nbcnews.com/politics/politics-news/sen-lindsey-graham-dies-71-brief-sudden-illness-rcna552722",
+     "https://www.washingtonpost.com/politics/2026/07/12/lindsey-graham-longtime-south-carolina-senator-dies-71/",
+     "https://en.wikipedia.org/wiki/Lindsey_Graham",
+     "https://www.pbs.org/newshour/politics/sen-lindsey-grahams-sudden-death-spurs-false-claims"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Wikipedia biography (not cited) gives death date July 11, 2026, age 71, Washington DC, successor appointed July 13. PBS (Jul 13, not cited) confirms Saturday-night death (Jul 11 was a Saturday), aortic dissection per medical examiner, and Ukraine trip the prior day. Trump 'true American Patriot' quote and Iranian state media label not independently verified; removed from description."
+   },
+   {
+    "date": "2026-07-14",
+    "label": "US naval blockade of Iran reinstated",
+    "description": "Following Trump's July 13 announcement, the US Navy reinstated its blockade of Iranian ports at 20:00 GMT on July 14 (it had been lifted June 17 under the Islamabad MOU). In the first 24 hours CENTCOM said it rerouted two vessels and disabled the Curacao-flagged tanker Belma with missile fire to its smokestack near Kharg Island on July 15; Trump dropped a planned 20% Hormuz toll.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://en.wikipedia.org/wiki/2026_United_States_naval_blockade_of_Iran",
+     "https://hormuzstraitmonitor.com/crisis-timeline/",
+     "https://www.pbs.org/newshour/world/u-s-military-says-it-fired-on-another-vessel-trying-to-breach-its-blockade-of-iranian-ports",
+     "https://en.wikipedia.org/wiki/Timeline_of_the_2026_Iran_war"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Wikipedia blockade article wikitext: Trump announced Jul 13, CENTCOM said start next day 20:00 GMT, reinstated Jul 14, Belma disabled in first 24 hours. PBS (Jul 24, not cited) confirms Belma fired on July 15 heading to Kharg Island and Lavine as second ship disabled. NYT/BBC headlines Jul 15-16 corroborate. Iranian deputy FM 'no commitments' line not independently verified; dropped."
+   },
+   {
+    "date": "2026-07-17",
+    "label": "2 US troops killed in Jordan; MTG blasts Hegseth",
+    "description": "Two US service members (1st Lt. Tyler Feehan, Pvt. Isabella Gonzales) were killed late Friday July 17 defending Muwaffaq Salti Air Base in Jordan from an Iranian missile/drone attack; a third, initially listed missing, was later confirmed dead, and a separate service member died in northern Iraq July 18-19. CENTCOM launched retaliatory strikes. Marjorie Taylor Greene attacked Hegseth's 'their sacrifice only stiffens our resolve' post, saying the deaths fuel his 'bloodlust for a senseless war' waged 'on behalf of a FOREIGN COUNTRY, Israel'.",
+    "category": "military",
+    "impact": "polarizing",
+    "importance": 4,
+    "sources": [
+     "https://en.wikipedia.org/wiki/2026_Iranian_strikes_on_Jordan",
+     "https://www.foxnews.com/politics/mtg-pounces-hegseth-claiming-us-troop-casualties-fuel-bloodlust-senseless-war",
+     "https://www.aljazeera.com/news/2026/7/19/us-launches-new-iran-strikes-after-two-soldiers-killed-whats-the-latest",
+     "https://www.independent.co.uk/news/world/americas/us-politics/marjorie-taylor-greene-hegseth-iran-sacrifice-soldiers-b3017996.html"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Al Jazeera (Jul 19, not cited) says the two were killed 'late on Friday' = July 17; CBS (Jul 21) also says 'Friday'. Wikipedia Jordan-strikes article files the attack under 17 July (timeline notes CENTCOM report Jul 18), resolving the Hormuz monitor's Jul 15 discrepancy in favor of Jul 17. Corrected casualty detail: third Jordan death (Sgt. Rampersad) confirmed Jul 21; Iraq death is separate. MTG posts dated Jul 18-20 in Independent/HuffPost/Fox coverage."
+   },
+   {
+    "date": "2026-07-19",
+    "label": "US strikes Darkhovin nuclear plant site",
+    "description": "Iran's Atomic Energy Organization said US projectiles struck the under-construction Darkhovin nuclear power plant site in Khuzestan at about 3:39 am local time on Sunday July 19, days after satellite imagery showed new impact scars inside the Bushehr complex; Iran asked the IAEA to condemn the strike and the IAEA said the site held no nuclear material. Iran fired on Bahrain, Kuwait and Jordan the same day.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.dawn.com/news/amp/2016707",
+     "https://www.globalsecurity.org/wmd/library/news/iran/2026/07/iran-260720-irna12.htm",
+     "https://www.aljazeera.com/news/2026/7/17/satellite-images-show-damage-inside-irans-bushehr-nuclear-power-plant",
+     "https://www.aljazeera.com/news/2026/7/19/us-launches-new-iran-strikes-after-two-soldiers-killed-whats-the-latest",
+     "https://www.aljazeera.com/news/2026/7/19/kuwaiti-power-plant-ablaze-as-iran-hits-us-gulf-allies"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Al Jazeera (Jul 19, not cited) quotes Iran's nuclear agency: attack at ~3:39am local (00:09 GMT) Sunday = July 19. Google News shows Daily Sabah, Anadolu, Iran International, Kurdistan24 coverage Jul 19-20 and IranWire 'IAEA Confirms No Nuclear Material at Iran Site Hit in US Strike' (Jul 20)."
+   },
+   {
+    "date": "2026-07-21",
+    "label": "Hegseth hearing: $37.5B cost, $67B ask",
+    "description": "Hegseth and Gen. Caine told the Senate Appropriations Committee on July 21 that the war had cost $37.5 billion to date and defended a supplemental request including $67 billion for the Pentagon to restock munitions; the US death toll was put at 18. In a heated exchange Sen. Gary Peters told Hegseth 'You, sir, are the failure. Not the men and women who are on that frontline.'",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 4,
+    "sources": [
+     "https://www.stripes.com/theaters/us/2026-07-21/caine-hegseth-senate-hearing-iran-war-22330260.html",
+     "https://www.pbs.org/newshour/politics/senators-grilled-hegseth-on-iran-here-are-3-big-moments-from-the-hearing",
+     "https://www.cbsnews.com/news/hegseth-caine-senate-hearing-iran/",
+     "https://www.pbs.org/newshour/politics/hegseth-says-iran-war-has-cost-37-5b-so-far-and-pentagon-needs-67b-to-restock-arms"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "CBS (Jul 21, not cited) confirms Senate Appropriations, $37.5B, $67B, 18 service members killed, and the Peters quote verbatim. PBS (separate Jul 21 article, not cited) confirms figures. Neither CBS nor PBS mentions protesters interrupting; the researcher's Wikipedia protests source is a 359-byte stub, so the protester claim was removed as unverified. $87.6B total supplemental not independently confirmed."
+   },
+   {
+    "date": "2026-07-22",
+    "label": "Trump: a bridge or power plant per ship attack",
+    "description": "Amid the 11th-12th consecutive night of US strikes, Trump posted that 'any time the Islamic Republic of Iran shoots at a ship in the Strait of Hormuz... the United States will bomb and destroy ONE BRIDGE OR POWER PLANT'; Iran in turn threatened regional energy infrastructure and air defenses fired over Tehran overnight. Trump also attended the dignified transfer of the service members killed in Jordan.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.axios.com/2026/07/22/trump-iran-bridges-power-plants-hormuz",
+     "https://www.washingtonpost.com/business/2026/07/22/iran-us-hormuz-strait-war-july-22-2026/a91fcdfe-85a6-11f1-9cec-0fb26676f07e_story.html",
+     "https://www.aljazeera.com/news/2026/7/22/trump-threatens-to-bomb-iranian-bridges-power-plants-over-ship-attacks",
+     "https://www.pbs.org/newshour/world/trump-says-u-s-will-destroy-a-bridge-or-power-plant-for-each-iranian-attack-in-the-strait-of-hormuz"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "PBS (Jul 22, not cited) confirms date and the exact Trump quote; it says the US had completed an 11th night of strikes that morning (Wikipedia timeline counts the evening strike as the 12th). Araghchi 'eye for an eye' reply not found in PBS/AP; removed as unverified. AP headline Jul 22 'both sides threaten civilian infrastructure' supports Iran's counter-threat."
+   },
+   {
+    "date": "2026-07-23",
+    "label": "House passes Iran war powers res. 214-208",
+    "description": "The House approved a War Powers resolution directing Trump to end hostilities with Iran, 214-208, with Republicans Massie, Davidson, Fitzpatrick and Barrett joining Democrats, its second such rebuke of the war; hours later the Senate rejected a motion to discharge the companion S.J.Res.180, 47-49 (Collins the only Republican yea, Fetterman the only Democratic nay; Murkowski, Paul, Britt, McConnell absent). The White House said the resolutions lack legal force.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.npr.org/2026/07/23/nx-s1-5904515/congress-iran-war-powers-vote",
+     "https://www.c-span.org/clip/us-house-of-representatives/house-votes-214-208-to-approve-war-powers-resolution/5203368",
+     "https://www.cbsnews.com/news/senate-trump-iran-war-powers/",
+     "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1192/vote_119_2_00207.htm",
+     "https://www.pbs.org/newshour/politics/some-house-republicans-defect-to-again-pass-resolution-seeking-to-halt-military-action-in-iran"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Senate.gov roll call vote 207 (Jul 23, 11:51am; not cited) confirms 47-49 on S.J.Res.180 with Collins yea, Fetterman nay, four absent. CBS (Jul 23, not cited) confirms House 214-208 and names Barrett, Fitzpatrick, Davidson, Massie. PBS confirms 214-208."
+   },
+   {
+    "date": "2026-07-24",
+    "label": "Trump pauses strikes for mediation",
+    "description": "After 13 consecutive nights of strikes, Trump ordered US forces not to strike Iran on Friday July 24 as Oman-mediated talks in Tehran made progress and Pakistani and Qatari mediators pressed for space; Iran's Health Ministry reported no US strikes on July 25 and a senior Iranian official said July 26 that Iran would hold fire as long as the US did, while the Foreign Ministry insisted no negotiations were under way. US ambassador to the UN Waltz said the pause was to allow room for diplomacy.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.axios.com/2026/07/25/trump-iran-war-military-directive-strikes",
+     "https://www.iranintl.com/en/202607250090",
+     "https://tribune.com.pk/story/2620389/mediators-intensify-us-iran-diplomacy-after-trump-orders-pause-in-strikes-sources",
+     "https://en.wikipedia.org/wiki/Timeline_of_the_2026_Iran_war",
+     "https://time.com/article/2026/08/03/us-iran-war-talks-on-off-fighting-pause-history-timeline/"
+    ],
+    "verdict": "date_corrected",
+    "verify_note": "Axios headline (Jul 25): 'Trump ordered military not to conduct strikes in Iran Friday'; Iran International (Jul 25, not cited) confirms the order was for Friday = July 24 and that Oman-mediated talks in Tehran were the trigger. Wikipedia timeline: 25 July marked the first day with no strikes after 13 nights (last strike announced Jul 23 evening ET). Researcher's Jul 25 was the reporting date; corrected to Jul 24. Mediator attribution broadened to include Oman."
+   },
+   {
+    "date": "2026-07-26",
+    "label": "Pope Leo: suspend attacks, reopen talks",
+    "description": "At his Sunday Angelus in Piazza della Liberta, Castel Gandolfo, Pope Leo XIV said 'the intensification of military operations has again wreaked violence and destruction, endangering the lives of countless civilians and further aggravating the shortages of drinking water and electricity,' and exhorted 'all parties involved to suspend the attacks and urgently reopen paths of dialogue and diplomacy' for the Middle East; he did not name Iran or the US.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.vatican.va/content/leo-xiv/en/angelus/2026/documents/20260726-angelus.html",
+     "https://www.ncregister.com/cna/ewtn-news-pope-sunday-angelus-july-26-2026",
+     "https://cruxnow.com/vatican/2026/07/pope-renews-appeals-for-mideast-peace",
+     "https://www.catholicworldreport.com/2026/07/26/pope-leo-xiv-urges-halt-to-mideast-attacks-return-to-diplomacy/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Fetched the Vatican's official Angelus text for 26 July 2026 (not cited): location Castel Gandolfo, quotes on suspending attacks, reopening diplomacy, civilians, water and electricity shortages confirmed verbatim. Added the caveat that Iran/US are not named explicitly. Catholic World Report and OSV coverage dated Jul 26 corroborate."
+   },
+   {
+    "date": "2026-07-28",
+    "label": "Iran missiles at US base in Jordan end pause",
+    "description": "At about 5:45 pm ET on Tuesday July 28 (early July 29 local time), the IRGC fired ballistic missiles at a US air base and command center in Jordan (Muwaffaq Salti); all were intercepted. It was Iran's first attack on a US base since the July 24 pause and came as Trump hosted Netanyahu at the White House. Within hours the US and Saudi Arabia struck Iran-backed militia sites in Iraq, and on July 29 CENTCOM resumed a 'heavy wave' of strikes on Iran; Trump said 'we're going to hit them very hard'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.axios.com/2026/07/28/iran-missile-attack-us-base-jordan",
+     "https://en.wikipedia.org/wiki/2026_Iranian_strikes_on_Jordan",
+     "https://www.nbcnews.com/world/middle-east/us-thwarts-iranian-missile-attack-launches-strikes-saudi-arabia-rcna589773",
+     "https://www.cbsnews.com/live-updates/us-iran-war-trump-strait-of-hormuz-talks-oman/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "NBC (published Jul 28, not cited) puts the attack at ~5:45pm Tuesday ET (Jul 28), all missiles intercepted, during Trump-Netanyahu meeting, followed by joint US-Saudi strikes in Iraq and a CENTCOM 'heavy wave' on Iranian targets at 10pm ET Wednesday Jul 29. Wikipedia Jordan article records Jordan's interception of five missiles under 29 July (local date); timeline says the Jul 29 retaliation answered an attack 'foiled the previous day'. Date Jul 28 stands (US/UTC). IRGC tanker claim and Fox quote not independently verified; replaced Fox quote with NBC-reported 'hit them very hard'."
+   },
+   {
+    "date": "2026-07-29",
+    "label": "Polls: 60-64% oppose war, Trump at 32%",
+    "description": "Quinnipiac (released July 29, fielded July 23-27) found Trump's approval at a record-low 32% with a majority of voters opposing US military action in Iran and expecting the war to last at least a year; AP-NORC (released July 30) found 64% say the war is not worth fighting, with Republican approval of Trump's Iran handling down from June.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://poll.qu.edu/poll-release?releaseid=3964",
+     "https://apnorc.org/projects/most-say-the-war-with-iran-is-not-worth-fighting/",
+     "https://thehill.com/homenews/administration/5997864-trump-approval-rating-low/",
+     "https://apnews.com/article/trump-approval-iran-war-poll-republicans-election-55e9c80afec521d87f131393a59674c0"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Google News shows The Hill, CT News Junkie, WCTI and Courthouse News all dated Jul 29 reporting Quinnipiac's 32% approval and majority opposition; AP News 'How views on Trump's handling of Iran have shifted' and Washington Times AP-NORC coverage dated Jul 30. The Hill and AP pages returned 403/blocked so exact 60% and 71%-to-61% sub-figures rest on the researcher's primary poll pages; AP-NORC release date noted as Jul 30."
+   },
+   {
+    "date": "2026-07-30",
+    "label": "Senate rejects war powers res. 49-50",
+    "description": "The Senate rejected a motion to discharge S.J.Res.181, the second July resolution to end US hostilities against Iran, 49-50, after Democrat John Fetterman again voted with Republicans; Republicans Collins, Murkowski and Paul voted with Democrats and McConnell did not vote.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.senate.gov/legislative/LIS/roll_call_votes/vote1192/vote_119_2_00216.htm",
+     "https://newrepublic.com/post/213795/fetterman-helps-republicans-block-trump-iran-war-powers",
+     "https://www.washingtonpost.com/politics/2026/07/30/vote-limit-trumps-iran-war-powers-fails-senate/",
+     "https://www.democracynow.org/2026/7/31/headlines/senate_votes_down_iran_war_powers_resolution_after_fetterman_votes_with_gop_majority"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Senate.gov roll call vote 216 (Jul 30, 12:28pm; not cited): 49 yea, 50 nay, 1 not voting (McConnell); Collins, Murkowski, Paul yea; Fetterman nay. New Republic (Jul 30, not cited) matches. Researcher's '50-49' was the nay-yea ordering; restated as 49-50. Google News also surfaced a similar 50-49 vote on May 13, 2026, but the Jul 30 vote is distinct and confirmed."
+   }
+  ],
+  "missed": [
+   "2026-07-29: First publicly announced joint US-Saudi strikes on Iran-backed militia logistics and weapons sites in eastern Iraq (Wikipedia timeline: ~20 PMF fighters killed), followed at 10pm ET by a CENTCOM 'heavy wave' of strikes on Iranian targets that formally ended the six-day pause begun July 24 \u2014 https://www.nbcnews.com/world/middle-east/us-thwarts-iranian-missile-attack-launches-strikes-saudi-arabia-rcna589773 (see also https://www.pbs.org/newshour/world/u-s-iran-conflict-enters-new-phase-as-saudi-arabia-helps-hit-proxies-and-diplomacy-stalls)",
+   "2026-07-20: Pentagon spokesman Sean Parnell said nearly 100 US troops had been injured since strikes resumed July 7 (mostly concussions, 96% returned to duty), with total Operation Epic Fury deaths at 18 \u2014 https://thehill.com/policy/defense/5979242-pentagon-updates-service-member-casualties-iran/ (also https://time.com/article/2026/07/21/iran-war-injury-toll-us-service-members-pentagon-trump/)",
+   "2026-07-03/04: Pope Leo XIV's Lampedusa visit and letter for the US 250th anniversary praising America's history of welcoming migrants, widely read as an implicit rebuke of Trump (he did not attend Trump's July 4 events; dined with the US ambassador). Not Iran-specific, but relevant to the Pope-Trump axis the project tracks \u2014 https://www.theguardian.com/world/2026/jul/03/pope-leo-lampedusa-visit-us-250th-anniversary-trump",
+   "2026-07-08: Trump was secretly moved from Air Force One to a military jet in Turkey via a catering container because of a reported Iranian threat (CIA later said it had 'low confidence' in the threat) \u2014 https://en.wikipedia.org/wiki/2026_Iran_war",
+   "2026-07-21: Israeli Finance Minister Bezalel Smotrich said Israel would not join the US in striking Iran, the clearest public statement on Israel's non-participation in the July campaign \u2014 https://en.wikipedia.org/wiki/Timeline_of_the_2026_Iran_war"
+  ]
+ },
+ {
+  "period": "2026-08-01 to 2026-08-31",
+  "events": [
+   {
+    "date": "2026-08-03",
+    "label": "Trump: Iran 'duplicitous', talks 'last chance'",
+    "description": "After Tehran denied direct talks with Washington (saying it was negotiating only with Oman on a Hormuz route), Trump posted that Iran's leadership was 'unbelievably duplicitous' and told reporters the negotiations were Iran's 'last chance' to sign a deal 'before decapitation'. This followed his Aug 2 announcement that he had called off planned strikes to allow talks.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/8/3/trump-blasts-duplicitous-iran-after-tehran-denies-it-is-in-talks-with-the-us",
+     "https://www.cnn.com/2026/08/02/world/live-news/iran-war-trump",
+     "https://www.nbcnews.com/world/iran/trump-iran-talks-attacks-canceled-hormuz-nuclear-rcna590535",
+     "https://politicalwire.com/2026/08/03/trump-rips-unbelievably-duplicitous-iran/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "NBC (Aug 3) and Political Wire (Aug 3, 11:58 EDT) confirm the Truth Social post with 'unbelievably duplicitous' on Monday Aug 3 and the 'last chance ... before decapitation' remark to reporters; Euronews Aug 3 confirms Iran FM spokesman's Oman-only statement. The 'Wall of Steel' blockade phrase did not appear in any uncited source (CBS has Trump calling the blockade a 'steel wall' on Aug 10), so it was removed."
+   },
+   {
+    "date": "2026-08-08",
+    "label": "Iran missile hits ADNOC tanker in Hormuz",
+    "description": "The UAE said an ADNOC-linked tanker was struck by an Iranian missile while crossing the Strait of Hormuz in the early hours of Aug 8, with no casualties, and accused Tehran of 'piracy' and violating UNSC Resolution 2817. ADNOC said about 15-16 of its vessels had been hit since the war began, including three that week.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/8/8/uae-says-iran-targeted-adnoc-tanker-in-hormuz-no-casualties-2",
+     "https://www.thenationalnews.com/news/mena/2026/08/08/uae-and-qatar-condemn-iranian-strike-on-adnoc-oil-tanker/",
+     "https://www.usnews.com/news/world/articles/2026-08-08/uae-says-iran-attacked-adnoc-vessel-with-missile-in-strait-of-hormuz"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "The National (Aug 8) confirms the early-Saturday Aug 8 strike, no casualties, and the UAE statement; counts differ between outlets (Al Jazeera: 16th attack / 15 ADNOC vessels; The National: 16 ADNOC vessels), so the description hedges. The Lloyd's List two-ships-since-Aug-1 detail was not independently checked and was dropped."
+   },
+   {
+    "date": "2026-08-10",
+    "label": "Trump demands compensation from Iran",
+    "description": "After Iran's Supreme National Security Council set conditions for reopening Hormuz including US compensation for war damage and sanctions relief, Trump said in the Oval Office and on Truth Social that he was 'likewise demanding compensation from Iran' for 50 years of damages and that the US Navy controls the strait '100%', dimming prospects of a quick deal.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.euronews.com/2026/08/10/trump-says-will-demand-conflict-compensation-from-iran-as-part-of-peace-talks",
+     "https://www.aljazeera.com/news/2026/8/11/trump-demands-compensation-from-iran-as-talks-on-strait-of-hormuz-continue",
+     "https://www.cnbc.com/2026/08/11/us-iran-war-trump-hormuz-control-reparation-talks-.html",
+     "https://www.cbsnews.com/live-updates/iran-war-us-negotiation-strait-of-hormuz/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "CBS live blog (Aug 10-11) confirms Trump made both the compensation and '100% control' statements on Monday Aug 10; Business Standard and CNBC Aug 11 corroborate. Iran's SNSC conditions were set Aug 8 (Wikipedia timeline / AP)."
+   },
+   {
+    "date": "2026-08-12",
+    "label": "Carlson: war backers 'clearly hate you'",
+    "description": "On the Aug 12 episode of his show, Tucker Carlson said 'anyone pushing for a war like the war with Iran clearly hates you, clearly, no matter what they say', attacking Ben Shapiro and neoconservatives as contemptuous of Americans' cost-of-living concerns.",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 2,
+    "sources": [
+     "https://www.mediamatters.org/tucker-carlson/tucker-carlson-anyone-pushing-war-war-iran-clearly-hates-you-clearly-no-matter-what"
+    ],
+    "verdict": "unverifiable",
+    "verify_note": "Media Matters transcript (published Aug 14) gives the air date as Aug 12 and the exact quote, so the date is consistent. No second outlet quoting the line was reachable: Mediaite's related piece returned 403 and a Google News search for the phrase returned only a June 2026 item. Keep, but single-sourced."
+   },
+   {
+    "date": "2026-08-17",
+    "label": "MOU expires; Trump threatens to bomb Oman",
+    "description": "The 60-day negotiating window under the June 17 Islamabad memorandum expired with no deal and neither side agreed to extend it. In a Fox News interview published that day Trump said Iran should 'put up the white flag of surrender' and that 'if Oman gets in the way, we'll bomb the s*** out of them'. Brent crude rose above $90, and congressional Democrats announced plans for an Oman-focused war powers resolution (no vote was held in August).",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 5,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/8/17/trump-demands-iran-put-up-the-white-flag-of-surrender-as-mou-expires",
+     "https://www.cbsnews.com/live-updates/us-iran-war-deal-expired-strait-of-hormuz/",
+     "https://www.washingtonpost.com/world/2026/08/17/trump-threatens-bomb-oman-if-it-gets-way/",
+     "https://www.axios.com/2026/08/17/trump-oman-democrats-congress-war-powers-iran",
+     "https://www.aljazeera.com/news/2026/8/17/us-iran-memorandum-of-understanding-expires-how-and-why-it-fell-apart",
+     "https://www.bloomberg.com/news/articles/2026-08-17/trump-threatens-to-bomb-oman-if-it-gets-in-way-of-us-fox-news-msx5rdoc"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Al Jazeera explainer (uncited) confirms MOU signed Jun 17, expired Aug 17; Bloomberg headline (Aug 17) confirms the Oman threat and rejection of a truce extension; Wikipedia timeline (Tasnim/CNBC) adds that Iran also declined to discuss extension. Google News index confirms Axios/Middle East Eye/Fox Business coverage (Aug 17-18) of the Democratic war powers plan, with no vote."
+   },
+   {
+    "date": "2026-08-18",
+    "label": "YouGov: 57% say war was wrong decision",
+    "description": "Economist/YouGov poll (fieldwork Aug 14-17, published Aug 18) found 57% of Americans say going to war with Iran was the wrong decision vs 25% right, 65% want a deal to end the war as quickly as possible, and 50% expect the war to last at least another year, the highest since polling began in March (32%).",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://yougov.com/en-us/articles/55393-americans-want-fast-end-iran-war-increasingly-likely-not-to-expect-one-august-14-17-2026-economist-yougov-poll",
+     "https://yougov.com/en-us/articles/55390-democrats-midterms-lead-war-military-iran-cuba-august-14-17-2026-economist-yougov-poll"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Both YouGov pages fetched: publication Aug 18, fieldwork Aug 14-17; 57/25, 65% quick deal, 50% year-or-more (record high) all match."
+   },
+   {
+    "date": "2026-08-19",
+    "label": "Trump declares 'economic D-Day' on Iran",
+    "description": "Trump posted on Truth Social (late Wednesday Aug 19) that the US would launch an 'economic D-Day' against Iran and that any country giving Iran a lifeline would face 'tremendous economic consequences'; Araghchi called it 'economic terrorism' and US stocks and oil moved sharply on Aug 20. Treasury Secretary Bessent formally unveiled the measures as 'Operation Economic Outcast' on Aug 24 (five sectoral determinations, ~60 targets), which some sanctions analysts judged less sweeping than advertised.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.cnbc.com/2026/08/19/us-iran-war-trump-hormuz-economic-warfare.html",
+     "https://time.com/article/2026/08/20/iran-hits-back-at-trump-s-threat-of-a-crushing-economic-d-day-campaign/",
+     "https://www.npr.org/2026/08/21/nx-s1-5939493/trump-says-u-s-will-impose-economic-d-day-against-iran",
+     "https://en.wikipedia.org/wiki/Economic_D-Day",
+     "https://home.treasury.gov/news/press-releases/sb0613",
+     "https://www.cnn.com/2026/09/04/politics/trump-economic-d-day-actions-skepticism"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Wikipedia 'Economic D-Day' article and Time (Aug 20, 'late Wednesday' = Aug 19) confirm the post date and Araghchi's 'economic terrorism' response; Treasury press release sb0613 confirms the Aug 24 rollout; CNN Sep 4 headline and a sanctions consultant quoted on Wikipedia support the 'underwhelming' reception. Note the Wikipedia timeline page dates the post Aug 20, but the primary-adjacent sources put it Aug 19."
+   },
+   {
+    "date": "2026-08-21",
+    "label": "MTG: Trump broke 'no more wars', GOP toast",
+    "description": "In a New Republic Daily Blast podcast transcript published Aug 21, Marjorie Taylor Greene said Trump 'broke his big, big campaign promise of no more foreign wars', that the war has fed the affordability crisis, and that the 2026 midterms and 2028 race will not be 'anything like 2024' for MAGA.",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 2,
+    "sources": [
+     "https://newrepublic.com/article/214584/transcript-marjorie-taylor-greene-midterm-bombshell-gop-toast"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Fetched the New Republic transcript: dated Aug 21, podcast is The Daily Blast with Greg Sargent, quotes match. Google News index independently confirms the Aug 21 publication date. No secondary outlet coverage found (NewsNation piece returned 403), but the primary source is verified."
+   },
+   {
+    "date": "2026-08-24",
+    "label": "Reuters/Ipsos: war support 31%, Trump 33%",
+    "description": "Reuters/Ipsos poll released Aug 24 (four-day fieldwork ending Aug 24, n=1,215) found support for US military action against Iran at 31% (down from 37% in March and 34% earlier in August), Republican support at 69% (77% in March), and Trump approval at 33% for a second straight survey, the lowest of either term.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/8/24/us-public-support-for-iran-war-falls-as-trump-approval-at-record-low-poll",
+     "https://www.ipsos.com/en-us/americans-continue-expect-extended-us-military-involvement-iran",
+     "https://gvwire.com/2026/08/24/trumps-approval-holds-at-record-low-as-us-support-for-iran-war-falls-reuters-ipsos-poll-finds/",
+     "https://www.usnews.com/news/world/articles/2026-08-24/trumps-approval-holds-at-record-low-as-us-support-for-iran-war-falls-reuters-ipsos-poll-finds"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "GV Wire (Reuters syndication, Aug 24) confirms all figures: 31%/37%/34%, 69%/77%, 33% record low, n=1,215, +/-3."
+   },
+   {
+    "date": "2026-08-25",
+    "label": "Trump: all Hormuz mines cleared",
+    "description": "Trump posted that the Navy had 'removed and/or detonated' all mines in international waters of the Strait of Hormuz after a months-long CENTCOM clearance of the traffic separation scheme, warning that any vessel laying new mines would be 'immediately and systematically destroyed'. CENTCOM's Adm. Cooper called it a major milestone; reporting put the sweep at over 200 mine-like objects, of which only a small number were live mines, and the maritime security center still warned of drifting-mine risk.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.axios.com/2026/08/25/hormuz-mines-remove-oil-iran-trump",
+     "https://www.jpost.com/middle-east/iran-news/article-906564",
+     "https://gcaptain.com/trump-says-u-s-navy-has-cleared-all-mines-from-strait-of-hormuz/",
+     "https://www.foxnews.com/politics/inside-dangerous-us-mission-cleared-irans-mines-hormuz-shipping-lanes"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "gCaptain (Aug 25) confirms the Tuesday Aug 25 post and quotes; Fox News CENTCOM piece confirms Cooper's statement and cites Axios for 200+ objects / 11 actual mines. Researcher's '100+ suspected mines' figure conflicts with that, so the description now hedges."
+   },
+   {
+    "date": "2026-08-26",
+    "label": "Iran-Oman agree temporary Hormuz corridor",
+    "description": "Iran's deputy FM Gharibabadi announced that Iran and Oman had agreed a temporary seven-mile-wide commercial corridor through Hormuz (inbound via Iranian waters, outbound via Iranian and Omani waters, no military vessels) plus a joint mine-clearing project, after Araghchi-Albusaidi talks in Tehran on Aug 25; the US was not party to it. Tehran said it did not consider the strait open, conditioning full reopening on US fulfilment of the lapsed June MOU.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/8/26/iran-oman-agree-on-temporary-hormuz-route-what-we-know",
+     "https://www.africanews.com/2026/08/26/iran-oman-agree-temporary-strait-of-hormuz-corridor/",
+     "https://thehill.com/policy/international/6051291-iran-oman-strait-of-hormuz-plan/",
+     "https://www.aljazeera.com/economy/2026/8/26/top-official-says-iran-oman-have-agreed-new-temporary-hormuz-route",
+     "https://www.aljazeera.com/news/2026/8/25/iran-oman-discuss-temporary-shipping-lane-through-strait-of-hormuz"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Al Jazeera Aug 25 piece shows the corridor was still under discussion that day; Al Jazeera economy piece and Wikipedia timeline (Reuters/IRGC) confirm the agreement was announced Aug 26. The Trump 'not in a hurry' quote could not be found in any fetched source and was removed."
+   },
+   {
+    "date": "2026-08-30",
+    "label": "US strikes Larak Island; IRGC hits Jordan bases",
+    "description": "US aircraft struck two IRGC rocket launchers on Larak Island that CENTCOM said were being prepared to fire sea mines into Hormuz, the first US strike on Iran in more than a month; the IRGC said three were killed. Hours later the IRGC's 'Punishment of the Aggressor' operation fired missiles at King Hussein and Al-Azraq air bases in Jordan (Jordan said it intercepted eight missiles at dawn Aug 31, no injuries). On Aug 31 the Saudi tanker Sidr was attacked in the strait, killing two crew.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 5,
+    "sources": [
+     "https://en.wikipedia.org/wiki/2026_Larak_Island_attack",
+     "https://www.cnn.com/2026/08/30/politics/us-iran-strikes-larak-island",
+     "https://www.euronews.com/2026/08/30/us-forces-strike-iranian-rocket-launchers-in-strait-of-hormuz-as-irgc-warns-of-retaliatory",
+     "https://www.rferl.org/a/larak-island-iran-launchers-strike/33843587.html",
+     "https://en.wikipedia.org/wiki/2026_Strait_of_Hormuz_crisis"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Euronews and RFE/RL (Aug 30) confirm the strike, rationale and 'first in a month' framing; Wikipedia Larak page confirms the Jordan bases, eight intercepted missiles at dawn Aug 31 and three killed; Hormuz crisis page confirms Sidr attack Aug 31 with two dead. No source gave July 29 as the prior strike date, so that was softened to 'more than a month'."
+   },
+   {
+    "date": "2026-08-31",
+    "label": "UMass: 68% disapprove of Trump on Iran",
+    "description": "UMass Amherst national poll (fieldwork Aug 21-26, released Aug 31) found 68% disapprove of Trump's handling of the Iran war, 80% say the war has raised food and gas prices, and Trump approval at 32% (64% disapprove), with a sharp MAGA split: 87% of MAGA-identified Republicans approve of the military action vs 58% 'somewhat MAGA' and 30% non-MAGA Republicans.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.umass.edu/poll/about/reports/2026-08-national-public-opinion-poll",
+     "https://www.umass.edu/news/article/new-umass-amherst-poll-finds-over-two-thirds-americans-disapprove-president-trumps",
+     "https://thehill.com/homenews/administration/6061903-umass-poll-trump-performance/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "UMass news release (Aug 31) confirms fieldwork Aug 21-26, 32% approval, 68% disapprove on Iran, 80% price impact, and the 87/58/30 MAGA split; The Hill and Amherst Indy also covered it."
+   }
+  ],
+  "missed": [
+   "2026-08-02 \u2014 Trump announced he had called off planned US-Israel strikes on Iran after Tehran asked for more time, saying talks would begin Monday and that a contingency plan existed for the largest US operation since WWII; Iran's military called his account 'a lie'. https://www.haaretz.com/us-news/2026-08-02/ty-article/.premium/trump-says-he-canceled-iran-attack-after-tehran-sought-more-time-for-deal/0000019f-c052-d37f-adff-d5fe01a30000 (also CBS Aug 3, Guardian Aug 2 via Google News)",
+   "2026-08-07 \u2014 CNN reported Joint Chiefs chairman Gen. Dan Caine privately urged administration officials to find an exit strategy, warning air operations alone would not achieve objectives and escalation could backfire (military/dovish, high relevance to admin messaging). https://edition.cnn.com/2026/08/07/politics/general-dan-caine-off-ramp-iran-war (Times of Israel/JPost Aug 8 corroborate)",
+   "2026-08-13 \u2014 Defense Secretary Hegseth, in Panama, said the Navy can sustain the blockade of Iranian ports 'indefinitely' by rotating ships (hawkish admin messaging). https://www.aljazeera.com/news/2026/8/14/us-threatens-indefinite-blockade-against-iran-how-long-can-it-last",
+   "2026-08-18 \u2014 UAE said Iran fired two ballistic missiles at it (one landing in UAE waters) and halted all trade, exchange and financial transactions with Iran until further notice, a major economic escalation given Dubai's role as Iran's re-export hub; Iran called it a 'false flag'. https://www.aljazeera.com/news/2026/8/19/uae-trade-embargo-could-shut-irans-key-economic-escape-route-heres-why",
+   "2026-08-24 \u2014 Treasury Secretary Bessent formally launched 'Operation Economic Outcast' (five sectoral sanctions determinations, ~60 targets); worth its own dated entry rather than being folded into the Aug 19 post. https://home.treasury.gov/news/press-releases/sb0613",
+   "2026-08-25 \u2014 Axios reported Rubio told allies the US is shifting from strikes to sanctions and does not expect major combat operations against Iran 'for the time being', with the question possibly revisited after the midterms (dovish/political; widely picked up Aug 26). https://www.axios.com/2026/08/25/rubio-iran-war-hormuz-oil",
+   "2026-08-31 \u2014 Iran said it shot down a US MQ-9 drone over Hormuz and Trump vowed to respond to the Iranian strike on US troops in Jordan (follow-on to Aug 30). https://en.wikipedia.org/wiki/Timeline_of_the_2026_Iran_war",
+   "Pope Leo / Vatican check: the vatican.va Angelus texts for Aug 2, 9, 15, 16, 23 and 30 contain no Iran, Hormuz or US-war reference (Sudan, Ukraine, West Bank, Congo, Haiti instead); the only August Trump-Pope items are favorability-poll retrospectives on the spring feud (Inquirer Aug 26), so the researcher's gap note stands. https://www.vatican.va/content/leo-xiv/en/angelus/2026/documents/20260830-angelus.html"
+  ]
+ },
+ {
+  "period": "2026-09-01 to 2026-09-15",
+  "events": [
+   {
+    "date": "2026-09-01",
+    "label": "US strikes IRGC targets across southern Iran; Sirik wedding hit",
+    "description": "After roughly a month of relative calm, CENTCOM struck dozens of IRGC targets along Iran's southern coast (air defense sites, radars, maritime assets, mine-laying and communications sites). A strike on a home hosting a wedding in Kuhestak, Sirik County (about 21:30 IRST) killed four to five people including children and wounded 60+; Iran said at least 18 were killed nationwide. The IRGC retaliated with missiles and drones at US facilities in Jordan (Prince Hassan base, a Marine base), Kuwait (Ali Al Salem), Bahrain and Iraq; Jordan intercepted 10 of 13 ballistic missiles and no US casualties were reported.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 5,
+    "sources": [
+     "https://en.wikipedia.org/wiki/2026_Sirik_wedding_airstrike",
+     "https://www.aljazeera.com/news/2026/9/2/iran-us-exchange-new-attacks-who-was-hit-in-latest-strikes",
+     "https://www.aljazeera.com/news/2026/9/2/what-do-we-know-about-the-fatal-us-bombing-of-a-wedding-in-irans-sirik",
+     "https://www.outlookindia.com/international/iran-wedding-strike-what-we-know-about-reported-us-attack-that-killed-five",
+     "https://www.cbsnews.com/live-updates/us-iran-war-trump-dismisses-diplomacy-tehran-says-wedding-hit-in-strike/",
+     "https://www.democracynow.org/2026/9/2/headlines"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Date Sept 1 confirmed by Wikipedia (21:30 IRST), Al Jazeera 9/2 explainer and Outlook India (uncited). The '~100 targets', 'two government tankers' and 'tanker for tanker' claims could not be confirmed in any fetched source (CBS and Al Jazeera give target types but no count; Axios 403) and were removed. Retaliation was multi-country, not only Jordan; Jordan 10-of-13 intercept figure confirmed by Al Jazeera."
+   },
+   {
+    "date": "2026-09-01",
+    "label": "Pezeshkian offers to honor Islamabad MoU; Trump dismisses talks",
+    "description": "At the SCO summit in Bishkek, Iran's President Pezeshkian said Tehran would 'immediately reciprocate' if the US returned to its commitments under the June 18 Islamabad MoU. Trump dismissed reports of negotiations ('I like our position now much better, with almost total control of the Hormuz Strait') and on Sept 2 told Fox News an agreement with Iran 'isn't worth the paper it's written on. We gave them a lot of chances.'",
+    "category": "diplomatic",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.globalsecurity.org/wmd/library/news/iran/2026/09/iran-260901-rferl05.htm",
+     "https://pajhwok.com/2026/09/01/iran-ready-to-reciprocate-if-us-returns-to-islamabad-mou-pezeshkian/",
+     "https://insights.niacouncil.org/p/iran-secures-sco-backing-against",
+     "https://www.aljazeera.com/news/2026/9/2/iran-us-exchange-new-attacks-who-was-hit-in-latest-strikes",
+     "https://www.cbsnews.com/live-updates/us-iran-war-trump-dismisses-diplomacy-tehran-says-wedding-hit-in-strike/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Pezeshkian Sept 1 remark confirmed by RFE/RL via globalsecurity, Pajhwok and NIAC (summit was in Bishkek, not Islamabad; the MoU is the 'Islamabad MoU'). Trump's Sept 2 'worth the paper' quote confirmed via CBS (Fox interview); the Sept 1 'not looking to meet' wording was not found in any second source and replaced with the Al Jazeera-reported quote."
+   },
+   {
+    "date": "2026-09-03",
+    "label": "Vance: 'I wouldn't call it a war'",
+    "description": "At a White House press briefing VP Vance said 'I wouldn't call it a war... right now there is no active shooting', framing the renewed strikes as not requiring congressional authorization, and said he was 'extremely skeptical' of Iranian reports that a US strike hit the Sirik wedding, adding 'sometimes things happen' and that the incident was being investigated. A NYT visual investigation published Sept 2 attributed the wedding strike to a US attack.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 4,
+    "sources": [
+     "https://time.com/article/2026/09/03/vance-iran-war-press-briefing/",
+     "https://www.cnn.com/2026/09/03/politics/jd-vance-iran-war",
+     "https://thehill.com/homenews/administration/6069975-vance-refuses-iran-war-label/",
+     "https://www.cbsnews.com/live-updates/us-iran-war-trump-dismisses-diplomacy-tehran-says-wedding-hit-in-strike/",
+     "https://en.wikipedia.org/wiki/2026_Sirik_wedding_airstrike"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Thursday Sept 3 briefing confirmed by CNN and The Hill (uncited) with matching quotes; NYT analysis dated Sept 2 per Wikipedia."
+   },
+   {
+    "date": "2026-09-04",
+    "label": "Trump: war 'small potatoes'; Pickaxe Mountain threat",
+    "description": "In the Oval Office Trump defended Vance's framing, calling the conflict a 'military conflict' that is 'small potatoes' ('In Venezuela, we lost nobody. In this, we lost 18 people'), and said the US 'may hit Pickaxe Mountain very soon' (the fortified site near Natanz). The White House said talks were off the table until Iranian attacks on shipping stop.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/9/4/small-potatoes-us-president-trump-downplays-war-on-iran",
+     "https://www.cnn.com/2026/09/04/politics/small-potatoes-trump-iran",
+     "https://www.timesofisrael.com/liveblog_entry/trump-again-claims-that-us-may-soon-hit-irans-pickaxe-mountain-nuclear-site/",
+     "https://www.pbs.org/newshour/world/watch-trump-calls-iran-war-small-potatoes-and-very-intermittent",
+     "https://www.aljazeera.com/news/liveblog/2026/9/4/iran-war-live-us-rules-out-iran-talks-until-ship-attacks-stop"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Friday Sept 4 Oval Office remarks confirmed by Al Jazeera news piece, CNN and Times of Israel (uncited). The claim that an Iranian tanker off Kharg was hit 'hours later' on Sept 4 was not found in any source; the Kharg-area tanker (Downy) was part of the Sept 5 CENTCOM operation, so it was removed here."
+   },
+   {
+    "date": "2026-09-05",
+    "label": "US destroys 3 Iranian tankers after missile fire on warships",
+    "description": "After the IRGC fired ballistic missiles at a US aircraft carrier and a guided-missile destroyer (both evaded), CENTCOM permanently disabled the crude carriers Downy (off Kharg Island) and Stark 1 (near Jask) and destroyed the unladen Kylo/Noxen in the Gulf of Oman. CENTCOM commander Adm. Cooper: 'If you shoot at two of our ships... taking out three of yours.' Iran then attacked three US-linked vessels; Hormuz transits remained a small fraction of normal even as the US called the strait open.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.nbcnews.com/world/iran/us-strikes-3-iranian-oil-tankers-iran-targets-rcna596222",
+     "https://www.cnn.com/2026/09/05/middleeast/iran-us-tanker-kharg-intl",
+     "https://www.airandspaceforces.com/us-strikes-3-iranian-tankers-fighters-and-drones-trump-administration-seeks-higher-economic-costs-iran/",
+     "https://www.aljazeera.com/news/2026/9/5/us-says-it-hit-iran-oil-tankers-helping-finance-regional-proxies",
+     "https://www.democracynow.org/2026/9/8/headlines"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Sept 5 strike date and vessel names confirmed by NBC, CNN and Air & Space Forces (uncited); Democracy Now 9/8 confirms Iran's follow-on attacks on three US-affiliated vessels. The '6 ships/day vs 85' figure was not found in a second source and is hedged."
+   },
+   {
+    "date": "2026-09-09",
+    "label": "Trump: war 'will end immediately after our election'",
+    "description": "Speaking to reporters at Joint Base Andrews before flying to the Republican midterm convention in Dallas (where he repeated the point), Trump said 'this war will end immediately after our election because they can't hold out any longer', accused Tehran of stalling to influence the Nov 3 midterms, and said of negotiations 'we're not looking for it'. Brent crude had risen above $100/bbl for the first time since July.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 5,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/9/9/trump-says-iran-war-will-end-immediately-after-us-midterm-elections",
+     "https://www.newsweek.com/iran-war-donald-trump-end-midterms-update-12420687",
+     "https://www.breitbart.com/politics/2026/09/09/trump-iran-war-will-end-immediately-after-midterms-tehran-cant-hold-out-any-longer/",
+     "https://www.nbcnews.com/politics/2026-election/trump-says-war-iran-will-end-after-election-day-rcna596950",
+     "https://thehill.com/homenews/administration/6079754-trump-comments-iran-midterms/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Wednesday Sept 9 confirmed by Newsweek and Breitbart (uncited). Venue conflict resolved: remark made at Joint Base Andrews before departing for Dallas (Newsweek, Breitbart, Al Jazeera); NBC reports a similar line at the Dallas convention the same day. $100 crude confirmed by Al Jazeera and Newsweek; NBC 69% disapproval figure moved to the polling event."
+   },
+   {
+    "date": "2026-09-08",
+    "label": "US destroys 5 Iranian tankers; Iran hits US base in Jordan",
+    "description": "On Tuesday Sept 8 US forces destroyed five IRGC-linked crude tankers (Kaviz, Charminar, Horizon 1, Riesco, Derya), one near Kharg Island, after the IRGC targeted a US Navy warship with ballistic missiles twice in two days. Overnight Sept 8-9 Iran fired a ballistic-missile barrage at Muwaffaq Salti Air Base in Jordan; Jordan said it engaged 20 missiles and destroyed 18, more than 30 Patriots were fired, an A-10 lost a wing and about eight F-15Es were lightly damaged; no US deaths.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://gcaptain.com/u-s-destroys-five-more-irgc-tankers-after-iran-targets-navy-warship/",
+     "https://theaviationist.com/2026/09/10/iranian-strike-damages-u-s-aircraft-muwaffaq-salti-ab/",
+     "https://www.cbsnews.com/news/multiple-us-military-aircraft-damaged-iran-strikes-military-base-jordan/",
+     "https://www.democracynow.org/2026/9/9/headlines",
+     "https://www.airandspaceforces.com/iran-damages-a-10-f-15s-with-missile-attack-on-air-base-in-jordan/",
+     "https://www.militarytimes.com/flashpoints/middle-east/2026/09/10/iran-attack-on-base-in-jordan-damaged-american-military-aircraft-us-official-says/"
+    ],
+    "verdict": "date_corrected",
+    "verify_note": "Moved from Sept 9 to Sept 8: gCaptain (published Sept 8) and Democracy Now 9/9 ('on Tuesday') date the five-tanker strike to Sept 8, and The Aviationist/Air & Space Forces put the Jordan barrage 'overnight Sept 8-9'. The claim that Trump initially denied aircraft damage was not found in the uncited sources and was removed."
+   },
+   {
+    "date": "2026-09-11",
+    "label": "Trump, Hegseth tie Iran war to 9/11 at Pentagon",
+    "description": "At the Pentagon's 25th-anniversary 9/11 ceremony Trump and Hegseth framed the Iran war as a continuation of the war on terror. Trump saluted troops ensuring 'the world's No. 1 sponsor of terror... will never ever have a nuclear weapon' and said 'we're winning that test very handily... it can only be victory'; Hegseth said the US is 'still sending terrorists... to hell, and tankers to the bottom of the ocean... We control the Strait. We will finish this fight.' Oil neared $110/bbl and US diesel topped $6/gal for the first time that week.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.stripes.com/theaters/us/2026-09-11/9-11-commemoration-new-york-pentagon-22821057.html",
+     "https://www.ms.now/news/trump-hegseth-9-11-pentagon-speech-iran-war",
+     "https://www.foreignpolicyjournal.com/2026/09/11/trump-and-hegseth-frame-iran-war-as-extension-of-post-9-11-terror-fight-in-pentagon-ceremony/",
+     "https://www.oann.com/newsroom/hegseth-links-9-11-legacy-to-strikes-on-iran-in-fiery-pentagon-anniversary-speech/",
+     "https://www.democracynow.org/2026/9/11/headlines"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Sept 11 ceremony and framing confirmed by Stars and Stripes, MS NOW and Foreign Policy Journal (uncited). The 'no regrets / would do exactly as I did' quote does not appear in any of the three and was removed; the Treasury Hezbollah sanctions claim could not be verified and was removed; the $6 diesel record is confirmed by Democracy Now 9/11."
+   },
+   {
+    "date": "2026-09-12",
+    "label": "Vessel hit by projectile in Hormuz near Limah; Iranian ship struck off Qeshm",
+    "description": "UKMTO reported a southbound vessel struck by an unknown projectile near Limah, Oman, at about 23:00 UTC on Sept 12, sparking a fire and crew evacuation with no casualties. Around the same time (late Saturday/early Sunday Sept 13) an Iranian commercial vessel was struck near Qeshm Island, killing one and wounding three to four. Iran and the US had struck 15+ vessels in the strait area in the prior week.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.cnbc.com/2026/09/13/vessel-struck-strait-of-hormuz-ukmto.html",
+     "https://edition.cnn.com/2026/09/13/middleeast/iran-hormuz-qeshm-attack-intl",
+     "https://www.arabnews.com/middle-east/vessel-struck-by-projectile-while-transiting-hormuz-strait-ukmto-says-3001522",
+     "https://www.deccanherald.com/world/middle-east/a-hit-in-hormuz-vessel-struck-by-unknown-projectile-ukmto-says-4144713",
+     "https://www.wsbtv.com/news/world/iranian-media-say-1/RCFOSGH7IMZIHENU2CQWAB65EE/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Limah strike at ~2300 UTC Sept 12 confirmed via Windward/CNN/Arab News. The Qeshm strike was 'late Saturday' (CNN) / 'early Sunday' (AP), i.e. Sept 12-13, not Sept 14 as the researcher wrote; description corrected. Note the researcher's Hill URL (id 6034669) appears to be an earlier-August incident, and Al Jazeera reported a similar UKMTO incident on Aug 18; it was dropped."
+   },
+   {
+    "date": "2026-09-14",
+    "label": "Oman-hosted Iran-Gulf Hormuz talks postponed",
+    "description": "A Monday meeting in Oman between Iran and Iraq, Saudi Arabia and Qatar on a temporary Hormuz shipping arrangement was postponed on Sunday night; Iran blamed Saudi objections, with reports that Riyadh submitted amendments over fears the text would lock in a new status quo. It followed weekend drone attacks from Iraq that shut Saudi Arabia's East-West pipeline, Houthi advances on Yemen's Red Sea coast including Mayyun Island, and 54 Saudi airstrikes in 24 hours; Brent traded around $104-107.",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news-analysis/2026/9/14/temporary-hormuz-solution-deferred-as-iran-arab-summit-falls-through",
+     "https://gulfnews.com/world/mena/oman-postpones-gcc-iran-meeting-on-strait-of-hormuz-as-oil-prices-rise-on-supply-fears-1.500673518",
+     "https://www.wsbtv.com/news/world/iranian-media-say-1/RCFOSGH7IMZIHENU2CQWAB65EE/",
+     "https://www.npr.org/2026/09/14/nx-s1-5968072/talks-between-iran-and-gulf-states-to-discuss-strait-of-hormuz-postponed",
+     "https://www.theweek.in/news/middle-east/2026/09/14/strait-of-hormuz-security-talks-oman-postponed.html"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "Monday Sept 14 postponement confirmed by Al Jazeera analysis, Gulf News and AP via WSB-TV (uncited). 'Houthis seized two Red Sea islands' not matched; sources say Houthis took Yemen's Red Sea coast/Bab al-Mandab and Mayyun Island; wording adjusted."
+   },
+   {
+    "date": "2026-09-15",
+    "label": "Polling: ~34% support, 58% oppose war",
+    "description": "Silver Bulletin's polling average, last updated Sept 15, shows about 34% of Americans support the Iran war and 58% oppose. An NBC News Decision Desk/SurveyMonkey poll released the week of Sept 9 found 69% disapprove of Trump's handling of the conflict, with Republican strong approval down 18 points from spring to 30%. The most recent Reuters/Ipsos poll (Aug 24) had support at 31%, down from 37% in March, with Republican support at 69%; a NYT/Siena poll found 64% called the war the wrong decision.",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.natesilver.net/p/iran-war-polls-popularity-approval",
+     "https://www.nbcnews.com/politics/2026-election/trump-says-war-iran-will-end-after-election-day-rcna596950",
+     "https://www.usnews.com/news/world/articles/2026-08-24/trumps-approval-holds-at-record-low-as-us-support-for-iran-war-falls-reuters-ipsos-poll-finds",
+     "https://thehill.com/policy/international/5993530-reuters-iran-war-support-survey/"
+    ],
+    "verdict": "confirmed",
+    "verify_note": "34/58 average as of Sept 15 confirmed directly from natesilver.net; NBC 69% confirmed from NBC article. The Reuters/Ipsos 31%/69%-of-Republicans figures come from an Aug 24 poll, not 'that week' (US News, The Hill); description corrected."
+   }
+  ],
+  "missed": [
+   "2026-08-31/09-01 Army Secretary Dan Driscoll resigned after clashes with Hegseth (blocked promotions, general firings) amid the war; announced Aug 31, reported Sept 1 - https://www.npr.org/2026/09/01/g-s1-141337/army-secretary-stepping-down (also https://www.axios.com/2026/09/01/army-secretary-dan-driscoll-resigns-hegseth)",
+   "2026-09-14 Trump Truth Social post: 'The failing Nation of Iran wants to make a deal, quickly and badly... The concept of which we are open to'; Iran's SNSC secretary rejected it Sept 15 ('No talks until Iran's conditions are met. Period!') and the IRGC claimed it shot down two US drones over Hormuz - https://gulfnews.com/world/mena/oman-postpones-gcc-iran-meeting-on-strait-of-hormuz-as-oil-prices-rise-on-supply-fears-1.500673518 and https://www.democracynow.org/2026/9/15/headlines",
+   "2026-09-08 Iran's Supreme National Security Council announced a coming 'restricted, prohibited zone' outside the Strait of Hormuz / new shipping route; US Energy Secretary Wright said 'there may not be a nuclear agreement' - https://www.democracynow.org/2026/9/8/headlines",
+   "2026-09-11 Oil surged toward $110/bbl and US diesel passed $6/gal for the first time as IRGC struck a US naval drone and projectiles hit two vessels off Oman; 15+ vessels targeted in a week - https://www.democracynow.org/2026/9/11/headlines",
+   "2026-09-03 Commerce Secretary Lutnick claimed there had been no American deaths in the Iran operations (contradicting the 18 US dead Trump cited Sept 4); a fallen airman's widow was denied benefits because Congress never declared 'war' - https://www.democracynow.org/2026/9/3/headlines",
+   "2026-09-02 Putin pledged continued military and intelligence support to Iran at the SCO summit in Bishkek - https://www.democracynow.org/2026/9/2/headlines"
+  ]
+ }
+]
