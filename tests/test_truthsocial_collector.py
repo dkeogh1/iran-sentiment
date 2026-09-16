@@ -171,3 +171,41 @@ def test_anonymous_incremental_skips_when_current(cache, monkeypatch):
     monkeypatch.setattr(ts, "_ts_get_paced", server)
     got = ts.collect_user("t", "admin", start=date(2026, 4, 1), end=date(2026, 4, 30), use_auth=False)
     assert len(got) == 1 and not cache.with_suffix(".partial.jsonl").exists()
+
+
+# ── login / security-code flow (stubbed HTTP) ──────────────────────
+
+def test_login_flow_challenge_then_verify(monkeypatch, tmp_path):
+    seen = []
+    def fake_post(path, body):
+        seen.append((path, body))
+        if path == "/oauth/v2/token" and "challenge_id" not in body:
+            return _Resp(403, {"error": "security_code_required", "challenge_id": "ch1",
+                               "supported_delivery_methods": [{"kind": "email", "value": "d***@g***"}]})
+        if path == ts.settings.TS_SECURITY_CODE_DELIVERY_ENDPOINT and \
+                body.get(ts.settings.TS_SECURITY_CODE_DELIVERY_FIELD) == "email":
+            return _Resp(200, {"sent": True})
+        if path == "/oauth/v2/verify_security_code" and body.get("security_code") == "654321":
+            return _Resp(200, {"access_token": "tok_abc"})
+        return _Resp(400, {"error": "bad"})
+    monkeypatch.setattr(ts, "_auth_post", fake_post)
+
+    with pytest.raises(ts.SecurityCodeRequired) as ex:
+        ts.request_token("u", "p")
+    assert ex.value.challenge_id == "ch1" and ex.value.delivery_methods[0]["kind"] == "email"
+
+    r = ts.request_security_code_delivery("u", "p", "ch1", "email")
+    assert r.status_code == 200
+    assert seen[-1][1]["challenge_id"] == "ch1" and seen[-1][1]["grant_type"] == "password"
+
+    tok = ts.verify_security_code("u", "p", "ch1", "654321")
+    assert tok == "tok_abc"
+    env = tmp_path / ".env"
+    env.write_text("OTHER=1\n")
+    ts.save_token_to_env(tok, env_path=env)
+    assert "TRUTHSOCIAL_TOKEN=tok_abc" in env.read_text() and "OTHER=1" in env.read_text()
+
+
+def test_login_flow_direct_token(monkeypatch):
+    monkeypatch.setattr(ts, "_auth_post", lambda path, body: _Resp(200, {"access_token": "t1"}))
+    assert ts.request_token("u", "p") == "t1"

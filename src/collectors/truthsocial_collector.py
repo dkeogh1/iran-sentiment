@@ -551,14 +551,100 @@ def _reply_record(status: dict, parent_id: str) -> dict:
     }
 
 
+# ── Login / security-code flow ─────────────────────────────────────
+
+TS_OAUTH_BASE = "https://truthsocial.com"
+
+
+class SecurityCodeRequired(Exception):
+    """The password grant was refused pending a new-device security code."""
+
+    def __init__(self, challenge_id: str, delivery_methods: list[dict], raw: dict):
+        super().__init__("security code required")
+        self.challenge_id = challenge_id
+        self.delivery_methods = delivery_methods
+        self.raw = raw
+
+
+def _password_grant_body(username: str, password: str) -> dict:
+    return {
+        "client_id": settings.TRUTH_SOCIAL_WEB_CLIENT_ID,
+        "client_secret": settings.TRUTH_SOCIAL_WEB_CLIENT_SECRET,
+        "redirect_uri": "urn:ietf:wg:oauth:2.0:oob",
+        "grant_type": "password",
+        "scope": "read",
+        "username": username,
+        "password": password,
+    }
+
+
+def _auth_post(path: str, body: dict):
+    return cffi_requests.post(
+        f"{TS_OAUTH_BASE}{path}", json=body, impersonate="chrome136",
+        headers={"Authorization": "", **settings.TS_AUTH_HEADERS},
+        timeout=_DEFAULT_TIMEOUT,
+    )
+
+
+def request_token(username: str, password: str) -> str:
+    """
+    Password grant. Returns the access token, or raises
+    SecurityCodeRequired with the challenge the server issued.
+    """
+    resp = _auth_post("/oauth/v2/token", _password_grant_body(username, password))
+    if resp.status_code == 200:
+        return resp.json()["access_token"]
+    try:
+        data = resp.json()
+    except Exception:
+        data = {}
+    if resp.status_code == 403 and data.get("error") == "security_code_required":
+        raise SecurityCodeRequired(
+            data.get("challenge_id", ""), data.get("supported_delivery_methods", []), data,
+        )
+    raise RuntimeError(f"token exchange failed: HTTP {resp.status_code} {resp.text[:300]}")
+
+
+def request_security_code_delivery(username: str, password: str,
+                                   challenge_id: str, method: str):
+    """
+    Ask the server to send the security code via `method` (email | sms).
+    Request shape is settings.TS_SECURITY_CODE_DELIVERY_* (a guess, see
+    settings). Returns the raw response so the caller can show it.
+    """
+    body = {**_password_grant_body(username, password),
+            "challenge_id": challenge_id,
+            settings.TS_SECURITY_CODE_DELIVERY_FIELD: method}
+    return _auth_post(settings.TS_SECURITY_CODE_DELIVERY_ENDPOINT, body)
+
+
+def verify_security_code(username: str, password: str, challenge_id: str, code: str) -> str:
+    """Exchange challenge_id + security_code for an access token (web-app flow)."""
+    body = {**_password_grant_body(username, password),
+            "challenge_id": challenge_id, "security_code": code}
+    resp = _auth_post("/oauth/v2/verify_security_code", body)
+    if resp.status_code != 200:
+        raise RuntimeError(f"verify_security_code failed: HTTP {resp.status_code} {resp.text[:300]}")
+    return resp.json()["access_token"]
+
+
+def save_token_to_env(token: str, env_path: Path | None = None) -> Path:
+    """Persist TRUTHSOCIAL_TOKEN in .env so truthbrush reuses it (no re-login)."""
+    from dotenv import set_key
+    env_path = env_path or (settings.PROJECT_ROOT / ".env")
+    set_key(str(env_path), "TRUTHSOCIAL_TOKEN", token, quote_mode="never")
+    return env_path
+
+
 def _get_truthbrush_api():
     """
     Get an authenticated truthbrush Api instance.
 
-    Reads TRUTHSOCIAL_USERNAME / TRUTHSOCIAL_PASSWORD from .env
-    (truthbrush picks them up from the environment automatically).
-    Raises RuntimeError with a clear message if either is missing or
-    if truthbrush isn't installed.
+    Prefers TRUTHSOCIAL_TOKEN from .env (issued once by `ts-login`, which
+    handles Truth Social's new-device security-code check); falls back to
+    TRUTHSOCIAL_USERNAME / TRUTHSOCIAL_PASSWORD, which truthbrush uses for
+    a fresh password grant. Raises RuntimeError with a clear message if
+    neither is available or if truthbrush isn't installed.
     """
     try:
         from truthbrush.api import Api
@@ -572,12 +658,14 @@ def _get_truthbrush_api():
     import os
     load_dotenv(override=True)
 
+    token = os.environ.get("TRUTHSOCIAL_TOKEN")
+    if token:
+        return Api(token=token)
     if not os.environ.get("TRUTHSOCIAL_USERNAME") or not os.environ.get("TRUTHSOCIAL_PASSWORD"):
         raise RuntimeError(
-            "Set TRUTHSOCIAL_USERNAME and TRUTHSOCIAL_PASSWORD in .env "
-            "to collect replies. See CLAUDE.md for details."
+            "Set TRUTHSOCIAL_TOKEN (run `python -m src.cli ts-login`) or "
+            "TRUTHSOCIAL_USERNAME / TRUTHSOCIAL_PASSWORD in .env to collect replies."
         )
-
     return Api()
 
 

@@ -17,8 +17,6 @@ Commands:
 
 import logging
 import sys
-from collections import Counter
-from pathlib import Path
 
 import click
 import pandas as pd
@@ -115,6 +113,70 @@ def collect(force: bool, no_search: bool, estimate: bool, yes: bool):
         click.echo(f"  {name}: {count}")
 
 
+# ── ts-login ────────────────────────────────────────────────────────
+
+@main.command("ts-login")
+@click.option("--deliver", type=click.Choice(["email", "sms"]), default=None,
+              help="After a new-device challenge, ask for the code via this method")
+@click.option("--challenge-id", default=None, help="challenge_id printed by an earlier run")
+@click.option("--code", default=None, help="The security code you received")
+def ts_login_cmd(deliver: str | None, challenge_id: str | None, code: str | None):
+    """Log in to Truth Social once and save the token to .env.
+
+    Handles the new-device security-code check:
+
+      ts-login                      -> token saved, or prints challenge_id + methods
+      ts-login --deliver email      -> asks the server to send the code (prints reply)
+      ts-login --challenge-id X --code 123456 -> verifies, saves TRUTHSOCIAL_TOKEN
+    """
+    import os
+    from dotenv import load_dotenv
+    from src.collectors.truthsocial_collector import (
+        SecurityCodeRequired, request_token, request_security_code_delivery,
+        verify_security_code, save_token_to_env,
+    )
+    load_dotenv(override=True)
+    username = os.environ.get("TRUTHSOCIAL_USERNAME") or os.environ.get("TRUTH_SOCIAL_USERNAME")
+    password = os.environ.get("TRUTHSOCIAL_PASSWORD") or os.environ.get("TRUTH_SOCIAL_PASSWORD")
+    if not username or not password:
+        click.secho("Set TRUTHSOCIAL_USERNAME and TRUTHSOCIAL_PASSWORD in .env first.", fg="red")
+        sys.exit(1)
+
+    if challenge_id and code:
+        token = verify_security_code(username, password, challenge_id, code)
+        path = save_token_to_env(token)
+        click.secho(f"Verified. TRUTHSOCIAL_TOKEN saved to {path} (starts {token[:8]}...)", fg="green")
+        click.echo("Re-encrypt secrets.env if you keep .env under sops.")
+        return
+
+    click.echo(f"Authenticating as @{username}...")
+    try:
+        token = request_token(username, password)
+    except SecurityCodeRequired as ch:
+        click.secho("New-device security code required.", fg="yellow")
+        click.echo(f"  challenge_id: {ch.challenge_id}")
+        for m in ch.delivery_methods:
+            click.echo(f"  method: {m.get('kind')}  -> {m.get('value')}")
+        if not deliver:
+            click.echo("\nNext: python -m src.cli ts-login --deliver email   (or sms)")
+            return
+        resp = request_security_code_delivery(username, password, ch.challenge_id, deliver)
+        click.echo(f"\nDelivery request -> HTTP {resp.status_code}: {resp.text[:400]}")
+        if resp.status_code == 200:
+            click.echo(f"\nWhen the code arrives:\n  python -m src.cli ts-login "
+                       f"--challenge-id {ch.challenge_id} --code <CODE>")
+        else:
+            click.secho(
+                "\nThe server rejected the delivery request as shaped in "
+                "settings.TS_SECURITY_CODE_DELIVERY_*. Capture the real call: on "
+                "truthsocial.com, open DevTools > Network, log in, pick the delivery "
+                "method, and copy the request URL + JSON body; then fix the two "
+                "settings and rerun.", fg="yellow")
+        return
+    path = save_token_to_env(token)
+    click.secho(f"Logged in. TRUTHSOCIAL_TOKEN saved to {path} (starts {token[:8]}...)", fg="green")
+
+
 # ── probe-auth ──────────────────────────────────────────────────────
 
 @main.command("probe-auth")
@@ -140,6 +202,9 @@ def probe_auth_cmd(post_id: str):
         )
         sys.exit(1)
 
+    saved = os.environ.get("TRUTHSOCIAL_TOKEN")
+    if saved:
+        click.echo("Using TRUTHSOCIAL_TOKEN from .env (run ts-login to refresh)")
     click.echo(f"Authenticating as @{username}...")
 
     # Use the same client creds and endpoint that truthbrush uses —
@@ -148,7 +213,7 @@ def probe_auth_cmd(post_id: str):
     # the bundled client ID is the combination that actually works
     # (earlier attempts with /oauth/token + form-encoded data +
     # self-registered app all returned 403).
-    r = cffi_requests.post(
+    r = None if saved else cffi_requests.post(
         f"{ts_base}/oauth/v2/token",
         json={
             "client_id": settings.TRUTH_SOCIAL_WEB_CLIENT_ID,
@@ -161,10 +226,12 @@ def probe_auth_cmd(post_id: str):
         },
         impersonate="chrome",
     )
-    if r.status_code != 200:
+    if r is not None and r.status_code != 200:
         click.secho(f"Token exchange failed: {r.status_code} {r.text[:300]}", fg="red")
+        if "security_code_required" in r.text:
+            click.echo("Run: python -m src.cli ts-login")
         sys.exit(1)
-    token = r.json()["access_token"]
+    token = saved or r.json()["access_token"]
     click.secho(f"  Bearer token acquired (starts {token[:12]}...)", fg="green")
 
     # Step 3: fetch /context for the target post, authenticated
@@ -216,7 +283,7 @@ def probe_auth_cmd(post_id: str):
         page += 1
         # Safety cap for the probe — don't paginate forever
         if page >= 3:
-            click.echo(f"  (stopping after 3 pages for the probe)")
+            click.echo("  (stopping after 3 pages for the probe)")
             break
 
     click.secho(f"  Total descendants fetched: {len(descendants)}", fg="green")
@@ -244,13 +311,13 @@ def probe_auth_cmd(post_id: str):
     if descendants:
         sample = descendants[0]
         acct = sample.get("account", {})
-        click.echo(f"\n  Sample reply:")
+        click.echo("\n  Sample reply:")
         click.echo(f"    @{acct.get('username', '?')} ({acct.get('display_name', '')})")
         from src.collectors.truthsocial_collector import _strip_html
         click.echo(f"    {_strip_html(sample.get('content', ''))[:200]}")
 
-    click.echo(f"\nDone. Token works, /context returns data.")
-    click.echo(f"Next: wire this token into the collector for full reply fetching.")
+    click.echo("\nDone. Token works, /context returns data.")
+    click.echo("Next: wire this token into the collector for full reply fetching.")
 
 
 # ── collect-truth ───────────────────────────────────────────────────
@@ -500,7 +567,7 @@ def event_study_cmd(slug: str | None, window_hours: int, score: str | None,
                        f"label col: {summaries.iloc[0]['label_col']}")
 
         # Loyalty segmentation — the within-MAGA civil-war test
-        click.echo(f"\n--- Loyalty-tier segmentation ---")
+        click.echo("\n--- Loyalty-tier segmentation ---")
         loyalty = segment_by_loyalty(df_replies, score_col=score)
         if loyalty.empty:
             click.secho("(no loyalty data)", fg="yellow")
@@ -652,14 +719,14 @@ def status():
         click.secho(f"  ✓ broadcaster: {settings.SENTIMENT_OUTPUT} ({size_kb:.0f} KB)",
                     fg="green")
     else:
-        click.secho(f"  ✗ broadcaster: no scored data", fg="yellow")
+        click.secho("  ✗ broadcaster: no scored data", fg="yellow")
 
     if settings.REPLY_SENTIMENT_OUTPUT.exists():
         size_kb = settings.REPLY_SENTIMENT_OUTPUT.stat().st_size / 1024
         click.secho(f"  ✓ replies:     {settings.REPLY_SENTIMENT_OUTPUT} ({size_kb:.0f} KB)",
                     fg="green")
     else:
-        click.secho(f"  ✗ replies:     no scored data", fg="yellow")
+        click.secho("  ✗ replies:     no scored data", fg="yellow")
 
     fig_count = len(list(settings.FIGURES_DIR.glob("*.png")))
     click.echo(f"\n=== Figures: {fig_count} PNG files in {settings.FIGURES_DIR} ===")
