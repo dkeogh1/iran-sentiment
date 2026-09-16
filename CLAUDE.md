@@ -3,8 +3,15 @@
 Sentiment analysis experiment on the 2026 Iran war. Tracks how Trump
 administration messaging, the MAGA influencer ecosystem, the
 opposition, and the Pope Leo XIV / Vatican moral axis shift over the
-Feb-Apr 2026 conflict window, including the MAGA split between pro-
-and anti-war factions.
+Feb-May 2026 window (strikes Feb 28, ceasefire Apr 8, negotiations
+through mid-May), including the MAGA split between pro- and anti-war
+factions.
+
+Status: closed experiment. Last data refresh 2026-05-12 (accounts
+through May 10, searches through May 12); 13,974 scored posts, 100%
+LLM stance coverage. Nothing runs on a schedule, and it does not
+belong on the k8s cluster (no recurring job, 66 MB of data, pay-per-
+read collector) -- see the *No cluster deployment* note below.
 
 ## Architecture
 
@@ -16,7 +23,7 @@ never hard-code them in scripts.
 config/
   settings.py      # paths, budget caps, batch sizes, tier colors, model names
   accounts.py      # X/Truth Social handles organized by tier
-  timeline.py      # ~36 key events for event-overlay plots
+  timeline.py      # 81 key events (through 2026-09-15) with importance 1-5
 src/
   cli.py                              # single entrypoint -- all commands live here
   collectors/x_collector.py           # per-account JSONL caching + incremental fetch
@@ -118,8 +125,20 @@ inference. Guardrails in `src/analysis/sentiment.py` + `config/settings.py`:
    `try/finally` so aborts still release memory.
 
 Baseline on this hardware: RoBERTa peaks at ~1.36 GB RSS on 9,477
-posts, runtime ~10 min. If these numbers drift substantially, something
-is leaking or the thread cap got removed.
+posts, runtime ~10 min (measured 2026-04; the dataset is 13,974 posts
+as of 2026-05-12, so expect ~15 min). If these numbers drift
+substantially, something is leaking or the thread cap got removed.
+
+## No cluster deployment
+
+The quant repo moved its cron jobs to the dkbl1/dkbl2 k3s cluster in
+Sep 2026 (homelab-infra `docs/k8s-workloads.md`). This repo stays on
+the host venv on purpose: there is no scheduled job, `collect` costs
+real money per run so it must stay manual, and `analyze` is a ~15 min
+CPU batch on a 66 MB dataset. If the project is ever revived as a
+recurring tracker, the prerequisites are a lockfile (`uv.lock`) for a
+reproducible image and running `analyze` as a one-shot Job on dkbl2;
+`collect` should still never be a CronJob.
 
 ## Scoring strategies
 
