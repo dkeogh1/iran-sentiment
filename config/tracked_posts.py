@@ -83,6 +83,45 @@ TRACKED_POSTS: list[TrackedPost] = [
                     "two-week ceasefire — the climb-down the NYT flagged.",
         match_keyword="ceasefire",
     ),
+    # ── Extended window (added 2026-09-16) ──────────────────────────
+    # The three moments the May-Sep timeline research singled out, each
+    # pinned to the most-replied Iran post Trump made at that moment
+    # (ids taken from the refreshed realDonaldTrump.jsonl cache).
+    TrackedPost(
+        slug="hold_off_attack",
+        label="'Hold off on our planned Military attack'",
+        event_date=date(2026, 5, 18),
+        category="ceasefire",
+        description="Trump says the Emir of Qatar, MBS and MBZ asked him to hold "
+                    "off an attack 'scheduled for tomorrow' because serious "
+                    "negotiations are under way; orders the military to stay "
+                    "ready. 8,956 replies at collection time.",
+        post_id="116597121700043134",
+    ),
+    TrackedPost(
+        slug="deal_complete",
+        label="'The Deal with Iran is now complete'",
+        event_date=date(2026, 6, 14),
+        category="ceasefire",
+        description="Trump declares the Iran deal complete, authorizes toll-free "
+                    "reopening of Hormuz and immediate removal of the naval "
+                    "blockade ('Ships of the World, start your engines'). The "
+                    "formal Islamabad MOU signing followed Jun 17. 12,932 "
+                    "replies -- the most-replied post of the new window.",
+        post_id="116750587569914985",
+    ),
+    TrackedPost(
+        slug="strikes_resume_sep",
+        label="'Striking Iranian Targets near Hormuz'",
+        event_date=date(2026, 9, 1),
+        category="escalation",
+        description="Trump announces live US strikes near Hormuz after Iranian "
+                    "mining attempts and missiles at the Jordan base, warning "
+                    "the 'biggest attack of them all' is 'waiting in the wings'. "
+                    "The Sirik wedding strike happened the same night. 4,633 "
+                    "replies.",
+        post_id="117196950497702512",
+    ),
     # Control post used by the NYT for comparison. Not about Iran — lets us
     # check whether base anger is Iran-specific or a baseline grumble.
     TrackedPost(

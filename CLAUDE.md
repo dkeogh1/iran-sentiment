@@ -23,7 +23,7 @@ never hard-code them in scripts.
 config/
   settings.py      # paths, budget caps, batch sizes, tier colors, model names
   accounts.py      # X/Truth Social handles organized by tier
-  timeline.py      # 81 key events (through 2026-09-15) with importance 1-5
+  timeline.py      # 82 key events (through 2026-09-15) with importance 1-5
 src/
   cli.py                              # single entrypoint -- all commands live here
   collectors/x_collector.py           # per-account JSONL caching + incremental fetch

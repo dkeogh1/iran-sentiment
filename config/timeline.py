@@ -436,6 +436,15 @@ EVENTS: list[Event] = [
         category="military", impact="polarizing", importance=4,
     ),
     Event(
+        date=date(2026, 6, 14),
+        label="Trump: Iran deal 'complete', blockade lifted",
+        description="Trump posts 'The Deal with the Islamic Republic of Iran is "
+        "now complete', authorizing toll-free reopening of Hormuz and "
+        "immediate removal of the naval blockade. Source: Truth Social post "
+        "116750587569914985 (12,932 replies); formal MOU signing Jun 17.",
+        category="diplomatic", impact="dovish", importance=5,
+    ),
+    Event(
         date=date(2026, 6, 17),
         label="Islamabad MOU signed; blockade lifted",
         description="Trump (remotely from Versailles) and Pezeshkian sign the "

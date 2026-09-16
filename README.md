@@ -141,9 +141,9 @@ Three scorers, in order of cost:
 
 ### Event overlay
 
-81 events are catalogued in `config/timeline.py` (military strikes,
+82 events are catalogued in `config/timeline.py` (military strikes,
 diplomatic moments, polling, media events) and overlaid on time-series
-plots. The first 36 cover the pre-war build-up through Apr 15; 45 more,
+plots. The first 36 cover the pre-war build-up through Apr 15; 46 more,
 added Sep 2026 from a web-research pass with independent fact-checking,
 cover May 12 -- Sep 15 (the Islamabad MOU of Jun 17, its collapse Jul 8,
 expiry Aug 17, and the renewed strikes of September). Each event carries
@@ -211,7 +211,7 @@ collect only spends tokens on new posts.
 config/
   settings.py          # paths, budget caps, batch sizes, tier colors
   accounts.py          # X/Truth Social handles organized by tier
-  timeline.py          # 81 key events (Jun 2025 - Sep 2026) for plot overlays
+  timeline.py          # 82 key events (Jun 2025 - Sep 2026) for plot overlays
   tracked_posts.py     # specific Trump posts for reply analysis
 src/
   cli.py               # Click CLI -- single entrypoint
