@@ -548,6 +548,8 @@ def score_stance(
     cached = pd.DataFrame()
     if STANCE_OUTPUT.exists() and not force:
         cached = pd.read_parquet(STANCE_OUTPUT)
+        # Rows that errored (rate limit, bad JSON) are retried, not kept.
+        cached = cached[cached["stance"] != "error"]
         have = set(cached["id"].astype(str))
         todo = df[~df["id"].astype(str).isin(have)]
         if todo.empty:
