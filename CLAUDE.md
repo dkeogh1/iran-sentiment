@@ -87,6 +87,13 @@ reaches the edge, so a killed run resumes instead of leaving a hole.
 Truth Social ignores Mastodon's `min_id`, so there is no forward walk.
 Anonymous limit observed 2026-09-16: 5 pages (100 posts) per ~minute.
 
+Replies need a token: `python -m src.cli ts-login` walks Truth Social's
+new-device security-code flow once (`--deliver email`, then
+`--challenge-id X --code N`) and stores `TRUTHSOCIAL_TOKEN` in `.env`;
+`collect-replies` then walks `TS_DESCENDANTS_PATH` (the v2 endpoint --
+v1 is dead) at 1 req/s. `event-study` and `stance` are incremental:
+only replies / sampled rows missing from their parquet get scored.
+
 For LLM stance scoring, filter by tier or handle so tokens track the
 subset that actually needs it:
 

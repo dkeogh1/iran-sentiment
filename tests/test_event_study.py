@@ -50,10 +50,10 @@ def test_score_stance_scores_only_new(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
 
     sample = pd.DataFrame({"id": ["1", "2"], "tracked_slug": ["old", "new"],
-                           "user": ["u1", "u2"], "text": ["a", "b"],
+                           "user": ["u1", "u2"], "text": ["old reply text", "new reply text"],
                            "score_transformer": [0.0, -0.5]})
     res = es.score_stance(sample)
-    assert len(sent) == 1 and "b" in sent[0]             # only the uncached row hit the API
+    assert len(sent) == 1 and "new reply text" in sent[0]  # only the uncached row hit the API
     assert sorted(res["id"]) == ["1", "2"]
     assert res.set_index("id").loc["2", "stance"] == "antiwar_betrayal"
     assert len(pd.read_parquet(out)) == 2

@@ -14,8 +14,10 @@ schedule.
 ## Findings
 
 13,974 posts from 17 X/Twitter accounts across 6 political tiers plus
-4 keyword searches (a public-sentiment proxy), plus 57,055 Truth Social
-replies to 3 Trump posts. Every post carries three scores: VADER
+4 keyword searches (a public-sentiment proxy), plus 83,054 Truth Social
+replies to 6 Trump posts (three from the April escalation, three from
+the May-September deal-and-collapse cycle) and Trump's own Truth Social
+feed from Apr 4 to Sep 16 (4,087 posts). Every post carries three scores: VADER
 (lexicon baseline), RoBERTa (`cardiffnlp/twitter-roberta-base-sentiment-latest`,
 valence), and a Claude Haiku stance score from -1.0 (anti-war) to +1.0
 (pro-war). **Stance numbers below are the LLM score**; the RoBERTa
@@ -92,17 +94,48 @@ cross-tier shift.
   anti-war from the strikes onward (-0.264).
 - @mtgreenee is the most anti-war MAGA voice (-0.317).
 
-### Reply stance classification
+### Audience replies: six Trump posts, April to September
 
-A stratified 500-reply sample from Trump's three most-replied Truth
-Social posts, classified by Claude Haiku into stance categories:
+Every direct reply to six Trump Truth Social posts (83,054 replies,
+97-99% of each post's reply count) scored with RoBERTa, plus a
+stratified sample of 992 replies (50 per sentiment bucket per post)
+classified by Claude Haiku into stance categories.
 
-- 31-37% pro-war supportive across all three posts
-- 18-26% anti-war opposition (moral/political grounds)
-- 7-11% "betrayal" framing ("voted 3x for you, losing me as a
-  supporter") -- the within-MAGA split
-- Replies are most negative on "A whole civilisation will die tonight"
-  (-0.34 mean) vs. the "Power Plant Day" escalation (-0.23)
+| Post | Date | Replies | RoBERTa mean | Critical | Supportive |
+|---|---|--:|--:|--:|--:|
+| "Power Plant Day" rant | Apr 5 | 23,656 | -0.225 | 54% | 24% |
+| "Whole civilisation will die" | Apr 7 | 16,591 | -0.342 | 59% | 17% |
+| Two-week ceasefire | Apr 7 | 16,808 | -0.303 | 58% | 19% |
+| "Hold off on our planned Military attack" | May 18 | 8,800 | **-0.475** | **69%** | 11% |
+| "The Deal with Iran is now complete" | Jun 14 | 12,609 | **+0.193** | 33% | **50%** |
+| "Striking Iranian Targets near Hormuz" | Sep 1 | 4,590 | -0.246 | 53% | 21% |
+
+- **Restraint was punished harder than escalation.** The May 18 post
+  announcing a called-off attack is the most negative post in the
+  dataset, and the only one where the most loyal accounts are the most
+  negative (high-loyalty tier -0.51 vs low-loyalty -0.47; every other
+  post has loyalists as the least negative). The Haiku sample shows why:
+  it has the highest share of `pro_war_critical` replies of any post
+  (12.7%), people angry that Trump did not strike.
+- **The deal was the only thing the audience liked.** June 14 is the
+  sole net-positive post, with the steepest loyalty gradient (+0.05 low
+  to +0.40 high). Even so, a third of the sampled replies are anti-war
+  in some form (betrayal 10.7%, opposition 15.3%, pro-Trump-anti-war
+  10.0%).
+- **Renewed strikes re-consolidated the base.** The September 1 strikes
+  post has the highest `pro_war_supportive` share in the sample (56%)
+  and the lowest betrayal share (4.7%), while its population-level
+  RoBERTa mean matches the April "Power Plant Day" post.
+- **The within-MAGA "betrayal" voice persists at 5-12% across all six
+  posts** ("voted 3x for you, losing me as a supporter"), peaking on
+  the April rant and the June deal, not on the strikes.
+
+Stance shares are from a bucket-balanced sample, so they describe the
+spectrum of each post's replies, not population proportions; the
+RoBERTa columns are the population numbers. RoBERTa's blind spots are
+the same as on the broadcaster data: `pro_war_critical` replies read as
+negative (-0.55) and `pro_trump_antiwar` replies read as positive
+(+0.22).
 
 ## Methodology
 
@@ -116,8 +149,10 @@ Social posts, classified by Claude Haiku into stance categories:
   days. Searches were refreshed on Apr 16 and May 12, so search
   coverage has a gap from roughly Apr 20 to May 5; the collector logs
   the unfetched gap rather than silently skipping it.
-- Truth Social: authenticated API via `curl_cffi` (Cloudflare bypass),
-  paginated reply collection for tracked posts.
+- Truth Social: `curl_cffi` (Cloudflare bypass). Account feeds via the
+  public API with an incremental, resume-safe refresh; replies via the
+  authenticated v2 descendants endpoint after a one-time `ts-login`
+  (Truth Social's new-device security-code check).
 - Window: Feb 1 -- May 12, 2026, with pre-war context events back to
   Jun 2025.
 
@@ -188,8 +223,9 @@ Everything runs through a single CLI:
 python -m src.cli test          # verify X API credentials
 python -m src.cli status        # show what's cached vs. missing
 python -m src.cli collect       # incremental X fetch (appends new tweets only)
-python -m src.cli collect-truth # collect Truth Social posts
-python -m src.cli collect-replies  # fetch replies to tracked Trump posts
+python -m src.cli collect-truth # incremental Truth Social feed refresh
+python -m src.cli ts-login      # one-time login (security code) -> token in .env
+python -m src.cli collect-replies  # fetch replies to tracked Trump posts (needs token)
 python -m src.cli analyze       # score all cached data (VADER + RoBERTa)
 python -m src.cli analyze --llm # add Claude stance scores (restart-safe)
 python -m src.cli visualize     # regenerate all figures
