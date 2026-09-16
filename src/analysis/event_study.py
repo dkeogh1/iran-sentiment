@@ -40,8 +40,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, asdict
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Iterable
 
 import numpy as np
@@ -404,7 +403,7 @@ def load_or_score_replies(force: bool = False) -> pd.DataFrame:
     requiring a separate `analyze --replies` step.
     """
     from src.collectors.truthsocial_collector import load_all_cached_replies
-    from src.analysis.sentiment import analyze as run_analyze, save as _save
+    from src.analysis.sentiment import analyze as run_analyze
 
     out = settings.REPLY_SENTIMENT_OUTPUT
     if out.exists() and not force:
