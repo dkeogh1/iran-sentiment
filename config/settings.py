@@ -69,6 +69,21 @@ ACCOUNT_CAP_OVERRIDES: dict[str, int] = {}
 X_RUN_BUDGET_USD = 4.00
 
 
+# ── Truth Social pacing ────────────────────────────────────────────
+# The anonymous public API 429s after a handful of quick pages (seen
+# 2026-09-16: 3 pages then 429). Pace requests and back off on 429
+# using the response's Retry-After / X-RateLimit-Reset headers.
+TS_PAGE_DELAY_S = 1.5        # sleep before every request
+TS_DEFAULT_BACKOFF_S = 60    # when the 429 carries no usable header
+TS_MIN_BACKOFF_S = 10
+TS_MAX_BACKOFF_S = 330       # a full 5-minute window + slack
+TS_MAX_RETRIES = 6           # per page
+# Incremental refresh uses truthbrush (authenticated, 300 req/5 min) when
+# credentials are present; set False (or pass --anonymous) to force the
+# paced public walk, e.g. while a new-device login check is pending.
+TS_PREFER_AUTH = True
+
+
 # ── Gap-fill slicing ───────────────────────────────────────────────
 # The X timeline endpoint returns newest-first. One capped fetch over a
 # long gap would keep the newest N tweets, drop everything older, and then

@@ -27,7 +27,8 @@ used from `collect_replies`.
 
 import json
 import logging
-from datetime import datetime, date
+import time
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from curl_cffi import requests as cffi_requests
@@ -57,6 +58,48 @@ def _ts_get(url: str, params: dict | None = None, timeout: float = _DEFAULT_TIME
     )
 
 
+def _retry_after_seconds(resp) -> float:
+    """Seconds to wait after a 429, from Retry-After / X-RateLimit-Reset,
+    clamped to [TS_MIN_BACKOFF_S, TS_MAX_BACKOFF_S]."""
+    wait = None
+    headers = getattr(resp, "headers", {}) or {}
+    ra = headers.get("retry-after") or headers.get("Retry-After")
+    if ra:
+        try:
+            wait = float(ra)
+        except ValueError:
+            pass
+    if wait is None:
+        reset = headers.get("x-ratelimit-reset") or headers.get("X-RateLimit-Reset")
+        if reset:
+            try:
+                dt = datetime.fromisoformat(reset.replace("Z", "+00:00"))
+                wait = (dt - datetime.now(timezone.utc)).total_seconds()
+            except ValueError:
+                pass
+    if wait is None:
+        wait = settings.TS_DEFAULT_BACKOFF_S
+    return max(settings.TS_MIN_BACKOFF_S, min(wait, settings.TS_MAX_BACKOFF_S))
+
+
+def _ts_get_paced(url: str, params: dict | None = None):
+    """
+    GET with pacing and 429 backoff. Sleeps TS_PAGE_DELAY_S before every
+    call; on 429 waits per the response headers and retries up to
+    TS_MAX_RETRIES times. Returns the final response (may still be 429).
+    """
+    for attempt in range(settings.TS_MAX_RETRIES + 1):
+        time.sleep(settings.TS_PAGE_DELAY_S)
+        resp = _ts_get(url, params=params)
+        if resp.status_code != 429:
+            return resp
+        wait = _retry_after_seconds(resp)
+        logger.warning("429 from %s (attempt %d/%d) -- backing off %.0fs",
+                       url.rsplit("/", 2)[-1], attempt + 1, settings.TS_MAX_RETRIES, wait)
+        time.sleep(wait)
+    return resp
+
+
 def _account_cache_path(handle: str) -> Path:
     """Deterministic cache path so reruns are idempotent."""
     return RAW_DIR / f"{handle}.jsonl"
@@ -64,24 +107,38 @@ def _account_cache_path(handle: str) -> Path:
 
 # ── Strategy 1: truthbrush ──────────────────────────────────────────
 
+def _has_truthbrush_creds() -> bool:
+    from dotenv import load_dotenv
+    import os
+    load_dotenv(override=True)
+    return bool(os.environ.get("TRUTHSOCIAL_USERNAME") and os.environ.get("TRUTHSOCIAL_PASSWORD"))
+
+
 def collect_via_truthbrush(
     username: str,
     start_date: date,
     end_date: date,
+    *,
+    since_id: str | None = None,
+    created_after: datetime | None = None,
 ) -> list[dict]:
-    """Use the truthbrush library to pull posts from a Truth Social account."""
+    """
+    Use the truthbrush library (authenticated) to pull posts from a Truth
+    Social account. `since_id` / `created_after` bound the walk from the
+    old end for incremental refreshes; the library paginates newest-first
+    and stops at the bound.
+    """
     try:
-        from truthbrush import Api
-    except ImportError:
-        logger.error(
-            "truthbrush not installed. Run: pip install 'iran-sentiment[truthsocial]'"
-        )
+        api = _get_truthbrush_api()
+    except RuntimeError as e:
+        logger.error("%s", e)
         return []
 
-    api = Api()
     posts: list[dict] = []
+    if created_after is not None and created_after.tzinfo is None:
+        created_after = created_after.replace(tzinfo=timezone.utc)
 
-    for status in api.pull_statuses(username):
+    for status in api.pull_statuses(username, since_id=since_id, created_after=created_after):
         created = datetime.fromisoformat(status["created_at"].replace("Z", "+00:00"))
         if created.date() < start_date:
             break  # statuses come in reverse chronological order
@@ -115,82 +172,105 @@ def collect_via_public_api(
     end_date: date,
     *,
     max_posts: int | None = None,
+    max_id: str | None = None,
+    stop_at_id: str | None = None,
+    on_batch=None,
 ) -> list[dict]:
     """
-    Fetch posts from Truth Social's public Mastodon-compatible API.
+    Fetch posts from Truth Social's public Mastodon-compatible API,
+    newest-first with `max_id` keyset pagination, stopping when a status
+    is older than `start_date` or has id <= `stop_at_id` (the cache edge).
 
     Works anonymously for public accounts like @realDonaldTrump. Uses
-    curl_cffi to impersonate a Chrome TLS fingerprint — plain httpx
-    gets 403'd at the Cloudflare edge.
+    curl_cffi to impersonate a Chrome TLS fingerprint -- plain httpx gets
+    403'd at the Cloudflare edge. Truth Social IGNORES Mastodon's `min_id`
+    (returns the newest page regardless; observed 2026-09-16), so there is
+    no forward walk -- callers that need interruption safety use
+    `max_id` to resume and `on_batch` to persist pages as they land.
+
+    Sets `collect_via_public_api.last_complete` (bool): True when the walk
+    reached its natural end, False when it was cut short (HTTP error,
+    no-progress page, max_posts cap).
     """
     posts: list[dict] = []
+    collect_via_public_api.last_complete = False
 
-    # Look up account ID
-    resp = _ts_get(f"{TS_API_BASE}/accounts/lookup", params={"acct": username})
+    resp = _ts_get_paced(f"{TS_API_BASE}/accounts/lookup", params={"acct": username})
     if resp.status_code != 200:
-        logger.warning(
-            "Could not look up @%s: HTTP %s %s",
-            username, resp.status_code, resp.text[:200],
-        )
+        logger.warning("Could not look up @%s: HTTP %s %s",
+                       username, resp.status_code, resp.text[:200])
         return []
-
     account_id = resp.json()["id"]
 
-    # Paginate statuses — Mastodon uses max_id as the keyset cursor
-    max_id = None
+    cursor = max_id
+    seen: set[str] = set()
     while True:
         params: dict = {"limit": 40}
-        if max_id:
-            params["max_id"] = max_id
+        if cursor:
+            params["max_id"] = cursor
 
-        resp = _ts_get(
-            f"{TS_API_BASE}/accounts/{account_id}/statuses",
-            params=params,
-        )
+        resp = _ts_get_paced(f"{TS_API_BASE}/accounts/{account_id}/statuses", params=params)
         if resp.status_code != 200:
-            logger.warning(
-                "Statuses fetch failed for @%s: HTTP %s",
-                username, resp.status_code,
-            )
-            break
+            logger.warning("Statuses fetch failed for @%s: HTTP %s -- stopping with %d posts (INCOMPLETE)",
+                           username, resp.status_code, len(posts))
+            return posts
 
         batch = resp.json()
         if not batch:
             break
+        batch = sorted(batch, key=lambda st: int(st["id"]), reverse=True)
+        if all(st["id"] in seen for st in batch):
+            logger.error("@%s: page made no progress (server ignored max_id?) -- stopping (INCOMPLETE)",
+                         username)
+            return posts
 
+        page: list[dict] = []
+        done = False
         for status in batch:
-            created = datetime.fromisoformat(
-                status["created_at"].replace("Z", "+00:00")
-            )
+            seen.add(status["id"])
+            if stop_at_id is not None and int(status["id"]) <= int(stop_at_id):
+                done = True
+                break
+            created = datetime.fromisoformat(status["created_at"].replace("Z", "+00:00"))
             if created.date() < start_date:
-                logger.info(
-                    "@%s: hit start_date boundary (%s), stopping",
-                    username, start_date,
-                )
-                return posts
+                logger.info("@%s: hit start_date boundary (%s), stopping", username, start_date)
+                done = True
+                break
             if created.date() <= end_date:
-                posts.append(
-                    {
-                        "id": status["id"],
-                        "user": username,
-                        "text": _strip_html(status.get("content", "")),
-                        "created_at": status["created_at"],
-                        "metrics": {
-                            "reblogs": status.get("reblogs_count", 0),
-                            "favourites": status.get("favourites_count", 0),
-                            "replies": status.get("replies_count", 0),
-                        },
-                        "platform": "truthsocial",
-                    }
-                )
-                if max_posts is not None and len(posts) >= max_posts:
+                page.append({
+                    "id": status["id"],
+                    "user": username,
+                    "text": _strip_html(status.get("content", "")),
+                    "created_at": status["created_at"],
+                    "metrics": {
+                        "reblogs": status.get("reblogs_count", 0),
+                        "favourites": status.get("favourites_count", 0),
+                        "replies": status.get("replies_count", 0),
+                    },
+                    "platform": "truthsocial",
+                })
+                if max_posts is not None and len(posts) + len(page) >= max_posts:
                     logger.info("@%s: hit max_posts cap (%d)", username, max_posts)
+                    posts.extend(page)
+                    if on_batch is not None and page:
+                        on_batch(page)
                     return posts
 
-        max_id = batch[-1]["id"]
+        posts.extend(page)
+        if on_batch is not None and page:
+            on_batch(page)
+        logger.info("@%s: page -> %d kept (total %d, back to %s)", username, len(page),
+                    len(posts), posts[-1]["created_at"][:10] if posts else "-")
+        if done:
+            break
+        cursor = batch[-1]["id"]
 
+    collect_via_public_api.last_complete = True
     logger.info("Public API: collected %d posts from @%s", len(posts), username)
     return posts
+
+
+collect_via_public_api.last_complete = False
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
@@ -219,6 +299,19 @@ def _load_jsonl(path: Path) -> list[dict]:
 
 # ── User timeline collection ───────────────────────────────────────
 
+def _latest_created_at(records: list[dict]) -> datetime | None:
+    stamps = []
+    for r in records:
+        ts = r.get("created_at")
+        if not ts:
+            continue
+        try:
+            stamps.append(datetime.fromisoformat(ts.replace("Z", "+00:00")))
+        except ValueError:
+            continue
+    return max(stamps) if stamps else None
+
+
 def collect_user(
     handle: str,
     tier: str,
@@ -226,44 +319,147 @@ def collect_user(
     start: date | datetime = settings.COLLECTION_START,
     end: date | datetime = settings.COLLECTION_END,
     force: bool = False,
+    use_auth: bool | None = None,
 ) -> list[dict]:
     """
     Fetch a Truth Social account's posts into a deterministic cache.
 
-    Mirrors `x_collector.collect_user`: if the cache file exists and
-    `force` is False, returns the cached posts without hitting the API.
+    `use_auth` picks the incremental strategy: True = truthbrush
+    (authenticated, fast), False = anonymous public API (paced, slow but
+    needs no login), None = settings.TS_PREFER_AUTH and credentials present.
+
+    Mirrors `x_collector.collect_user`:
+      - force=True   : re-fetch the whole [start, end] window, overwrite.
+      - force=False  : incremental -- if a non-empty cache exists, fetch
+                       only from the day of the latest cached post, drop
+                       ids already cached, and append. Returns the full
+                       merged set (newest first, like the API).
     Each record is tagged with `tier` so downstream analysis can group
     by tier the same way it does for X data.
 
     Strategy: public Mastodon-compatible API (no auth, free). Accounts
-    that aren't publicly exposed need truthbrush with credentials —
+    that aren't publicly exposed need truthbrush with credentials --
     call `collect_via_truthbrush` directly in that case.
     """
     cache = _account_cache_path(handle)
-    # Treat an empty cache file as "not collected". An earlier failed run
-    # (rate limit, Cloudflare block, etc.) leaves a zero-byte file behind,
-    # and we don't want that to poison future runs. A legitimately empty
-    # window is rare and cheap to re-fetch, so this is the safer default.
-    if cache.exists() and not force:
-        existing = _load_jsonl(cache)
-        if existing:
-            logger.info("@%s: cached (%d posts) — skipping", handle, len(existing))
-            return existing
-        logger.info("@%s: empty cache file — treating as not collected", handle)
-
     start_date = start.date() if isinstance(start, datetime) else start
     end_date = end.date() if isinstance(end, datetime) else end
 
-    posts = collect_via_public_api(handle, start_date, end_date)
+    # Treat an empty cache file as "not collected". An earlier failed run
+    # (rate limit, Cloudflare block, etc.) leaves a zero-byte file behind,
+    # and we don't want that to poison future runs.
+    existing = _load_jsonl(cache) if cache.exists() and not force else []
+    incremental = bool(existing)
+    if incremental:
+        latest = _latest_created_at(existing)
+        if latest is None:
+            incremental, existing = False, []
+        else:
+            # The page walker stops at day granularity, so start on the
+            # latest cached day and dedupe the overlap by id below.
+            start_date = max(start_date, latest.date())
+            if latest.date() > end_date:
+                logger.info("@%s: cached through %s -- already past window end, skipping",
+                            handle, latest.isoformat())
+                return existing
+            logger.info("@%s: incremental from %s (cached: %d)",
+                        handle, start_date, len(existing))
+    elif cache.exists() and not force:
+        logger.info("@%s: empty cache file -- treating as not collected", handle)
+
+    if incremental:
+        newest_id = max((r["id"] for r in existing if r.get("id")), key=int)
+        if use_auth is None:
+            use_auth = settings.TS_PREFER_AUTH and _has_truthbrush_creds()
+        if use_auth:
+            # Authenticated: 300 req / 5 min with the library's own backoff,
+            # so a full walk back to the cache edge normally completes in
+            # one go. Contiguity is verified below before anything is
+            # appended (the library returns the whole list at the end).
+            posts = collect_via_truthbrush(
+                handle, start_date, end_date,
+                since_id=newest_id, created_after=latest,
+            )
+            reached_edge = bool(posts) and min(
+                datetime.fromisoformat(p["created_at"].replace("Z", "+00:00"))
+                for p in posts
+            ).date() <= latest.date() + timedelta(days=1)
+            complete = reached_edge or not posts
+            if posts and not reached_edge:
+                logger.error(
+                    "@%s: fetched %d posts but the oldest (%s) does not touch the cache "
+                    "edge (%s) -- NOT appending, rerun",
+                    handle, len(posts), min(p["created_at"] for p in posts), latest.isoformat(),
+                )
+                return existing
+        else:
+            # Anonymous: walk BACKWARD from the newest post down to the cache
+            # edge. Pages land in <handle>.partial.jsonl as they arrive; the
+            # partial is merged into the cache only once the edge is reached,
+            # so an interrupted run never leaves a hole and a rerun resumes
+            # from the partial's oldest id.
+            partial_path = cache.with_suffix(".partial.jsonl")
+            partial = _load_jsonl(partial_path) if partial_path.exists() else []
+            resume_from = min((r["id"] for r in partial if r.get("id")), key=int) if partial else None
+            if partial:
+                logger.info("@%s: resuming from partial (%d posts, oldest id %s)",
+                            handle, len(partial), resume_from)
+            seen_ids = {r.get("id") for r in existing} | {r.get("id") for r in partial}
+
+            def _flush(page: list[dict]) -> None:
+                fresh = [p for p in page if p.get("id") not in seen_ids]
+                for p in fresh:
+                    p["tier"] = tier
+                    seen_ids.add(p["id"])
+                if fresh:
+                    with open(partial_path, "a") as f:
+                        for r in fresh:
+                            f.write(json.dumps(r) + "\n")
+                    partial.extend(fresh)
+
+            collect_via_public_api(handle, start_date, end_date,
+                                   max_id=resume_from, stop_at_id=newest_id, on_batch=_flush)
+            complete = getattr(collect_via_public_api, "last_complete", True)
+            if not complete:
+                logger.warning("@%s [%s]: INCOMPLETE -- %d posts held in %s; rerun to continue",
+                               handle, tier, len(partial), partial_path.name)
+                return existing
+            if partial:
+                with open(cache, "a") as f:
+                    for r in partial:
+                        f.write(json.dumps(r) + "\n")
+                partial_path.unlink()
+                logger.info("@%s [%s]: +%d new posts (total: %d)", handle, tier,
+                            len(partial), len(existing) + len(partial))
+            else:
+                logger.info("@%s [%s]: no new posts since last fetch", handle, tier)
+            return sorted(partial + existing, key=lambda r: r["created_at"], reverse=True)
+    else:
+        posts = collect_via_public_api(handle, start_date, end_date)
     for p in posts:
         p["tier"] = tier  # annotate for downstream grouping
+
+    if incremental:
+        seen = {r.get("id") for r in existing}
+        new = [p for p in posts if p.get("id") not in seen]
+        if new:
+            with open(cache, "a") as f:
+                for r in new:
+                    f.write(json.dumps(r) + "\n")
+            logger.info("@%s [%s]: +%d new posts (total: %d)%s",
+                        handle, tier, len(new), len(existing) + len(new),
+                        "" if complete else " -- INCOMPLETE, rerun to continue")
+        else:
+            logger.info("@%s [%s]: no new posts since last fetch%s", handle, tier,
+                        "" if complete else " (fetch failed before any new page)")
+        return sorted(new + existing, key=lambda r: r["created_at"], reverse=True)
 
     logger.info("@%s [%s]: %d posts", handle, tier, len(posts))
     if posts:
         _save_jsonl(cache, posts)
     else:
         logger.warning(
-            "@%s: no posts fetched — NOT writing cache so a retry can proceed",
+            "@%s: no posts fetched -- NOT writing cache so a retry can proceed",
             handle,
         )
     return posts

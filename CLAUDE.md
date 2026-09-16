@@ -77,6 +77,16 @@ start if that maximum exceeds `X_RUN_BUDGET_USD`. Sample heavy accounts
 with `ACCOUNT_CAP_OVERRIDES` instead of letting the cap truncate them.
 Tests: `python -m pytest tests` (stub client, no spend).
 
+`collect-truth` is incremental too. With Truth Social credentials it uses
+truthbrush (authenticated, 300 req / 5 min) and refuses to append a batch
+whose oldest post does not touch the cache edge. `--anonymous` (or
+`TS_PREFER_AUTH = False`) walks the public API backward at
+`TS_PAGE_DELAY_S` pacing with 429 backoff, holding pages in
+`<handle>.partial.jsonl` and merging into the cache only when the walk
+reaches the edge, so a killed run resumes instead of leaving a hole.
+Truth Social ignores Mastodon's `min_id`, so there is no forward walk.
+Anonymous limit observed 2026-09-16: 5 pages (100 posts) per ~minute.
+
 For LLM stance scoring, filter by tier or handle so tokens track the
 subset that actually needs it:
 

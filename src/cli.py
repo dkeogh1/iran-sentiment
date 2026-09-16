@@ -264,8 +264,10 @@ def probe_auth_cmd(post_id: str):
               help="Override end date (ISO). Defaults to settings.COLLECTION_END.")
 @click.option("--handle", default=None,
               help="Only collect this one handle (e.g. realDonaldTrump)")
+@click.option("--anonymous", is_flag=True,
+              help="Force the paced public API for incremental refresh (no login)")
 def collect_truth_cmd(force: bool, since_s: str | None, until_s: str | None,
-                      handle: str | None):
+                      handle: str | None, anonymous: bool):
     """Collect Truth Social posts for the configured accounts."""
     from datetime import date as _date
     from src.collectors.truthsocial_collector import collect_all, collect_user
@@ -284,10 +286,14 @@ def collect_truth_cmd(force: bool, since_s: str | None, until_s: str | None,
             (t for t, hs in TRUTH_SOCIAL_ACCOUNTS.items() if handle in hs),
             "admin",
         )
-        posts = collect_user(handle, tier, start=start, end=end, force=force)
+        posts = collect_user(handle, tier, start=start, end=end, force=force,
+                             use_auth=False if anonymous else None)
         click.echo(f"@{handle} [{tier}]: {len(posts)} posts")
         return
 
+    if anonymous:
+        from config import settings as _s
+        _s.TS_PREFER_AUTH = False
     summary = collect_all(TRUTH_SOCIAL_ACCOUNTS, start=start, end=end, force=force)
     total = sum(summary.values())
     click.echo(f"\nCollected {total} total posts across {len(summary)} accounts:")
