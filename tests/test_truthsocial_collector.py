@@ -210,3 +210,38 @@ def test_login_flow_challenge_then_verify(monkeypatch, tmp_path):
 def test_login_flow_direct_token(monkeypatch):
     monkeypatch.setattr(ts, "_auth_post", lambda path, body: _Resp(200, {"access_token": "t1"}))
     assert ts.request_token("u", "p") == "t1"
+
+
+# ── v2 descendants walker (stubbed HTTP) ───────────────────────────
+
+class _HResp(_Resp):
+    pass
+
+
+def test_iter_descendants_follows_link_and_filters_direct(monkeypatch):
+    pid = "900"
+    pages = {
+        None: ([{"id": "1", "in_reply_to_id": pid}, {"id": "2", "in_reply_to_id": "1"}],
+               "<https://truthsocial.com/api/v2/statuses/900/context/descendants?offset=2&sort=oldest>; rel=\"next\""),
+        "https://truthsocial.com/api/v2/statuses/900/context/descendants?offset=2&sort=oldest":
+              ([{"id": "3", "in_reply_to_id": pid}], ""),
+    }
+    calls = []
+    def fake_get(url, params, token):
+        calls.append((url, params))
+        key = None if params else url
+        body, link = pages[key]
+        return _HResp(200, body, headers={"link": link})
+    monkeypatch.setattr(ts, "_ts_get_auth_paced", fake_get)
+    got = list(ts.iter_descendants(pid, token="t"))
+    assert [g["id"] for g in got] == ["1", "3"]           # sub-thread reply "2" dropped
+    assert calls[0][1] == {"sort": "oldest"} and calls[1][1] is None
+    assert calls[0][0].endswith(ts.settings.TS_DESCENDANTS_PATH.format(id=pid))
+    assert list(ts.iter_descendants(pid, only_direct=False, token="t")) and \
+        [g["id"] for g in ts.iter_descendants(pid, only_direct=False, token="t")] == ["1", "2", "3"]
+
+
+def test_iter_descendants_raises_on_http_error(monkeypatch):
+    monkeypatch.setattr(ts, "_ts_get_auth_paced", lambda url, params, token: _HResp(404, None))
+    with pytest.raises(RuntimeError):
+        list(ts.iter_descendants("900", token="t"))

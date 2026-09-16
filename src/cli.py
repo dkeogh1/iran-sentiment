@@ -248,7 +248,7 @@ def probe_auth_cmd(post_id: str):
     # Cloudflare). truthbrush uses this with Link-header pagination.
     click.echo(f"\nFetching /context/descendants for post {post_id}...")
     descendants = []
-    next_url = f"{api_base}/statuses/{post_id}/context/descendants"
+    next_url = f"{ts_base}{settings.TS_DESCENDANTS_PATH.format(id=post_id)}"
     page = 0
     while next_url:
         r = cffi_requests.get(

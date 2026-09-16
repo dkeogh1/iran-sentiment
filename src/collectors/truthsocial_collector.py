@@ -668,6 +668,70 @@ def _get_truthbrush_api():
     return Api()
 
 
+_TS_USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 12_2_1) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
+
+
+def _get_token() -> str:
+    from dotenv import load_dotenv
+    import os
+    load_dotenv(settings.PROJECT_ROOT / ".env", override=True)
+    token = os.environ.get("TRUTHSOCIAL_TOKEN")
+    if not token:
+        raise RuntimeError("No TRUTHSOCIAL_TOKEN in .env -- run `python -m src.cli ts-login`")
+    return token
+
+
+def _ts_get_auth_paced(url: str, params: dict | None, token: str):
+    """Authenticated GET with pacing and 429 backoff (mirrors _ts_get_paced)."""
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": _TS_USER_AGENT}
+    for attempt in range(settings.TS_MAX_RETRIES + 1):
+        time.sleep(settings.TS_AUTH_PAGE_DELAY_S)
+        resp = cffi_requests.get(url, params=params, headers=headers,
+                                 impersonate="chrome136", timeout=_DEFAULT_TIMEOUT)
+        if resp.status_code != 429:
+            return resp
+        wait = _retry_after_seconds(resp)
+        logger.warning("429 (attempt %d/%d) -- backing off %.0fs", attempt + 1,
+                       settings.TS_MAX_RETRIES, wait)
+        time.sleep(wait)
+    return resp
+
+
+def _next_link(resp) -> str | None:
+    for link in (resp.headers.get("link") or resp.headers.get("Link") or "").split(","):
+        parts = link.split(";")
+        if len(parts) == 2 and parts[1].strip() == 'rel="next"':
+            return parts[0].strip().strip("<>")
+    return None
+
+
+def iter_descendants(post_id: str, *, only_direct: bool = True, token: str | None = None,
+                     sort: str = "oldest"):
+    """
+    Yield reply statuses to `post_id` from settings.TS_DESCENDANTS_PATH,
+    following Link rel="next" until the server stops paging. With
+    `only_direct`, keep only replies whose in_reply_to_id is the post
+    (the NYT analysis scope) -- sub-thread replies are skipped.
+    """
+    token = token or _get_token()
+    url = TS_OAUTH_BASE + settings.TS_DESCENDANTS_PATH.format(id=post_id)
+    params: dict | None = {"sort": sort}
+    page = 0
+    while url:
+        resp = _ts_get_auth_paced(url, params, token)
+        if resp.status_code != 200:
+            raise RuntimeError(f"descendants page {page} -> HTTP {resp.status_code}: {resp.text[:200]}")
+        batch = resp.json()
+        if not batch:
+            break
+        for st in batch:
+            if not only_direct or st.get("in_reply_to_id") == post_id:
+                yield st
+        page += 1
+        url, params = _next_link(resp), None  # the next link carries its own query
+
+
 def collect_replies(
     post_id: str,
     *,
@@ -676,14 +740,11 @@ def collect_replies(
     only_direct: bool = True,
 ) -> list[dict]:
     """
-    Fetch replies to a Truth Social post using truthbrush.
-
-    Uses truthbrush's `pull_comments` which calls the paginated
-    `/v1/statuses/{id}/context/descendants` endpoint with Link-header
-    pagination and built-in rate-limit backoff. This is the only way
-    to get the full reply tree (standard `/context` is Cloudflare-
-    blocked for unauthenticated clients and truncates to ~200 for
-    authenticated ones).
+    Fetch replies to a Truth Social post via the paginated descendants
+    endpoint (settings.TS_DESCENDANTS_PATH, v2 since 2026-09) using the
+    token from `ts-login`. This is the only way to get the full reply
+    tree (standard `/context` is Cloudflare-blocked for unauthenticated
+    clients and truncates to ~200 for authenticated ones).
 
     Args:
         post_id: Truth Social status ID.
@@ -701,13 +762,13 @@ def collect_replies(
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     label = label or post_id
 
-    api = _get_truthbrush_api()
-
     raw_replies: list[dict] = []
-    for status in api.pull_comments(post_id, include_all=include_all, only_first=only_direct):
+    for status in iter_descendants(post_id, only_direct=only_direct):
         raw_replies.append(status)
         if len(raw_replies) % 500 == 0:
             logger.info("  ... %d replies so far for %s", len(raw_replies), label)
+        if not include_all and len(raw_replies) >= 40:
+            break
 
     replies = [_reply_record(s, parent_id=post_id) for s in raw_replies]
     logger.info("Collected %d replies to post %s", len(replies), post_id)

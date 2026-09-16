@@ -78,6 +78,14 @@ TS_DEFAULT_BACKOFF_S = 60    # when the 429 carries no usable header
 TS_MIN_BACKOFF_S = 10
 TS_MAX_BACKOFF_S = 330       # a full 5-minute window + slack
 TS_MAX_RETRIES = 6           # per page
+TS_AUTH_PAGE_DELAY_S = 1.0   # authenticated limit is 300 req / 5 min
+
+# Reply tree endpoint. Truth Social's paginated descendants endpoint moved
+# from /api/v1 to /api/v2 sometime between Apr and Sep 2026 (v1 now returns
+# a bare "404 page not found"); it pages with a Link rel="next" header
+# carrying an `offset`. truthbrush 0.2.5 still hardcodes v1, so the
+# collector fetches replies itself. {id} is the status id.
+TS_DESCENDANTS_PATH = "/api/v2/statuses/{id}/context/descendants"
 # Incremental refresh uses truthbrush (authenticated, 300 req/5 min) when
 # credentials are present; set False (or pass --anonymous) to force the
 # paced public walk, e.g. while a new-device login check is pending.
