@@ -608,6 +608,13 @@ def score_stance(
                 "confidence": 0,
                 "reason": str(e)[:80],
             })
+        # Periodic flush (same idea as LLM_SAVE_EVERY_N for broadcasters): a
+        # killed run keeps its spent tokens and the rerun scores only the rest.
+        if len(results) % settings.LLM_SAVE_EVERY_N == 0:
+            partial = pd.concat([cached, pd.DataFrame(results)], ignore_index=True) \
+                if not cached.empty else pd.DataFrame(results)
+            STANCE_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+            partial.to_parquet(STANCE_OUTPUT, index=False)
 
     result_df = pd.DataFrame(results)
     if not cached.empty:
