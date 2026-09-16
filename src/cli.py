@@ -60,17 +60,48 @@ def test():
 @main.command()
 @click.option("--force", is_flag=True, help="Ignore cached files and re-fetch")
 @click.option("--no-search", is_flag=True, help="Skip keyword searches")
-def collect(force: bool, no_search: bool):
-    """Collect tweets from all configured X accounts (caches per-account)."""
-    from src.collectors.x_collector import collect_all
+@click.option("--estimate", is_flag=True,
+              help="Print the per-account plan and maximum cost, then exit (no API calls)")
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt")
+def collect(force: bool, no_search: bool, estimate: bool, yes: bool):
+    """Collect tweets from all configured X accounts (caches per-account).
 
-    estimated_max = (
-        sum(len(v) for v in X_ACCOUNTS.values()) * settings.MAX_TWEETS_PER_USER
-        + (0 if no_search else len(SEARCH_TERMS) * settings.MAX_TWEETS_PER_SEARCH)
-    )
-    estimated_cost = estimated_max * settings.X_READ_COST_USD
-    click.echo(f"Budget cap: up to {estimated_max} reads ≈ ${estimated_cost:.2f} max")
-    click.echo(f"Cached accounts will be skipped unless --force is set.\n")
+    Incremental: each account fetches only tweets newer than its cache,
+    walked oldest-slice-first so a cap hit thins a slice instead of
+    dropping months. The plan below is a MAXIMUM -- accounts that posted
+    less than their cap cost less.
+    """
+    from src.collectors.x_collector import collect_all, estimate_run
+
+    plan = estimate_run(X_ACCOUNTS, None if no_search else SEARCH_TERMS, force=force)
+
+    click.echo(f"\n{'account':<18}{'cached':>7}{'from':>12}{'slices':>7}{'cap':>6}{'max $':>8}")
+    for p in plan["accounts"]:
+        if p["skip_reason"]:
+            click.echo(f"  @{p['handle']:<16}{p['cached']:>7}  {p['skip_reason']}")
+            continue
+        click.echo(f"  @{p['handle']:<16}{p['cached']:>7}{p['window'][0].date().isoformat():>12}"
+                   f"{len(p['slices']):>7}{p['cap']:>6}{p['max_cost_usd']:>8.2f}")
+    for s in plan["searches"]:
+        click.echo(f"  search:{s['query']:<28}{'7d':>12}{1:>7}{s['max_reads']:>6}{s['max_cost_usd']:>8.2f}")
+    click.echo(f"\nMaximum this run: {plan['max_reads']} reads ≈ ${plan['max_cost_usd']:.2f}"
+               f"  (budget settings.X_RUN_BUDGET_USD = ${settings.X_RUN_BUDGET_USD:.2f})")
+
+    if estimate:
+        return
+
+    if plan["max_cost_usd"] > settings.X_RUN_BUDGET_USD:
+        click.secho(
+            f"Refusing: plan maximum ${plan['max_cost_usd']:.2f} exceeds X_RUN_BUDGET_USD "
+            f"${settings.X_RUN_BUDGET_USD:.2f}. Lower MAX_TWEETS_PER_USER / add "
+            f"ACCOUNT_CAP_OVERRIDES, trim config/accounts.py, use --no-search, or raise "
+            f"the budget deliberately in config/settings.py.",
+            fg="red")
+        raise SystemExit(1)
+
+    if not yes and not click.confirm("Proceed?", default=False):
+        click.echo("Aborted.")
+        return
 
     summary = collect_all(
         X_ACCOUNTS,

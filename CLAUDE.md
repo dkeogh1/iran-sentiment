@@ -64,9 +64,18 @@ python -m src.cli run-all    # full pipeline
 
 `collect` is incremental at the per-account level: each rerun fetches
 only tweets newer than the latest cached `created_at` and appends. To
-fetch a brand-new account, add it to `config/accounts.py` and rerun —
-the existing accounts are cheap to bring up to date. Pass `--force` to
-re-fetch a whole account's window from scratch.
+fetch a brand-new account, add it to `config/accounts.py` and rerun.
+Pass `--force` to re-fetch a whole account's window from scratch.
+
+Long gaps are walked oldest-slice-first in `GAP_FILL_SLICE_DAYS` (14)
+windows with the account's cap shared across slices, because the X
+timeline endpoint is newest-first and a single capped fetch over a
+multi-month gap would keep the newest 500 and permanently drop the rest.
+`python -m src.cli collect --estimate` prints the per-account plan and
+maximum spend from the cache alone (no API calls); a real run refuses to
+start if that maximum exceeds `X_RUN_BUDGET_USD`. Sample heavy accounts
+with `ACCOUNT_CAP_OVERRIDES` instead of letting the cap truncate them.
+Tests: `python -m pytest tests` (stub client, no spend).
 
 For LLM stance scoring, filter by tier or handle so tokens track the
 subset that actually needs it:
@@ -92,8 +101,11 @@ X is pay-as-you-go at $0.005 per tweet read. A single prolific account
 can blow the budget (@marklevinshow alone was 2,544 tweets = ~$13).
 Always:
 
-1. Respect `settings.MAX_TWEETS_PER_USER` (currently 500) as a hard cap
-2. Estimate cost before running: `num_accounts * MAX_TWEETS_PER_USER * $0.005`
+1. Respect `settings.MAX_TWEETS_PER_USER` (currently 500) as a hard cap;
+   use `ACCOUNT_CAP_OVERRIDES` to sample prolific accounts
+2. Estimate cost before running: `python -m src.cli collect --estimate`
+   (the run itself is gated by `X_RUN_BUDGET_USD`, $4.00 as of 2026-09-16
+   when the X balance was $4.40)
 3. Check `data/raw/x/` first to see what's already cached -- never
    re-fetch cached data without `--force`
 4. For keyword searches, `/search/recent` only covers ~7 days, so

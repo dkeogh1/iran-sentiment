@@ -5,13 +5,17 @@ Design:
   - Per-account caching: each user's tweets go to data/raw/x/<handle>.jsonl
     so reruns skip already-collected accounts.
   - Hard budget caps from config.settings to prevent runaway API spend.
+  - Gap-fill slicing: long fetch windows are walked oldest-slice-first with
+    the cap shared across slices (see settings.GAP_FILL_SLICE_DAYS).
+  - plan_account / estimate_run compute the per-account plan and maximum
+    spend WITHOUT touching the API, so the CLI can show and gate the cost.
   - Config-driven: accepts the accounts dict from config.accounts.
 """
 
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import tweepy
@@ -80,70 +84,158 @@ def _latest_created_at(records: list[dict]) -> datetime | None:
 
 # ── User timeline collection ───────────────────────────────────────
 
-def collect_user(
-    client: tweepy.Client,
+def _naive_utc(dt: datetime) -> datetime:
+    """Strip tz after converting to UTC (the API formatter appends 'Z')."""
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+def account_cap(handle: str) -> int:
+    """Per-run tweet cap for an account (settings override or default)."""
+    return settings.ACCOUNT_CAP_OVERRIDES.get(handle, settings.MAX_TWEETS_PER_USER)
+
+
+def plan_slices(
+    start: datetime,
+    end: datetime,
+    slice_days: int = settings.GAP_FILL_SLICE_DAYS,
+) -> list[tuple[datetime, datetime]]:
+    """
+    Split [start, end] into contiguous windows of at most `slice_days`,
+    OLDEST FIRST. The last slice is short so the final edge is exactly `end`.
+    """
+    if end <= start:
+        return []
+    step = timedelta(days=slice_days)
+    slices: list[tuple[datetime, datetime]] = []
+    s = start
+    while s < end:
+        e = min(s + step, end)
+        slices.append((s, e))
+        s = e
+    return slices
+
+
+def split_cap(cap: int, n_slices: int) -> list[int]:
+    """
+    Share `cap` across slices so the list sums to exactly `cap`. The
+    remainder goes to the NEWEST slices (end of the list).
+    """
+    if n_slices <= 0:
+        return []
+    base, extra = divmod(cap, n_slices)
+    return [base + (1 if i >= n_slices - extra else 0) for i in range(n_slices)]
+
+
+def plan_account(
     handle: str,
-    tier: str,
     start: datetime = settings.COLLECTION_START,
     end: datetime = settings.COLLECTION_END,
-    max_tweets: int = settings.MAX_TWEETS_PER_USER,
     force: bool = False,
-) -> list[dict]:
+) -> dict:
     """
-    Pull tweets from a user's timeline with a hard cap.
+    Work out what a collect run would do for one account, from the cache
+    alone (no API call).
 
-    Behavior when a cache file exists:
-      - force=True   : ignore cache, re-fetch the whole [start, end] window,
-                       overwrite the cache.
-      - force=False  : incremental — fetch only tweets created after the
-                       latest cached one (capped at max_tweets new) and
-                       append them to the cache. Returns the full merged
-                       set so downstream code sees both old and new.
+    Returns a dict with: handle, cached (int), incremental (bool),
+    window (tuple | None -- None means nothing to fetch), slices, caps
+    (per slice, sums to cap), cap, max_reads, max_cost_usd, skip_reason.
     """
     cache = _account_cache_path(handle)
     existing = _load_jsonl(cache) if cache.exists() else []
-
-    # Incremental path — narrow the window to (latest_cached, end]
     incremental = bool(existing) and not force
+    skip_reason = None
+
     if incremental:
         latest = _latest_created_at(existing)
         if latest is None:
-            # Cache exists but has no parseable timestamps — fall back to full pull
-            incremental = False
+            incremental = False  # unparseable cache -> full pull
         else:
-            # +1 second so we don't refetch the boundary tweet
-            from datetime import timedelta, timezone
-            window_start = latest + timedelta(seconds=1)
-            # Strip timezone for the API formatter below
-            if window_start.tzinfo is not None:
-                window_start = window_start.astimezone(timezone.utc).replace(tzinfo=None)
-            if window_start >= end:
-                logger.info("@%s: cached up to %s — already past window end, skipping",
-                            handle, latest.isoformat())
-                return existing
-            start = window_start
-            logger.info("@%s: incremental from %s (cached: %d)",
-                        handle, start.isoformat(), len(existing))
+            # +1 second so the boundary tweet is not refetched
+            start = _naive_utc(latest + timedelta(seconds=1))
+            if start >= end:
+                skip_reason = "already past window end"
 
-    try:
-        user = client.get_user(username=handle)
-    except tweepy.errors.HTTPException as e:
-        logger.error("@%s: lookup failed — %s", handle, e)
-        return existing
+    slices = [] if skip_reason else plan_slices(start, end)
+    cap = account_cap(handle)
+    caps = split_cap(cap, len(slices))
+    max_reads = sum(caps)
+    return {
+        "handle": handle,
+        "cached": len(existing),
+        "incremental": incremental,
+        "window": None if skip_reason else (start, end),
+        "slices": slices,
+        "caps": caps,
+        "cap": cap,
+        "max_reads": max_reads,
+        "max_cost_usd": max_reads * settings.X_READ_COST_USD,
+        "skip_reason": skip_reason,
+    }
 
-    if not user.data:
-        logger.warning("@%s: not found", handle)
-        return existing
 
-    new_tweets: list[dict] = []
+def estimate_run(
+    accounts: dict[str, list[str]],
+    search_terms: list[str] | None = None,
+    force: bool = False,
+) -> dict:
+    """
+    Plan a whole `collect` run without calling the API.
+
+    Returns {"accounts": [plan, ...], "searches": [{query, max_reads,
+    max_cost_usd}], "max_reads": int, "max_cost_usd": float}.
+    Search terms always count their full cap: /search/recent only reaches
+    back 7 days, so a stale cache does not reduce what a refresh can read.
+    """
+    plans = []
+    for tier, handles in accounts.items():
+        for handle in handles:
+            plan = plan_account(handle, force=force)
+            plan["tier"] = tier
+            plans.append(plan)
+    searches = [
+        {
+            "query": q,
+            "max_reads": settings.MAX_TWEETS_PER_SEARCH,
+            "max_cost_usd": settings.MAX_TWEETS_PER_SEARCH * settings.X_READ_COST_USD,
+        }
+        for q in (search_terms or [])
+    ]
+    max_reads = sum(p["max_reads"] for p in plans) + sum(s["max_reads"] for s in searches)
+    return {
+        "accounts": plans,
+        "searches": searches,
+        "max_reads": max_reads,
+        "max_cost_usd": max_reads * settings.X_READ_COST_USD,
+    }
+
+
+def _fetch_window(
+    client: tweepy.Client,
+    user_id,
+    handle: str,
+    tier: str,
+    start: datetime,
+    end: datetime,
+    cap: int,
+) -> tuple[list[dict], bool]:
+    """
+    Pull up to `cap` tweets from one user in [start, end]. The API returns
+    newest-first, so a cap hit keeps the newest tweets in the window.
+    Returns (tweets, capped).
+    """
+    out: list[dict] = []
     pagination_token = None
+    if cap <= 0:
+        return out, False
 
-    while len(new_tweets) < max_tweets:
-        remaining = max_tweets - len(new_tweets)
+    while len(out) < cap:
+        remaining = cap - len(out)
         per_page = min(100, remaining)
 
         resp = client.get_users_tweets(
-            id=user.data.id,
+            id=user_id,
             start_time=start.isoformat() + "Z",
             end_time=end.isoformat() + "Z",
             max_results=max(5, per_page),  # API requires min 5
@@ -153,9 +245,9 @@ def collect_user(
 
         if resp.data:
             for tweet in resp.data:
-                if len(new_tweets) >= max_tweets:
+                if len(out) >= cap:
                     break
-                new_tweets.append({
+                out.append({
                     "id": str(tweet.id),
                     "user": handle,
                     "tier": tier,
@@ -166,12 +258,76 @@ def collect_user(
                     "platform": "x",
                 })
 
-        if resp.meta and resp.meta.get("next_token") and len(new_tweets) < max_tweets:
+        if resp.meta and resp.meta.get("next_token") and len(out) < cap:
             pagination_token = resp.meta["next_token"]
         else:
             break
 
-    capped = " (CAPPED)" if len(new_tweets) >= max_tweets else ""
+    return out, len(out) >= cap
+
+
+def collect_user(
+    client: tweepy.Client,
+    handle: str,
+    tier: str,
+    start: datetime = settings.COLLECTION_START,
+    end: datetime = settings.COLLECTION_END,
+    max_tweets: int | None = None,
+    force: bool = False,
+) -> list[dict]:
+    """
+    Pull tweets from a user's timeline with a hard cap, walking the window
+    oldest-slice-first (settings.GAP_FILL_SLICE_DAYS) with the cap shared
+    across slices.
+
+    Behavior when a cache file exists:
+      - force=True   : ignore cache, re-fetch the whole [start, end] window,
+                       overwrite the cache.
+      - force=False  : incremental -- fetch only tweets created after the
+                       latest cached one and append them to the cache.
+                       Returns the full merged set so downstream code sees
+                       both old and new.
+
+    `max_tweets` overrides the per-run cap for this call only; by default
+    the cap comes from settings.ACCOUNT_CAP_OVERRIDES / MAX_TWEETS_PER_USER.
+    """
+    cache = _account_cache_path(handle)
+    existing = _load_jsonl(cache) if cache.exists() else []
+
+    plan = plan_account(handle, start=start, end=end, force=force)
+    if max_tweets is not None:
+        plan["caps"] = split_cap(max_tweets, len(plan["slices"]))
+        plan["cap"] = max_tweets
+
+    if plan["skip_reason"]:
+        logger.info("@%s: %s -- skipping", handle, plan["skip_reason"])
+        return existing
+    incremental = plan["incremental"]
+    if incremental:
+        logger.info("@%s: incremental from %s (cached: %d, %d slice(s), cap %d)",
+                    handle, plan["window"][0].isoformat(), len(existing),
+                    len(plan["slices"]), plan["cap"])
+
+    try:
+        user = client.get_user(username=handle)
+    except tweepy.errors.HTTPException as e:
+        logger.error("@%s: lookup failed -- %s", handle, e)
+        return existing
+
+    if not user.data:
+        logger.warning("@%s: not found", handle)
+        return existing
+
+    new_tweets: list[dict] = []
+    any_capped = False
+    for (s, e), cap in zip(plan["slices"], plan["caps"]):
+        got, capped = _fetch_window(client, user.data.id, handle, tier, s, e, cap)
+        any_capped = any_capped or capped
+        new_tweets.extend(got)
+        logger.info("@%s: slice %s..%s -> %d%s", handle, s.date(), e.date(),
+                    len(got), " (CAPPED)" if capped else "")
+
+    capped = " (CAPPED)" if any_capped else ""
 
     if incremental:
         if new_tweets:

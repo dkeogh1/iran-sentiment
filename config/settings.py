@@ -56,6 +56,29 @@ MAX_TWEETS_PER_USER = 500       # ≈ $2.50 cap per user
 MAX_TWEETS_PER_SEARCH = 150     # ≈ $0.75 cap per search term
 X_READ_COST_USD = 0.005
 
+# Per-account overrides of MAX_TWEETS_PER_USER for a run. The point is to
+# SAMPLE high-volume accounts (Levin, Loomer, Jones post 35+/day) rather
+# than let the cap silently truncate them. Empty = every account uses the
+# default cap.
+ACCOUNT_CAP_OVERRIDES: dict[str, int] = {}
+
+# Hard ceiling on one `collect` run. The CLI prints the per-account plan
+# and refuses to start if the plan's maximum spend exceeds this. Set it to
+# the X credit you are actually willing to burn (balance was $4.40 on
+# 2026-09-16); raise it deliberately, per run.
+X_RUN_BUDGET_USD = 4.00
+
+
+# ── Gap-fill slicing ───────────────────────────────────────────────
+# The X timeline endpoint returns newest-first. One capped fetch over a
+# long gap would keep the newest N tweets, drop everything older, and then
+# mark the account current -- a permanent hole (bitten after the May 10 ->
+# Sep gap: 9 of 17 accounts were over the cap). collect_user instead walks
+# the gap oldest-slice-first in windows of this many days, giving each
+# slice an even share of the account's cap, so a cap hit thins a slice
+# instead of deleting months.
+GAP_FILL_SLICE_DAYS = 14
+
 
 # ── Sentiment analysis ─────────────────────────────────────────────
 # Transformer model name (HuggingFace hub)
