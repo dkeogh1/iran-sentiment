@@ -406,20 +406,31 @@ def load_or_score_replies(force: bool = False) -> pd.DataFrame:
     from src.analysis.sentiment import analyze as run_analyze
 
     out = settings.REPLY_SENTIMENT_OUTPUT
+    cached = pd.DataFrame()
     if out.exists() and not force:
         logger.info("Loading cached reply sentiment from %s", out)
-        return pd.read_parquet(out)
+        cached = pd.read_parquet(out)
 
     replies = load_all_cached_replies()
-    if not replies:
+    if not replies and cached.empty:
         logger.warning("No cached replies found — run `collect-replies` first.")
         return pd.DataFrame()
 
-    logger.info("Scoring %d replies through VADER + RoBERTa", len(replies))
-    df = run_analyze(replies, use_vader=True, use_transformer=True, use_llm=False)
+    # Incremental: score only replies not already in the parquet, so a new
+    # tracked post costs its own RoBERTa pass, not everyone's.
+    have = set(cached["id"].astype(str)) if not cached.empty else set()
+    todo = [r for r in replies if str(r.get("id")) not in have]
+    if not todo:
+        logger.info("Reply sentiment up to date (%d scored, 0 new)", len(cached))
+        return cached
+
+    logger.info("Scoring %d new replies through VADER + RoBERTa (%d already cached)",
+                len(todo), len(cached))
+    scored = run_analyze(todo, use_vader=True, use_transformer=True, use_llm=False)
+    df = pd.concat([cached, scored], ignore_index=True) if not cached.empty else scored
     out.parent.mkdir(parents=True, exist_ok=True)
     df.to_parquet(out, index=False)
-    logger.info("Saved scored replies → %s", out)
+    logger.info("Saved scored replies → %s (%d total)", out, len(df))
     return df
 
 
