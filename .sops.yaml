@@ -1,0 +1,9 @@
+# sops creation rule: secrets.env (dotenv) is encrypted to the homelab age key,
+# the same recipient as homelab-infra/.sops.yaml. Private key on dkbl1:
+# ~/.config/homelab-infra/age.key. Restore the working file with
+#   sops -d secrets.env > .env
+# See homelab-infra docs/secrets.md. The rule matches the INPUT name (.env)
+# as well as secrets.env, which is how `sops -e .env > secrets.env` works.
+creation_rules:
+  - path_regex: \.env$
+    age: age1z9ad8mhd9xulrczzve0wh248tgwccfdgrcv9acnvhjqhqrm62ewqzlraqu

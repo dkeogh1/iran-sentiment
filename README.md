@@ -99,7 +99,17 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-Copy `.env.example` to `.env` and fill in credentials:
+Credentials live in `secrets.env`, committed encrypted with sops + age
+(homelab-infra `docs/secrets.md`; the private key is on dkbl1). Decrypt it
+into the working `.env` the code reads:
+
+```bash
+sops -d secrets.env > .env          # on dkbl1, SOPS_AGE_KEY_FILE=~/.config/homelab-infra/age.key
+sops secrets.env                    # edit a value in place; then re-run the line above
+sops -e .env > secrets.env          # or edit .env and re-encrypt; commit secrets.env
+```
+
+Without the key, copy `.env.example` to `.env` and fill in credentials:
 
 ```bash
 cp .env.example .env
