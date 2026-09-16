@@ -139,17 +139,18 @@ LLM_MODEL = "claude-haiku-4-5-20251001"
 TRUTH_SOCIAL_WEB_CLIENT_ID = "9X1Fdd-pxNsAgEDNi_SfhJWi8T-vLuV2WVzKIbkTCw4"
 TRUTH_SOCIAL_WEB_CLIENT_SECRET = "ozF8jzI4968oTKFkEnsBC-UbLPCdrSv0MkXGQu2o_-M"
 
-# New-device security-code flow (`python -m src.cli ts-login`). The web app
-# (bundle index-BbOBI-WJ.js, read 2026-09-16) POSTs /oauth/v2/token, gets
-# 403 security_code_required with challenge_id + supported_delivery_methods,
-# and later POSTs /oauth/v2/verify_security_code with the same password-
-# grant body plus challenge_id + security_code. The request that asks the
-# server to SEND the code lives in a lazy-loaded chunk we have not read, so
-# its shape is a guess kept here: fix endpoint/field if the server rejects
-# it (capture the real call from the browser's Network tab when choosing
-# a delivery method on truthsocial.com).
-TS_SECURITY_CODE_DELIVERY_ENDPOINT = "/oauth/v2/token"
-TS_SECURITY_CODE_DELIVERY_FIELD = "delivery_method"
+# New-device security-code flow (`python -m src.cli ts-login`), read from
+# the web app on 2026-09-16 (bundle index-BbOBI-WJ.js + chunk
+# sign-in-modal-Bqv85TDn.js):
+#   1. POST /oauth/v2/token (password grant) -> 403 security_code_required
+#      with challenge_id + supported_delivery_methods
+#   2. POST /oauth/v2/choose_delivery_method
+#      {username, challenge_id, delivery_method: "email"|"sms"}  (no creds)
+#   3. POST /oauth/v2/verify_security_code with the password-grant body
+#      + challenge_id + security_code -> access_token
+# Every call to step 1 mints a NEW challenge, so steps 2-3 must use the
+# challenge_id from the same run.
+TS_SECURITY_CODE_DELIVERY_ENDPOINT = "/oauth/v2/choose_delivery_method"
 # Headers the web app sends on auth calls; the device check may key on them.
 TS_AUTH_HEADERS = {"Browser": "Chrome", "OS": "Linux"}
 

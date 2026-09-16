@@ -167,11 +167,10 @@ def ts_login_cmd(deliver: str | None, challenge_id: str | None, code: str | None
                        f"--challenge-id {ch.challenge_id} --code <CODE>")
         else:
             click.secho(
-                "\nThe server rejected the delivery request as shaped in "
-                "settings.TS_SECURITY_CODE_DELIVERY_*. Capture the real call: on "
-                "truthsocial.com, open DevTools > Network, log in, pick the delivery "
-                "method, and copy the request URL + JSON body; then fix the two "
-                "settings and rerun.", fg="yellow")
+                "\nThe server rejected the delivery request. The shape mirrors the "
+                "web app's sign-in modal (settings.py, security-code flow); if Truth "
+                "Social changed it, capture the /oauth/v2/choose_delivery_method call "
+                "from DevTools > Network on truthsocial.com and compare.", fg="yellow")
         return
     path = save_token_to_env(token)
     click.secho(f"Logged in. TRUTHSOCIAL_TOKEN saved to {path} (starts {token[:8]}...)", fg="green")

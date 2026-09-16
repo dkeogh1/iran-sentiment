@@ -609,12 +609,11 @@ def request_security_code_delivery(username: str, password: str,
                                    challenge_id: str, method: str):
     """
     Ask the server to send the security code via `method` (email | sms).
-    Request shape is settings.TS_SECURITY_CODE_DELIVERY_* (a guess, see
-    settings). Returns the raw response so the caller can show it.
+    Mirrors the web app's sign-in modal exactly: {username, challenge_id,
+    delivery_method} and nothing else. Returns the raw response so the
+    caller can show it.
     """
-    body = {**_password_grant_body(username, password),
-            "challenge_id": challenge_id,
-            settings.TS_SECURITY_CODE_DELIVERY_FIELD: method}
+    body = {"username": username, "challenge_id": challenge_id, "delivery_method": method}
     return _auth_post(settings.TS_SECURITY_CODE_DELIVERY_ENDPOINT, body)
 
 

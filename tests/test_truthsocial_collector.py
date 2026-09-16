@@ -182,8 +182,8 @@ def test_login_flow_challenge_then_verify(monkeypatch, tmp_path):
         if path == "/oauth/v2/token" and "challenge_id" not in body:
             return _Resp(403, {"error": "security_code_required", "challenge_id": "ch1",
                                "supported_delivery_methods": [{"kind": "email", "value": "d***@g***"}]})
-        if path == ts.settings.TS_SECURITY_CODE_DELIVERY_ENDPOINT and \
-                body.get(ts.settings.TS_SECURITY_CODE_DELIVERY_FIELD) == "email":
+        if path == "/oauth/v2/choose_delivery_method" and \
+                body == {"username": "u", "challenge_id": "ch1", "delivery_method": "email"}:
             return _Resp(200, {"sent": True})
         if path == "/oauth/v2/verify_security_code" and body.get("security_code") == "654321":
             return _Resp(200, {"access_token": "tok_abc"})
@@ -196,7 +196,8 @@ def test_login_flow_challenge_then_verify(monkeypatch, tmp_path):
 
     r = ts.request_security_code_delivery("u", "p", "ch1", "email")
     assert r.status_code == 200
-    assert seen[-1][1]["challenge_id"] == "ch1" and seen[-1][1]["grant_type"] == "password"
+    assert seen[-1][0] == "/oauth/v2/choose_delivery_method"
+    assert "password" not in seen[-1][1] and "client_id" not in seen[-1][1]
 
     tok = ts.verify_security_code("u", "p", "ch1", "654321")
     assert tok == "tok_abc"
