@@ -577,6 +577,14 @@ def score_stance(
     for _, row in tqdm(df.iterrows(), total=len(df), desc="Stance"):
         text = (row.get("text") or "")[:500]
         user = row.get("user", "")
+        if len(text.strip()) < 3:
+            # Media-only reply (image/GIF): nothing to classify, no API call.
+            results.append({
+                "id": row["id"], "tracked_slug": row.get("tracked_slug"), "user": user,
+                "text": text[:100], score_col: row.get(score_col),
+                "stance": "media_only", "confidence": 0, "reason": "empty text",
+            })
+            continue
 
         try:
             resp = client.messages.create(
