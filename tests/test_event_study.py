@@ -28,3 +28,32 @@ def test_load_or_score_replies_scores_only_new(tmp_path, monkeypatch):
     scored_calls.clear()
     df2 = es.load_or_score_replies()
     assert scored_calls == [] and len(df2) == 3          # second run is a no-op
+
+
+def test_score_stance_scores_only_new(tmp_path, monkeypatch):
+    import types
+    out = tmp_path / "stance_sample.parquet"
+    monkeypatch.setattr(es, "STANCE_OUTPUT", out)
+    pd.DataFrame({"id": ["1"], "tracked_slug": ["old"], "stance": ["neutral_other"]}).to_parquet(out, index=False)
+
+    sent = []
+    class _Msgs:
+        def create(self, **kw):
+            sent.append(kw["messages"][0]["content"])
+            return types.SimpleNamespace(content=[types.SimpleNamespace(
+                text='{"stance": "antiwar_betrayal", "confidence": 0.8, "reason": "r"}')])
+    class _Client:
+        def __init__(self, *a, **k):
+            self.messages = _Msgs()
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+
+    sample = pd.DataFrame({"id": ["1", "2"], "tracked_slug": ["old", "new"],
+                           "user": ["u1", "u2"], "text": ["a", "b"],
+                           "score_transformer": [0.0, -0.5]})
+    res = es.score_stance(sample)
+    assert len(sent) == 1 and "b" in sent[0]             # only the uncached row hit the API
+    assert sorted(res["id"]) == ["1", "2"]
+    assert res.set_index("id").loc["2", "stance"] == "antiwar_betrayal"
+    assert len(pd.read_parquet(out)) == 2

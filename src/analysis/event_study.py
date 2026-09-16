@@ -540,11 +540,21 @@ def score_stance(
     Returns a DataFrame with columns: id, tracked_slug, user, text,
     score_transformer, stance, confidence, reason.
 
-    Caches to STANCE_OUTPUT. Pass `force=True` to re-score.
+    Caches to STANCE_OUTPUT and is incremental: rows whose id is already
+    in the cache are not re-sent (the sampler is seeded, so earlier posts'
+    samples reproduce and only new posts cost tokens). Pass `force=True`
+    to re-score everything.
     """
+    cached = pd.DataFrame()
     if STANCE_OUTPUT.exists() and not force:
-        logger.info("Loading cached stance scores from %s", STANCE_OUTPUT)
-        return pd.read_parquet(STANCE_OUTPUT)
+        cached = pd.read_parquet(STANCE_OUTPUT)
+        have = set(cached["id"].astype(str))
+        todo = df[~df["id"].astype(str).isin(have)]
+        if todo.empty:
+            logger.info("Stance scores up to date (%d cached, 0 new)", len(cached))
+            return cached
+        logger.info("Scoring stance for %d new sampled replies (%d cached)", len(todo), len(cached))
+        df = todo
 
     try:
         import anthropic
@@ -600,6 +610,8 @@ def score_stance(
             })
 
     result_df = pd.DataFrame(results)
+    if not cached.empty:
+        result_df = pd.concat([cached, result_df], ignore_index=True)
     STANCE_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     result_df.to_parquet(STANCE_OUTPUT, index=False)
     logger.info("Saved %d stance scores → %s", len(result_df), STANCE_OUTPUT)
