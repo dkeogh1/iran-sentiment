@@ -9,6 +9,7 @@ runs free on dkbl2's RTX 3080, plus a check that Haiku is a fit teacher:
 | `distill` | `stance-distill` | yes | can a fine-tuned RoBERTa-large reproduce the teacher on held-out posts? |
 | `local-llm` | `stance-local-llm` | yes | can Qwen2.5-7B (4-bit) with the same prompt match the teacher? |
 | `score-distilled` | `score-distilled` | yes | population-level stance for all 83k replies with the distilled model |
+| `sweep` | `stance-sweep` | yes | every recipe in `DISTILL_SWEEP` on the shared split, 5-fold CV on the best, final fit on all labels (~3 h, resumable) |
 
 Layout follows the quant tenant conventions (homelab-infra
 `docs/k8s-workloads.md`): one namespace, image built in-cluster and
@@ -25,6 +26,7 @@ scripts/k8s/run-now.sh teacher-check # ~$1 on Opus 5, prints per-tier agreement
 scripts/k8s/run-now.sh distill       # ~15 min on the 3080
 scripts/k8s/run-now.sh local-llm     # first run downloads ~15 GB of weights into /data/hf
 scripts/k8s/run-now.sh score-distilled
+scripts/k8s/run-now.sh sweep         # overnight; sweep_results.json / cv_results.json / sweep_summary.json
 scripts/k8s/sync-data.sh pull        # models/, metrics, parquet <- PVC
 ```
 

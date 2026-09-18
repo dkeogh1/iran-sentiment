@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from config import settings
 from src.analysis import stance_local as sl
 from src.analysis.sentiment import parse_llm_json
 
@@ -87,3 +88,47 @@ def test_score_llm_takes_first_text_block(monkeypatch):
     assert sent.score_llm("post", "u", model="claude-opus-5", max_tokens=1024, effort="low") == (-0.4, "negative")
     assert seen["max_tokens"] == 1024 and seen["output_config"] == {"effort": "low"}
     assert sent.score_llm("post", "u") == (-0.4, "negative") and seen["max_tokens"] == 200
+
+
+def test_kfold_indices_partition():
+    idx = sl.kfold_indices(103, 5, 0)
+    assert sorted(np.concatenate(idx)) == list(range(103))
+    assert max(len(i) for i in idx) - min(len(i) for i in idx) <= 1
+
+
+def test_pick_best_ignores_failed_and_nan():
+    res = [{"name": "a", "holdout": {"pearson": 0.5}},
+           {"name": "b", "holdout": {"pearson": float("nan")}},
+           {"name": "c", "error": "oom"},
+           {"name": "d", "holdout": {"pearson": 0.7}}]
+    assert sl.pick_best(res)["name"] == "d"
+    assert sl.pick_best([{"name": "c", "error": "oom"}]) == {}
+
+
+def test_sweep_resumes_and_reports(tmp_path, monkeypatch):
+    """Stub the GPU fit: sweep must skip done recipes, record failures, pick
+    the best, run CV, and fit the final model."""
+    calls = []
+    def fake_fit(train, test, **kw):
+        calls.append((kw["base_model"], kw.get("save_to") is not None, test is None))
+        if kw["base_model"] == "bad":
+            raise RuntimeError("CUDA OOM")
+        n = len(test) if test is not None else 0
+        pred = train[kw["label_col"]].mean() + np.zeros(n) if n else None
+        if test is not None:
+            pred = test[kw["label_col"]].values * (0.9 if kw["base_model"] == "good" else 0.1)
+        return {"base_model": kw["base_model"], "n_train": len(train)}, pred
+    monkeypatch.setattr(sl, "_fit_eval", fake_fit)
+    monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)
+    recipes = [{"name": "g", "base_model": "good", "max_len": 8, "lr": 1e-5, "epochs": 1},
+               {"name": "m", "base_model": "meh", "max_len": 8, "lr": 1e-5, "epochs": 1},
+               {"name": "x", "base_model": "bad", "max_len": 8, "lr": 1e-5, "epochs": 1}]
+    out = tmp_path / "sweep"
+    s = sl.sweep(_frame(), recipes=recipes, folds=2, out_dir=out)
+    assert s["best"] == "g" and "error" in s["results"][2]
+    assert s["cv"]["folds"] == 2 and "final" in s
+    assert [c[0] for c in calls] == ["good", "meh", "bad", "good", "good", "good"]  # 3 recipes + 2 folds + final
+    assert calls[-1][1] and calls[-1][2]                                         # final: saved, no test set
+    calls.clear()
+    s2 = sl.sweep(_frame(), recipes=recipes, folds=2, out_dir=out)                # resume: nothing refits...
+    assert calls == [("good", True, True)] and s2["best"] == "g"                  # ...except the unsaved final stub

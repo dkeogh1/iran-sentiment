@@ -4,7 +4,7 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 NS=iran-sentiment
-WHAT="${1:?usage: run-now.sh teacher-check|distill|local-llm|score-distilled}"
+WHAT="${1:?usage: run-now.sh teacher-check|distill|local-llm|score-distilled|sweep}"
 [ -d "$REPO/k8s/jobs/$WHAT" ] || { echo "unknown job: $WHAT" >&2; exit 2; }
 JOB="iran-$WHAT"
 kubectl -n $NS delete job "$JOB" --ignore-not-found --wait=true

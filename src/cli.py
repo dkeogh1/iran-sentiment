@@ -700,6 +700,24 @@ def stance_distill_cmd(base_model: str, epochs: int, label_col: str):
         click.echo(f"RoBERTa valence vs teacher (same rows): {m['roberta_valence_vs_teacher']}")
 
 
+@main.command("stance-sweep")
+@click.option("--folds", default=settings.DISTILL_CV_FOLDS, show_default=True)
+@click.option("--label-col", default="score_llm", show_default=True)
+def stance_sweep_cmd(folds: int, label_col: str):
+    """Run every distillation recipe in settings.DISTILL_SWEEP, cross-validate
+    the best, and fit it on all labels (GPU; hours). Resumable."""
+    from src.analysis.stance_local import sweep
+    s = sweep(_load_scored_frame(), folds=folds, label_col=label_col)
+    click.echo(f"{'recipe':16s}{'pearson':>9s}{'mae':>7s}{'sign agr':>10s}{'flips':>7s}")
+    for r in s["results"]:
+        h = r.get("holdout")
+        if h:
+            click.echo(f"{r['name']:16s}{h['pearson']:>9.3f}{h['mae']:>7.3f}{h['sign_agreement']:>10.1%}{h['sign_flip_rate']:>7.1%}")
+        else:
+            click.echo(f"{r['name']:16s}  FAILED: {r.get('error', '')[:60]}")
+    click.echo(f"\nbest: {s.get('best')}  cv: {s.get('cv')}")
+
+
 @main.command("stance-local-llm")
 @click.option("--model", default=settings.LOCAL_LLM_MODEL, show_default=True)
 @click.option("--n", default=settings.LOCAL_LLM_EVAL_N, show_default=True)

@@ -7,6 +7,8 @@ Stance-model experiments that run on the GPU node (k8s Jobs, see k8s/README.md):
   distill         fine-tune an encoder to regress score_llm; evaluate on a
                   held-out split against the teacher and against RoBERTa
                   valence (the current cheap scorer) on the same rows.
+  sweep           run every recipe in settings.DISTILL_SWEEP on that split,
+                  cross-validate the best, fit it on all labels.
   local_llm_eval  run an open instruct model with the same prompt as the
                   Claude scorer on a held-out sample; same metrics.
   score_replies   score every cached reply with the distilled model so the
@@ -158,6 +160,60 @@ def teacher_report(joined: pd.DataFrame, model: str, out_dir: Path | None = None
 
 # ── 2. Distillation (GPU) ──────────────────────────────────────────
 
+def _fit_eval(train: pd.DataFrame, test: pd.DataFrame | None, *, base_model: str, epochs: int,
+              batch_size: int, lr: float, max_len: int, seed: int, label_col: str,
+              work_dir: Path, save_to: Path | None = None) -> tuple[dict, np.ndarray | None]:
+    """Fine-tune `base_model` (regression head) on `train`; predict `test` if
+    given. Returns (info, predictions). Frees the GPU afterwards so a sweep
+    can chain recipes in one process."""
+    import gc
+    import torch
+    from datasets import Dataset
+    from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
+                              Trainer, TrainingArguments)
+
+    cuda = torch.cuda.is_available()
+    tok = AutoTokenizer.from_pretrained(base_model)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        base_model, num_labels=1, ignore_mismatched_sizes=True)
+
+    def to_ds(frame: pd.DataFrame) -> Dataset:
+        ds = Dataset.from_pandas(frame[["text", label_col]].rename(columns={label_col: "labels"}))
+        ds = ds.map(lambda b: tok(b["text"], truncation=True, max_length=max_len), batched=True)
+        return ds.map(lambda b: {"labels": [float(x) for x in b["labels"]]}, batched=True)
+
+    ds_train = to_ds(train)
+    ds_test = to_ds(test) if test is not None else None
+    # bf16 on Ampere+ (the 3080) is numerically safer than fp16 for DeBERTa-v3.
+    bf16 = cuda and torch.cuda.is_bf16_supported()
+    args = TrainingArguments(
+        output_dir=str(work_dir / "trainer"), num_train_epochs=epochs,
+        per_device_train_batch_size=batch_size, per_device_eval_batch_size=batch_size * 2,
+        learning_rate=lr, weight_decay=0.01, warmup_ratio=0.06,
+        bf16=bf16, fp16=cuda and not bf16,
+        eval_strategy="epoch" if ds_test is not None else "no", save_strategy="no",
+        logging_steps=50, report_to=[], seed=seed, dataloader_num_workers=2,
+    )
+    trainer = Trainer(model=model, args=args, train_dataset=ds_train, eval_dataset=ds_test,
+                      processing_class=tok)
+    out = trainer.train()
+    pred = None
+    if ds_test is not None:
+        pred = np.clip(trainer.predict(ds_test).predictions.reshape(-1), -1, 1)
+    if save_to is not None:
+        model.save_pretrained(save_to)
+        tok.save_pretrained(save_to)
+    info = {"base_model": base_model, "epochs": epochs, "lr": lr, "max_len": max_len,
+            "batch_size": batch_size, "seed": seed, "n_train": int(len(train)),
+            "train_runtime_s": float(out.metrics.get("train_runtime", 0)),
+            "train_loss": float(out.metrics.get("train_loss", float("nan")))}
+    del trainer, model
+    gc.collect()
+    if cuda:
+        torch.cuda.empty_cache()
+    return info, pred
+
+
 def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
             epochs: int = settings.DISTILL_EPOCHS, holdout: float = settings.DISTILL_HOLDOUT,
             batch_size: int = settings.DISTILL_BATCH_SIZE, lr: float = settings.DISTILL_LR,
@@ -165,55 +221,122 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
             label_col: str = "score_llm", out_dir: Path | None = None) -> dict:
     """Fine-tune `base_model` to regress `label_col` in [-1, 1]. Saves the model
     to MODELS_DIR/stance_distilled and metrics to distill_metrics.json."""
-    import torch
-    from datasets import Dataset
-    from transformers import (AutoModelForSequenceClassification, AutoTokenizer,
-                              Trainer, TrainingArguments)
-
     out_dir = out_dir or (settings.MODELS_DIR / "stance_distilled")
     base = training_frame(df)
     if label_col != "score_llm":
         base = base[base[label_col].notna()]
     train, test = stratified_split(base, holdout, seed)
-    logger.info("distill: %d train / %d holdout rows, base=%s, device=%s",
-                len(train), len(test), base_model, "cuda" if torch.cuda.is_available() else "cpu")
-
-    tok = AutoTokenizer.from_pretrained(base_model)
-    model = AutoModelForSequenceClassification.from_pretrained(base_model, num_labels=1)
-
-    def to_ds(frame: pd.DataFrame) -> Dataset:
-        ds = Dataset.from_pandas(frame[["text", label_col]].rename(columns={label_col: "labels"}))
-        ds = ds.map(lambda b: tok(b["text"], truncation=True, max_length=max_len), batched=True)
-        return ds.map(lambda b: {"labels": [float(x) for x in b["labels"]]}, batched=True)
-
-    ds_train, ds_test = to_ds(train), to_ds(test)
-    args = TrainingArguments(
-        output_dir=str(out_dir / "trainer"), num_train_epochs=epochs,
-        per_device_train_batch_size=batch_size, per_device_eval_batch_size=batch_size * 2,
-        learning_rate=lr, weight_decay=0.01, warmup_ratio=0.06,
-        fp16=torch.cuda.is_available(), eval_strategy="epoch", save_strategy="no",
-        logging_steps=50, report_to=[], seed=seed, dataloader_num_workers=2,
-    )
-    trainer = Trainer(model=model, args=args, train_dataset=ds_train, eval_dataset=ds_test,
-                      processing_class=tok)
-    trainer.train()
-
-    pred = trainer.predict(ds_test).predictions.reshape(-1)
-    test = test.assign(score_distilled=np.clip(pred, -1, 1))
+    logger.info("distill: %d train / %d holdout rows, base=%s", len(train), len(test), base_model)
+    info, pred = _fit_eval(train, test, base_model=base_model, epochs=epochs, batch_size=batch_size,
+                           lr=lr, max_len=max_len, seed=seed, label_col=label_col,
+                           work_dir=out_dir, save_to=out_dir)
+    test = test.assign(score_distilled=pred)
     metrics = {
-        "base_model": base_model, "epochs": epochs, "n_train": int(len(train)),
-        "n_holdout": int(len(test)), "label_col": label_col,
+        **info, "n_holdout": int(len(test)), "label_col": label_col,
         "distilled_vs_teacher": agreement(test[label_col].values, test["score_distilled"].values),
         "distilled_by_tier": agreement_by_tier(test, label_col, "score_distilled").reset_index().to_dict("records"),
     }
     if "score_transformer" in test:
         metrics["roberta_valence_vs_teacher"] = agreement(test[label_col].values, test["score_transformer"].values)
-    model.save_pretrained(out_dir)
-    tok.save_pretrained(out_dir)
     test.to_parquet(out_dir / "holdout_predictions.parquet", index=False)
     _write_json(out_dir / "distill_metrics.json", metrics)
     logger.info("distill: %s", json.dumps(metrics["distilled_vs_teacher"]))
     return metrics
+
+
+def kfold_indices(n: int, folds: int, seed: int) -> list[np.ndarray]:
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n)
+    return [perm[i::folds] for i in range(folds)]
+
+
+def pick_best(results: list[dict], key: str = "pearson") -> dict:
+    """Best sweep entry by holdout `key`; entries missing it (failed fits) lose."""
+    def score(r):
+        h = r.get("holdout")
+        v = h.get(key) if isinstance(h, dict) else None
+        return v if isinstance(v, (int, float)) and v == v else None  # drop missing / NaN
+    ok = [r for r in results if score(r) is not None]
+    return max(ok, key=score) if ok else {}
+
+
+def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = settings.DISTILL_CV_FOLDS,
+          holdout: float = settings.DISTILL_HOLDOUT, seed: int = settings.DISTILL_SEED,
+          batch_size: int = settings.DISTILL_BATCH_SIZE, label_col: str = "score_llm",
+          out_dir: Path | None = None) -> dict:
+    """Run every recipe on the shared split, cross-validate the best, fit it on
+    all labels. Results accumulate in sweep_results.json so a killed run resumes."""
+    recipes = recipes or settings.DISTILL_SWEEP
+    out_dir = out_dir or (settings.MODELS_DIR / "sweep")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    results_path = out_dir / "sweep_results.json"
+    results = json.loads(results_path.read_text()) if results_path.exists() else []
+    done = {r["name"] for r in results}
+
+    base = training_frame(df)
+    if label_col != "score_llm":
+        base = base[base[label_col].notna()]
+    train, test = stratified_split(base, holdout, seed)
+    logger.info("sweep: %d recipes (%d done), %d train / %d holdout", len(recipes), len(done),
+                len(train), len(test))
+
+    for rc in recipes:
+        if rc["name"] in done:
+            continue
+        logger.info("sweep: %s", rc)
+        try:
+            info, pred = _fit_eval(train, test, base_model=rc["base_model"], epochs=rc["epochs"],
+                                   batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
+                                   max_len=rc["max_len"], seed=seed, label_col=label_col,
+                                   work_dir=out_dir / rc["name"])
+            t = test.assign(pred=pred)
+            entry = {"name": rc["name"], **info,
+                     "holdout": agreement(t[label_col].values, t["pred"].values),
+                     "by_tier": agreement_by_tier(t, label_col, "pred").reset_index().to_dict("records")}
+        except Exception as e:  # a recipe that OOMs or fails to load must not sink the sweep
+            logger.exception("sweep: %s failed", rc["name"])
+            entry = {"name": rc["name"], **rc, "error": str(e)[:300]}
+        results.append(entry)
+        results_path.write_text(json.dumps(results, indent=2, default=float))
+        logger.info("sweep: %s -> %s", rc["name"], json.dumps(entry.get("holdout", entry.get("error"))))
+
+    best = pick_best(results)
+    summary = {"results": results, "best": best.get("name")}
+    if not best:
+        _write_json(out_dir / "sweep_summary.json", summary)
+        return summary
+    rc = next(r for r in recipes if r["name"] == best["name"])
+
+    # Cross-validation on the best recipe: error bars on the holdout number.
+    cv_path = out_dir / "cv_results.json"
+    cv = json.loads(cv_path.read_text()) if cv_path.exists() else []
+    idx = kfold_indices(len(base), folds, seed)
+    for k in range(len(cv), folds):
+        te = base.iloc[idx[k]].reset_index(drop=True)
+        tr = base.drop(base.index[idx[k]]).reset_index(drop=True)
+        _, pred = _fit_eval(tr, te, base_model=rc["base_model"], epochs=rc["epochs"],
+                            batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
+                            max_len=rc["max_len"], seed=seed + k, label_col=label_col,
+                            work_dir=out_dir / f"cv{k}")
+        cv.append({"fold": k, **agreement(te[label_col].values, pred)})
+        cv_path.write_text(json.dumps(cv, indent=2, default=float))
+        logger.info("sweep: cv fold %d -> %s", k, json.dumps(cv[-1]))
+    arr = np.array([[c["pearson"], c["sign_agreement"], c["sign_flip_rate"]] for c in cv])
+    summary["cv"] = {"folds": folds, "pearson_mean": float(arr[:, 0].mean()), "pearson_std": float(arr[:, 0].std()),
+                     "sign_agreement_mean": float(arr[:, 1].mean()), "sign_agreement_std": float(arr[:, 1].std()),
+                     "sign_flip_mean": float(arr[:, 2].mean()), "sign_flip_std": float(arr[:, 2].std())}
+
+    # Final model on ALL labels.
+    final_dir = settings.MODELS_DIR / "stance_distilled_final"
+    if not (final_dir / "config.json").exists():
+        info, _ = _fit_eval(base, None, base_model=rc["base_model"], epochs=rc["epochs"],
+                            batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
+                            max_len=rc["max_len"], seed=seed, label_col=label_col,
+                            work_dir=out_dir / "final", save_to=final_dir)
+        summary["final"] = {**info, "path": str(final_dir)}
+    _write_json(out_dir / "sweep_summary.json", summary)
+    logger.info("sweep: best=%s cv=%s", best["name"], json.dumps(summary.get("cv")))
+    return summary
 
 
 def score_with_distilled(texts: list[str], model_dir: Path | None = None,

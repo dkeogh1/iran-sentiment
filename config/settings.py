@@ -134,6 +134,22 @@ DISTILL_BATCH_SIZE = 16
 DISTILL_LR = 2e-5
 DISTILL_MAX_LEN = 128
 DISTILL_SEED = 42
+# Distillation sweep (stance-sweep Job, ~2-3 h on the 3080): each recipe is
+# fit on the same per-tier split as `distill`; the best by holdout Pearson
+# gets DISTILL_CV_FOLDS-fold cross-validation for error bars and a final
+# fit on ALL labels -> MODELS_DIR/stance_distilled_final.
+DISTILL_SWEEP = [
+    {"name": "rl-128-2e5-3",  "base_model": "roberta-large", "max_len": 128, "lr": 2e-5, "epochs": 3},
+    {"name": "rl-128-1e5-4",  "base_model": "roberta-large", "max_len": 128, "lr": 1e-5, "epochs": 4},
+    {"name": "rl-256-2e5-3",  "base_model": "roberta-large", "max_len": 256, "lr": 2e-5, "epochs": 3},
+    {"name": "rl-128-2e5-5",  "base_model": "roberta-large", "max_len": 128, "lr": 2e-5, "epochs": 5},
+    {"name": "deb-128-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 128, "lr": 1e-5, "epochs": 3},
+    {"name": "deb-256-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 256, "lr": 1e-5, "epochs": 3},
+    {"name": "twr-128-3e5-4", "base_model": "cardiffnlp/twitter-roberta-base-sentiment-latest", "max_len": 128, "lr": 3e-5, "epochs": 4},
+    {"name": "rb-128-3e5-4",  "base_model": "roberta-base", "max_len": 128, "lr": 3e-5, "epochs": 4},
+]
+DISTILL_CV_FOLDS = 5
+
 # Local LLM: same prompt as the Claude scorer, run on the GPU in 4-bit.
 LOCAL_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 LOCAL_LLM_EVAL_N = 1000
