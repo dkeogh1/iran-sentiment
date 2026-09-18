@@ -163,7 +163,7 @@ sample:
 | Two-week ceasefire | 16,808 | +0.005 | 39% | 20% | 41% | -0.05 / +0.04 / +0.16 |
 | "Hold off on our planned Military attack" | 8,800 | +0.062 | 39% | 17% | 45% | +0.03 / +0.08 / +0.16 |
 | "The Deal with Iran is now complete" | 12,609 | +0.117 | 25% | 21% | **54%** | +0.03 / +0.16 / +0.28 |
-| "Striking Iranian Targets near Hormuz" | 4,590 | **+0.164** | 28% | 20% | 52% | +0.10 / +0.20 / +0.28 |
+| "Striking Iranian Targets near Hormuz" | 4,590 | **+0.164** | 28% | 20% | 52% | +0.10 / +0.19 / +0.30 |
 
 - **Stance and tone diverge most on the May 18 post.** By valence it
   was the angriest post in the dataset (-0.48); by stance it is mildly
