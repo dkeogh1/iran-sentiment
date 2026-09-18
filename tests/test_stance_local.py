@@ -130,8 +130,8 @@ def test_sweep_resumes_and_reports(tmp_path, monkeypatch):
     assert [c[0] for c in calls] == ["good", "meh", "bad", "good", "good", "good"]  # 3 recipes + 2 folds + final
     assert calls[-1][1] and calls[-1][2]                                         # final: saved, no test set
     calls.clear()
-    s2 = sl.sweep(_frame(), recipes=recipes, folds=2, out_dir=out)                # resume: nothing refits...
-    assert calls == [("good", True, True)] and s2["best"] == "g"                  # ...except the unsaved final stub
+    s2 = sl.sweep(_frame(), recipes=recipes, folds=2, out_dir=out)                # resume: the failed recipe is
+    assert [c[0] for c in calls] == ["bad", "good"] and s2["best"] == "g"        # retried; final stub refits (no config.json)
 
 
 def test_strip_thinking_then_parse():

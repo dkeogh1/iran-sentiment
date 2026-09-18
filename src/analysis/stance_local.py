@@ -272,6 +272,8 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
     out_dir.mkdir(parents=True, exist_ok=True)
     results_path = out_dir / "sweep_results.json"
     results = json.loads(results_path.read_text()) if results_path.exists() else []
+    # Failed recipes (OOM, missing dependency) are retried on resume.
+    results = [r for r in results if "error" not in r]
     done = {r["name"] for r in results}
 
     base = training_frame(df)
@@ -309,8 +311,12 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
     rc = next(r for r in recipes if r["name"] == best["name"])
 
     # Cross-validation on the best recipe: error bars on the holdout number.
+    # Tied to the recipe name: if a resumed sweep finds a new best, CV and
+    # the final fit are redone.
     cv_path = out_dir / "cv_results.json"
     cv = json.loads(cv_path.read_text()) if cv_path.exists() else []
+    if cv and cv[0].get("recipe") != best["name"]:
+        cv = []
     idx = kfold_indices(len(base), folds, seed)
     for k in range(len(cv), folds):
         te = base.iloc[idx[k]].reset_index(drop=True)
@@ -319,7 +325,7 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
                             batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                             max_len=rc["max_len"], seed=seed + k, label_col=label_col,
                             work_dir=out_dir / f"cv{k}")
-        cv.append({"fold": k, **agreement(te[label_col].values, pred)})
+        cv.append({"fold": k, "recipe": best["name"], **agreement(te[label_col].values, pred)})
         cv_path.write_text(json.dumps(cv, indent=2, default=float))
         logger.info("sweep: cv fold %d -> %s", k, json.dumps(cv[-1]))
     arr = np.array([[c["pearson"], c["sign_agreement"], c["sign_flip_rate"]] for c in cv])
@@ -329,11 +335,14 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
 
     # Final model on ALL labels.
     final_dir = settings.MODELS_DIR / "stance_distilled_final"
-    if not (final_dir / "config.json").exists():
+    marker = final_dir / "recipe.txt"
+    if not (final_dir / "config.json").exists() or \
+            (marker.exists() and marker.read_text().strip() != best["name"]):
         info, _ = _fit_eval(base, None, base_model=rc["base_model"], epochs=rc["epochs"],
                             batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                             max_len=rc["max_len"], seed=seed, label_col=label_col,
                             work_dir=out_dir / "final", save_to=final_dir)
+        marker.write_text(best["name"])
         summary["final"] = {**info, "path": str(final_dir)}
     _write_json(out_dir / "sweep_summary.json", summary)
     logger.info("sweep: best=%s cv=%s", best["name"], json.dumps(summary.get("cv")))
