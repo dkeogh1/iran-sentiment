@@ -31,6 +31,14 @@ PRICE_IN, PRICE_OUT = 5.0, 25.0        # Opus 5 $/MTok (claude-api reference tab
 BATCH_DISCOUNT = 0.5
 
 
+def _client():
+    """Anthropic client with the project's .env loaded (ANTHROPIC_API_KEY)."""
+    import anthropic
+    from dotenv import load_dotenv
+    load_dotenv(settings.PROJECT_ROOT / ".env", override=True)
+    return anthropic.Anthropic()
+
+
 def tag_for(model: str) -> str:
     """Column suffix for a teacher model: claude-opus-5 -> opus."""
     parts = model.split("-")
@@ -82,7 +90,6 @@ def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
            max_tokens: int = settings.TEACHER_MAX_TOKENS, effort: str = settings.TEACHER_EFFORT,
            only_ids: set[str] | None = None) -> dict:
     """Create the batch and record its id. Refuses if a batch is still open."""
-    import anthropic
     st = json.loads(state_path().read_text()) if state_path().exists() else {}
     if st.get("batch_id") and st.get("status") not in (None, "ended", "collected"):
         raise RuntimeError(f"batch {st['batch_id']} is still {st['status']} -- collect it first")
@@ -90,7 +97,7 @@ def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
     if posts.empty:
         logger.info("relabel: nothing to submit (all posts already labelled by %s)", model)
         return st
-    client = anthropic.Anthropic()
+    client = _client()
     batch = client.messages.batches.create(requests=build_requests(posts, model, max_tokens, effort))
     st = {"batch_id": batch.id, "model": model, "effort": effort, "max_tokens": max_tokens,
           "n_submitted": int(len(posts)), "status": batch.processing_status,
@@ -102,9 +109,8 @@ def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
 
 
 def status() -> dict:
-    import anthropic
     st = json.loads(state_path().read_text())
-    b = anthropic.Anthropic().messages.batches.retrieve(st["batch_id"])
+    b = _client().messages.batches.retrieve(st["batch_id"])
     st["status"] = b.processing_status
     st["counts"] = {k: getattr(b.request_counts, k) for k in
                     ("processing", "succeeded", "errored", "canceled", "expired")}
@@ -133,12 +139,11 @@ def parse_result(result) -> dict:
 
 def collect() -> dict:
     """Pull results of the recorded batch into the teacher parquet (append)."""
-    import anthropic
     st = status()
     if st["status"] != "ended":
         logger.info("relabel: batch %s still %s (%s)", st["batch_id"], st["status"], st.get("counts"))
         return st
-    client = anthropic.Anthropic()
+    client = _client()
     rows = [parse_result(r) for r in client.messages.batches.results(st["batch_id"])]
     new = pd.DataFrame(rows)
     good = new[new["score_teacher"].notna()].drop(columns=["outcome"])
