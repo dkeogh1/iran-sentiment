@@ -254,14 +254,15 @@ labels the dataset carries:
 | RoBERTa valence (`score_transformer`, the current quick-look scorer) | 0.28 | 0.45 | 38% | 14.9% |
 | Qwen2.5-7B-Instruct, 4-bit, same prompt as Haiku (920 posts) | 0.47 | 0.38 | 49% | 9.7% |
 | Qwen3-8B, 4-bit, thinking off, same prompt (920 posts) | 0.48 | 0.38 | 63% | 8.8% |
+| Qwen3-8B, 4-bit, thinking on, 1,024-token budget (363 of 400 posts parsed) | 0.59 | 0.32 | 68% | 5.2% |
 | **RoBERTa-large fine-tuned on the Haiku labels** (3,893 posts) | **0.74** | **0.16** | **75%** | **5.2%** |
 
 The distilled encoder is the clear winner: 7.5 minutes of training, then
 83,000 replies in a few minutes. A recipe sweep (four RoBERTa-large
 settings, the Twitter-pretrained RoBERTa base, roberta-base) landed
 everything between 0.71 and 0.75 Pearson; the winner, RoBERTa-large for
-5 epochs, cross-validates at **0.766 +/- 0.007** Pearson and 78% sign
-agreement over 5 folds, so the number is stable and the ceiling is the
+5 epochs, cross-validates at **0.76 Pearson (5 folds, spread under
+0.01)** and 78% sign agreement, so the number is stable and the ceiling is the
 labels, not the architecture. The final model trained on all 19,457
 labels is `data/models/stance_distilled_final/`. It is strongest exactly where the valence
 model failed, 0.90 Pearson and 0.4% flips on the religious tier. The
@@ -269,6 +270,10 @@ open 7B/8B models with the Claude prompt are only modestly better than
 valence and not a Haiku substitute; the 2025 generation (Qwen3) fixes
 many sign errors (63% agreement vs 49%) but its correlation with the
 teacher is unchanged, and it is weakest on the admin tier (0.18).
+Letting it reason first lifts it to 0.59 with 5% flips, at a price:
+9% of answers never reached JSON inside the token budget and 400 posts
+took 2.6 hours, so it is neither accurate enough to replace the
+distilled model nor fast enough to score 83,000 replies.
 
 **But the teacher has a blind spot.** A check of 497 posts, 71 per tier,
 relabelled by Claude Opus 5 shows Haiku and Opus agreeing on most tiers
