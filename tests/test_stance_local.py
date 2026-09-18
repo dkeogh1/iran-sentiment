@@ -132,3 +132,9 @@ def test_sweep_resumes_and_reports(tmp_path, monkeypatch):
     calls.clear()
     s2 = sl.sweep(_frame(), recipes=recipes, folds=2, out_dir=out)                # resume: nothing refits...
     assert calls == [("good", True, True)] and s2["best"] == "g"                  # ...except the unsaved final stub
+
+
+def test_strip_thinking_then_parse():
+    raw = '<think>\nThe post praises the strikes... {"score": 0.1}\n</think>\n{"score": 0.8, "label": "positive"}'
+    assert parse_llm_json(sl.strip_thinking(raw))["score"] == 0.8
+    assert sl.strip_thinking('{"score": -0.2}') == '{"score": -0.2}'

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -371,13 +372,22 @@ def score_replies(model_dir: Path | None = None) -> pd.DataFrame:
 
 # ── 3. Local LLM (GPU) ─────────────────────────────────────────────
 
+def strip_thinking(text: str) -> str:
+    """Drop a leading <think>...</think> block (Qwen3-style reasoning)."""
+    return re.sub(r"<think>.*?</think>", "", text, count=1, flags=re.S).strip()
+
+
 def local_llm_eval(df: pd.DataFrame, *, model_name: str = settings.LOCAL_LLM_MODEL,
                    n: int = settings.LOCAL_LLM_EVAL_N, batch_size: int = settings.LOCAL_LLM_BATCH,
                    max_new_tokens: int = settings.LOCAL_LLM_MAX_NEW_TOKENS,
+                   thinking: bool = False,
                    seed: int = settings.DISTILL_SEED, holdout: float = settings.DISTILL_HOLDOUT,
                    out_dir: Path | None = None) -> dict:
     """Score a sample of the SAME holdout split the distillation uses with an
-    open instruct model in 4-bit, using the Claude prompt verbatim."""
+    open instruct model in 4-bit, using the Claude prompt verbatim.
+    `thinking` toggles the chat template's reasoning mode where the model
+    supports it (Qwen3 `enable_thinking`); the <think> block is stripped
+    before parsing. Give thinking runs a max_new_tokens in the hundreds."""
     import torch
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     from src.analysis.sentiment import llm_prompt, parse_llm_json
@@ -396,16 +406,21 @@ def local_llm_eval(df: pd.DataFrame, *, model_name: str = settings.LOCAL_LLM_MOD
     model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=quant,
                                                  device_map="auto").eval()
     scores, labels, raws = [], [], []
-    prompts = [tok.apply_chat_template([{"role": "user", "content": llm_prompt(r.text, r.user)}],
-                                       tokenize=False, add_generation_prompt=True)
-               for r in sample.itertuples()]
+    def render(text, user):
+        msgs = [{"role": "user", "content": llm_prompt(text, user)}]
+        try:
+            return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True,
+                                           enable_thinking=thinking)
+        except TypeError:  # template without a thinking switch
+            return tok.apply_chat_template(msgs, tokenize=False, add_generation_prompt=True)
+    prompts = [render(r.text, r.user) for r in sample.itertuples()]
     for i in range(0, len(prompts), batch_size):
         enc = tok(prompts[i:i + batch_size], return_tensors="pt", padding=True).to(model.device)
         with torch.no_grad():
             gen = model.generate(**enc, max_new_tokens=max_new_tokens, do_sample=False,
                                  pad_token_id=tok.pad_token_id)
         for j, seq in enumerate(gen):
-            text = tok.decode(seq[enc["input_ids"].shape[1]:], skip_special_tokens=True)
+            text = strip_thinking(tok.decode(seq[enc["input_ids"].shape[1]:], skip_special_tokens=True))
             data = parse_llm_json(text) or {}
             sc = data.get("score")
             scores.append(float(sc) if isinstance(sc, (int, float)) else np.nan)
@@ -413,10 +428,10 @@ def local_llm_eval(df: pd.DataFrame, *, model_name: str = settings.LOCAL_LLM_MOD
             raws.append(text[:200])
         logger.info("local llm: %d/%d", min(i + batch_size, len(prompts)), len(prompts))
     sample = sample.assign(score_local=scores, label_local=labels, raw_local=raws)
-    tag = model_name.replace("/", "_")
+    tag = model_name.replace("/", "_") + ("_think" if thinking else "")
     sample.to_parquet(out_dir / f"local_llm_{tag}.parquet", index=False)
     metrics = {
-        "model": model_name, "n": int(len(sample)),
+        "model": model_name, "thinking": thinking, "max_new_tokens": max_new_tokens, "n": int(len(sample)),
         "unparseable_rate": float(np.mean(np.isnan(scores))),
         "local_vs_teacher": agreement(sample["score_llm"].values, sample["score_local"].values),
         "local_by_tier": agreement_by_tier(sample, "score_llm", "score_local").reset_index().to_dict("records"),

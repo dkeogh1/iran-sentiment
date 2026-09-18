@@ -721,11 +721,18 @@ def stance_sweep_cmd(folds: int, label_col: str):
 @main.command("stance-local-llm")
 @click.option("--model", default=settings.LOCAL_LLM_MODEL, show_default=True)
 @click.option("--n", default=settings.LOCAL_LLM_EVAL_N, show_default=True)
-def stance_local_llm_cmd(model: str, n: int):
+@click.option("--thinking/--no-thinking", default=False, show_default=True,
+              help="Enable the model's reasoning mode (Qwen3 enable_thinking)")
+@click.option("--max-new-tokens", default=None, type=int,
+              help=f"Generation budget (default {settings.LOCAL_LLM_MAX_NEW_TOKENS}; use ~1024 with --thinking)")
+def stance_local_llm_cmd(model: str, n: int, thinking: bool, max_new_tokens: int | None):
     """Score a held-out sample with an open instruct model (GPU) and report
     agreement with the teacher."""
     from src.analysis.stance_local import local_llm_eval
-    m = local_llm_eval(_load_scored_frame(), model_name=model, n=n)
+    kw = {"thinking": thinking}
+    if max_new_tokens:
+        kw["max_new_tokens"] = max_new_tokens
+    m = local_llm_eval(_load_scored_frame(), model_name=model, n=n, **kw)
     click.echo(f"unparseable: {m['unparseable_rate']:.1%}")
     click.echo(f"local vs teacher: {m['local_vs_teacher']}")
     if "roberta_valence_vs_teacher" in m:
