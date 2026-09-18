@@ -342,6 +342,7 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
                             batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                             max_len=rc["max_len"], seed=seed, label_col=label_col,
                             work_dir=out_dir / "final", save_to=final_dir)
+        final_dir.mkdir(parents=True, exist_ok=True)
         marker.write_text(best["name"])
         summary["final"] = {**info, "path": str(final_dir)}
     _write_json(out_dir / "sweep_summary.json", summary)
