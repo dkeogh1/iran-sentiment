@@ -143,8 +143,11 @@ DISTILL_SWEEP = [
     {"name": "rl-128-1e5-4",  "base_model": "roberta-large", "max_len": 128, "lr": 1e-5, "epochs": 4},
     {"name": "rl-256-2e5-3",  "base_model": "roberta-large", "max_len": 256, "lr": 2e-5, "epochs": 3},
     {"name": "rl-128-2e5-5",  "base_model": "roberta-large", "max_len": 128, "lr": 2e-5, "epochs": 5},
-    {"name": "deb-128-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 128, "lr": 1e-5, "epochs": 3},
-    {"name": "deb-256-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 256, "lr": 1e-5, "epochs": 3},
+    # DeBERTa-v3-large OOMs on the 3080 at batch 16: batch 8 x 2 accumulation.
+    {"name": "deb-128-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 128, "lr": 1e-5, "epochs": 3,
+     "batch_size": 8, "grad_accum": 2},
+    {"name": "deb-256-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 256, "lr": 1e-5, "epochs": 3,
+     "batch_size": 4, "grad_accum": 4},
     {"name": "twr-128-3e5-4", "base_model": "cardiffnlp/twitter-roberta-base-sentiment-latest", "max_len": 128, "lr": 3e-5, "epochs": 4},
     {"name": "rb-128-3e5-4",  "base_model": "roberta-base", "max_len": 128, "lr": 3e-5, "epochs": 4},
 ]
