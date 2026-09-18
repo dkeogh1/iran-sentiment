@@ -18,3 +18,4 @@ credentials/
 secrets/
 keys/
 .DS_Store
+data/models/
