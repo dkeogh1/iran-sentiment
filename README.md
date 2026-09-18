@@ -256,7 +256,13 @@ labels the dataset carries:
 | **RoBERTa-large fine-tuned on the Haiku labels** (3,893 posts) | **0.74** | **0.16** | **75%** | **5.2%** |
 
 The distilled encoder is the clear winner: 7.5 minutes of training, then
-83,000 replies in seconds. It is strongest exactly where the valence
+83,000 replies in a few minutes. A recipe sweep (four RoBERTa-large
+settings, the Twitter-pretrained RoBERTa base, roberta-base) landed
+everything between 0.71 and 0.75 Pearson; the winner, RoBERTa-large for
+5 epochs, cross-validates at **0.766 +/- 0.007** Pearson and 78% sign
+agreement over 5 folds, so the number is stable and the ceiling is the
+labels, not the architecture. The final model trained on all 19,457
+labels is `data/models/stance_distilled_final/`. It is strongest exactly where the valence
 model failed, 0.90 Pearson and 0.4% flips on the religious tier. The
 open 7B model with the Claude prompt is only modestly better than
 valence and not a Haiku substitute.
