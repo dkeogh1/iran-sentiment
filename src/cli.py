@@ -725,13 +725,19 @@ def stance_sweep_cmd(folds: int, label_col: str):
               help="Enable the model's reasoning mode (Qwen3 enable_thinking)")
 @click.option("--max-new-tokens", default=None, type=int,
               help=f"Generation budget (default {settings.LOCAL_LLM_MAX_NEW_TOKENS}; use ~1024 with --thinking)")
-def stance_local_llm_cmd(model: str, n: int, thinking: bool, max_new_tokens: int | None):
+@click.option("--batch-size", default=None, type=int,
+              help=f"Prompts per generate() call (default {settings.LOCAL_LLM_BATCH}; 2-4 with --thinking "
+                   "on a 10 GB GPU, the KV cache scales with batch x max_new_tokens)")
+def stance_local_llm_cmd(model: str, n: int, thinking: bool, max_new_tokens: int | None,
+                         batch_size: int | None):
     """Score a held-out sample with an open instruct model (GPU) and report
     agreement with the teacher."""
     from src.analysis.stance_local import local_llm_eval
     kw = {"thinking": thinking}
     if max_new_tokens:
         kw["max_new_tokens"] = max_new_tokens
+    if batch_size:
+        kw["batch_size"] = batch_size
     m = local_llm_eval(_load_scored_frame(), model_name=model, n=n, **kw)
     click.echo(f"unparseable: {m['unparseable_rate']:.1%}")
     click.echo(f"local vs teacher: {m['local_vs_teacher']}")

@@ -29,7 +29,7 @@ spec:
         - name: local-llm-qwen3-think
           image: iran-sentiment
           imagePullPolicy: IfNotPresent
-          args: ['stance-local-llm', '--model', 'Qwen/Qwen3-8B', '--thinking', '--max-new-tokens', '1024']
+          args: ['stance-local-llm', '--model', 'Qwen/Qwen3-8B', '--thinking', '--max-new-tokens', '1024', '--batch-size', '2', '--n', '400']
           envFrom:
             - secretRef:
                 name: iran-sentiment-env
