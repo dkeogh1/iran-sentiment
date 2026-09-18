@@ -323,10 +323,45 @@ def score_roberta_inplace(
 
 # ── Phase 3: Claude LLM (optional) ─────────────────────────────────
 
-def score_llm(text: str, user: str = "", context: str = "Iran war") -> tuple[float | None, str | None]:
+def llm_prompt(text: str, user: str = "", context: str = "Iran war") -> str:
+    """The stance prompt shared by the Claude scorer and the local-LLM experiment."""
+    return (
+        f"Score the sentiment of this social media post about the {context}. "
+        f"The post is by @{user}.\n\n"
+        f'Post: """{text}"""\n\n'
+        "Respond with ONLY valid JSON: "
+        '{"score": <float from -1.0 (very negative/anti-war) to 1.0 (very positive/pro-war)>, '
+        '"label": "<negative|neutral|positive>", '
+        '"reasoning": "<one sentence>"}'
+    )
+
+
+def parse_llm_json(raw: str) -> dict | None:
+    """Parse the JSON object a model returned, tolerating ```json fences and
+    leading/trailing prose. None if no object parses."""
+    raw = (raw or "").strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[:-3].rstrip()
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        m = re.search(r"\{.*\}", raw, re.S)
+        if m:
+            try:
+                return json.loads(m.group(0))
+            except json.JSONDecodeError:
+                return None
+        return None
+
+
+def score_llm(text: str, user: str = "", context: str = "Iran war",
+              model: str | None = None) -> tuple[float | None, str | None]:
     """
     Use Claude for context-aware scoring. Returns (None, None) if the
     Anthropic SDK isn't installed or ANTHROPIC_API_KEY isn't set.
+    `model` overrides settings.LLM_MODEL (used by the teacher check).
     """
     try:
         import anthropic
@@ -338,33 +373,14 @@ def score_llm(text: str, user: str = "", context: str = "Iran war") -> tuple[flo
         return (None, None)
 
     client = anthropic.Anthropic(api_key=api_key)
-    prompt = (
-        f"Score the sentiment of this social media post about the {context}. "
-        f"The post is by @{user}.\n\n"
-        f'Post: """{text}"""\n\n'
-        "Respond with ONLY valid JSON: "
-        '{"score": <float from -1.0 (very negative/anti-war) to 1.0 (very positive/pro-war)>, '
-        '"label": "<negative|neutral|positive>", '
-        '"reasoning": "<one sentence>"}'
-    )
-
     resp = client.messages.create(
-        model=settings.LLM_MODEL,
+        model=model or settings.LLM_MODEL,
         max_tokens=200,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": llm_prompt(text, user, context)}],
     )
 
-    raw = resp.content[0].text.strip()
-    # Claude commonly wraps JSON in ```json ... ``` despite the prompt
-    # asking for raw JSON. Strip the fence if present before parsing.
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
-        if raw.endswith("```"):
-            raw = raw[:-3].rstrip()
-
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
+    data = parse_llm_json(resp.content[0].text)
+    if data is None:
         logger.warning("LLM unparseable response: %s", resp.content[0].text)
         return (None, None)
 

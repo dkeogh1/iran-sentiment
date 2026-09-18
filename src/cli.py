@@ -654,6 +654,74 @@ def stance(n_per_bucket: int, force: bool, model: str | None):
     stance_summary(result)
 
 
+# ── stance-model experiments (GPU Jobs; see k8s/README.md) ────────
+
+def _load_scored_frame():
+    import pandas as pd
+    if not settings.SENTIMENT_OUTPUT.exists():
+        click.secho(f"No {settings.SENTIMENT_OUTPUT} -- run analyze --llm first", fg="red")
+        sys.exit(1)
+    return pd.read_parquet(settings.SENTIMENT_OUTPUT)
+
+
+@main.command("teacher-check")
+@click.option("--n", default=settings.TEACHER_CHECK_N, show_default=True,
+              help="Posts to relabel (spread evenly across tiers)")
+@click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
+def teacher_check_cmd(n: int, model: str):
+    """Relabel a stratified sample with a stronger Claude model and report
+    disagreement with the Haiku labels (per tier + worst cases). API only."""
+    from src.analysis.stance_local import teacher_check, teacher_report
+    df = _load_scored_frame()
+    joined = teacher_check(df, n=n, model=model)
+    rep = teacher_report(joined, model)
+    click.echo(f"\nHaiku vs {model} on {len(joined)} posts (ref = Haiku score_llm):")
+    click.echo(f"{'tier':22s}{'n':>6s}{'pearson':>9s}{'mae':>7s}{'sign agr':>10s}{'flips':>7s}")
+    for r in rep["by_tier"]:
+        click.echo(f"{r['tier']:22s}{r['n']:>6d}{r['pearson']:>9.3f}{r['mae']:>7.3f}"
+                   f"{r['sign_agreement']:>10.1%}{r['sign_flip_rate']:>7.1%}")
+    click.echo("\nLargest disagreements:")
+    for w in rep["worst"][:10]:
+        click.echo(f"  [{w['tier']}] @{w['user']} haiku={w['score_llm']:+.2f} "
+                   f"{model.split('-')[1]}={w['score_teacher']:+.2f} | {w['text']}")
+
+
+@main.command("stance-distill")
+@click.option("--base-model", default=settings.DISTILL_BASE_MODEL, show_default=True)
+@click.option("--epochs", default=settings.DISTILL_EPOCHS, show_default=True)
+@click.option("--label-col", default="score_llm", show_default=True,
+              help="Teacher column to regress (e.g. a merged Opus relabel)")
+def stance_distill_cmd(base_model: str, epochs: int, label_col: str):
+    """Fine-tune an encoder to reproduce the teacher stance score (GPU)."""
+    from src.analysis.stance_local import distill
+    m = distill(_load_scored_frame(), base_model=base_model, epochs=epochs, label_col=label_col)
+    click.echo(f"distilled vs teacher: {m['distilled_vs_teacher']}")
+    if "roberta_valence_vs_teacher" in m:
+        click.echo(f"RoBERTa valence vs teacher (same rows): {m['roberta_valence_vs_teacher']}")
+
+
+@main.command("stance-local-llm")
+@click.option("--model", default=settings.LOCAL_LLM_MODEL, show_default=True)
+@click.option("--n", default=settings.LOCAL_LLM_EVAL_N, show_default=True)
+def stance_local_llm_cmd(model: str, n: int):
+    """Score a held-out sample with an open instruct model (GPU) and report
+    agreement with the teacher."""
+    from src.analysis.stance_local import local_llm_eval
+    m = local_llm_eval(_load_scored_frame(), model_name=model, n=n)
+    click.echo(f"unparseable: {m['unparseable_rate']:.1%}")
+    click.echo(f"local vs teacher: {m['local_vs_teacher']}")
+    if "roberta_valence_vs_teacher" in m:
+        click.echo(f"RoBERTa valence vs teacher (same rows): {m['roberta_valence_vs_teacher']}")
+
+
+@main.command("score-distilled")
+def score_distilled_cmd():
+    """Score every cached reply with the distilled model (population-level stance)."""
+    from src.analysis.stance_local import score_replies
+    df = score_replies()
+    click.echo(df.groupby("tracked_slug")["score_distilled"].agg(["mean", "count"]).round(3).to_string())
+
+
 # ── status ──────────────────────────────────────────────────────────
 
 @main.command()

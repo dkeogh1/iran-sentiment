@@ -1,0 +1,9 @@
+# Base: namespace + data volume. Jobs live in k8s/jobs/<name>/ and are
+# applied one at a time by scripts/k8s/run-now.sh. The image placeholder
+# `iran-sentiment` maps to the in-cluster registry via each node's loopback
+# NodePort (homelab-infra docs/k8s-workloads.md); deploy.sh rewrites newTag.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - storage.yaml

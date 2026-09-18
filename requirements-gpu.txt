@@ -1,0 +1,18 @@
+# Runtime deps for the GPU image (Dockerfile). torch comes from the base
+# image (pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime); everything else is
+# pinned here so the image is reproducible without a uv.lock for the CPU venv.
+transformers==4.51.3
+datasets==3.5.0
+accelerate==1.6.0
+bitsandbytes==0.45.5
+sentencepiece==0.2.0
+pandas==2.2.3
+pyarrow==19.0.1
+numpy==1.26.4
+scipy==1.15.2
+scikit-learn==1.6.1
+click==8.1.8
+python-dotenv==1.1.0
+tqdm==4.67.1
+anthropic==0.50.0
+vaderSentiment==3.3.2

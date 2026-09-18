@@ -1,0 +1,9 @@
+# Only code + pinned deps go into the image. Data is a mounted volume;
+# secrets never leave .env.
+*
+!requirements-gpu.txt
+!config/
+!src/
+!README.md
+!CLAUDE.md
+**/__pycache__/

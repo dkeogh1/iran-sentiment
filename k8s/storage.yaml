@@ -1,0 +1,20 @@
+# Data volume for the GPU Jobs: sentiment_all.parquet + reply parquet/jsonl
+# in, models + metrics out. Dynamic local-path PVC; k3s binds it to the node
+# where the first consumer pod runs, and every Job here has nodeSelector
+# dkbl2, so the volume lands on dkbl2 next to the GPU. Filled and drained
+# with scripts/k8s/sync-data.sh (kubectl cp through the data-sync pod) --
+# the source of truth stays in data/ on dkbl1.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: iran-sentiment-data
+  namespace: iran-sentiment
+  labels:
+    app.kubernetes.io/name: iran-sentiment
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 40Gi

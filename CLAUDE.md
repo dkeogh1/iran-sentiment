@@ -17,9 +17,8 @@ Status (2026-09-18): two data layers at different depths.
   992-row Haiku stance sample.
 - Timeline runs to 2026-09-15. `ANALYSIS_END` tracks the X data, not
   the catalogue.
-Nothing runs on a schedule, and it does not belong on the k8s cluster
-(no recurring job, pay-per-read collector) -- see *No cluster
-deployment* below.
+Nothing runs on a schedule. The only cluster use is the one-shot GPU
+experiment Jobs in `k8s/` -- see *Cluster use* below.
 
 ## Architecture
 
@@ -166,16 +165,20 @@ posts, runtime ~10 min (measured 2026-04; the dataset is 13,974 posts
 as of 2026-05-12, so expect ~15 min). If these numbers drift
 substantially, something is leaking or the thread cap got removed.
 
-## No cluster deployment
+## Cluster use: GPU experiment Jobs only
 
-The quant repo moved its cron jobs to the dkbl1/dkbl2 k3s cluster in
-Sep 2026 (homelab-infra `docs/k8s-workloads.md`). This repo stays on
-the host venv on purpose: there is no scheduled job, `collect` costs
-real money per run so it must stay manual, and `analyze` is a ~15 min
-CPU batch on a 66 MB dataset. If the project is ever revived as a
-recurring tracker, the prerequisites are a lockfile (`uv.lock`) for a
-reproducible image and running `analyze` as a one-shot Job on dkbl2;
-`collect` should still never be a CronJob.
+The pipeline itself stays on the host venv: no scheduled job, `collect`
+costs money per run so it must stay manual, and `analyze` is a short CPU
+batch. What DOES run on the dkbl1/dkbl2 k3s cluster (homelab-infra
+`docs/k8s-workloads.md`) is the stance-model experiments in `k8s/`:
+one-shot Jobs on dkbl2's RTX 3080 that (a) check Haiku against Opus 5 as
+a teacher, (b) distil the Haiku/Opus labels into a fine-tuned encoder,
+(c) try an open 7B instruct model with the same prompt, and (d) score
+all 83k replies with the distilled model. Same tenant conventions as
+quant: image built in-cluster from `Dockerfile` (`scripts/k8s/build.sh`),
+kustomize manifests, uid 1000, Secret from `.env`, data on a local-path
+PVC on dkbl2 filled with `scripts/k8s/sync-data.sh`. Runbook and decision
+rule: `k8s/README.md`. `collect` is never a CronJob.
 
 ## Scoring strategies
 

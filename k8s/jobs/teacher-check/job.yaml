@@ -1,0 +1,54 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: iran-teacher-check
+  namespace: iran-sentiment
+  labels:
+    app.kubernetes.io/name: iran-sentiment
+    app.kubernetes.io/component: teacher-check
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: iran-sentiment
+        app.kubernetes.io/component: teacher-check
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: dkbl2
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: teacher-check
+          image: iran-sentiment
+          imagePullPolicy: IfNotPresent
+          args: ['teacher-check']
+          envFrom:
+            - secretRef:
+                name: iran-sentiment-env
+                optional: true
+          env:
+            - name: IRAN_DATA_DIR
+              value: /data
+            - name: HF_HOME
+              value: /data/hf
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "2"
+              memory: 1Gi
+            limits:
+              memory: 4Gi
+              cpu: "2"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: iran-sentiment-data

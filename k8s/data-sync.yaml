@@ -1,0 +1,29 @@
+# Helper pod for kubectl cp in/out of the data volume. Pinned to dkbl2 so
+# the PVC binds there. No GPU. Deleted by sync-data.sh when finished.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: data-sync
+  namespace: iran-sentiment
+  labels:
+    app.kubernetes.io/name: iran-sentiment
+    app.kubernetes.io/component: data-sync
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    kubernetes.io/hostname: dkbl2
+  securityContext:
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+  containers:
+    - name: sync
+      image: busybox:1.37
+      command: ["sh", "-c", "mkdir -p /data/processed /data/raw/truthsocial /data/models && sleep infinity"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: iran-sentiment-data

@@ -5,6 +5,7 @@ All tunables (paths, budget caps, batch sizes, model names) live here so
 that scripts can stay thin and data-driven.
 """
 
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -12,7 +13,9 @@ from pathlib import Path
 # ── Paths ───────────────────────────────────────────────────────────
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-DATA_DIR = PROJECT_ROOT / "data"
+# IRAN_DATA_DIR relocates the whole data tree (the k8s Jobs mount their
+# PersistentVolume at /data and set it); default is the checkout's data/.
+DATA_DIR = Path(os.environ.get("IRAN_DATA_DIR", PROJECT_ROOT / "data"))
 RAW_DIR = DATA_DIR / "raw"
 PROCESSED_DIR = DATA_DIR / "processed"
 FIGURES_DIR = PROCESSED_DIR / "figures"
@@ -110,6 +113,27 @@ TS_PREFER_AUTH = True
 # slice an even share of the account's cap, so a cap hit thins a slice
 # instead of deleting months.
 GAP_FILL_SLICE_DAYS = 14
+
+
+# ── Stance-model experiments (GPU Jobs on dkbl2, see k8s/README.md) ─
+MODELS_DIR = DATA_DIR / "models"
+# Teacher check: relabel a stratified sample with a stronger model and
+# measure disagreement with the Haiku labels before distilling from them.
+TEACHER_CHECK_MODEL = "claude-opus-5"
+TEACHER_CHECK_N = 500
+# Distillation: fine-tune an encoder to regress score_llm.
+DISTILL_BASE_MODEL = "roberta-large"
+DISTILL_EPOCHS = 3
+DISTILL_HOLDOUT = 0.2
+DISTILL_BATCH_SIZE = 16
+DISTILL_LR = 2e-5
+DISTILL_MAX_LEN = 128
+DISTILL_SEED = 42
+# Local LLM: same prompt as the Claude scorer, run on the GPU in 4-bit.
+LOCAL_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
+LOCAL_LLM_EVAL_N = 1000
+LOCAL_LLM_BATCH = 16
+LOCAL_LLM_MAX_NEW_TOKENS = 80
 
 
 # ── Sentiment analysis ─────────────────────────────────────────────
