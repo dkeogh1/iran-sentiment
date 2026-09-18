@@ -125,7 +125,11 @@ def teacher_check(df: pd.DataFrame, *, n: int = settings.TEACHER_CHECK_N,
         futs = {ex.submit(score_llm, r.text, r.user, "Iran war", model): r.id
                 for r in todo.itertuples()}
         for f in as_completed(futs):
-            score, label = f.result()
+            try:
+                score, label = f.result()
+            except Exception as e:  # one bad call must not discard the batch
+                logger.warning("teacher call failed for %s: %s", futs[f], str(e)[:120])
+                score, label = None, None
             results.append({"id": futs[f], "score_teacher": score, "label_teacher": label})
     new = pd.DataFrame(results)
     scored = pd.concat([cached, new], ignore_index=True) if not cached.empty else new

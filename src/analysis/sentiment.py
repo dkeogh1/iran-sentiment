@@ -379,9 +379,12 @@ def score_llm(text: str, user: str = "", context: str = "Iran war",
         messages=[{"role": "user", "content": llm_prompt(text, user, context)}],
     )
 
-    data = parse_llm_json(resp.content[0].text)
+    # Models with thinking on (Opus 5 by default) return a thinking block
+    # before the text block; take the first text block, not content[0].
+    text_out = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
+    data = parse_llm_json(text_out)
     if data is None:
-        logger.warning("LLM unparseable response: %s", resp.content[0].text)
+        logger.warning("LLM unparseable response: %s", text_out[:200])
         return (None, None)
 
     score = data.get("score")
