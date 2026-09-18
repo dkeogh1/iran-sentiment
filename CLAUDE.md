@@ -9,14 +9,18 @@ between pro- and anti-war factions, and how Trump's Truth Social
 audience reacts post by post.
 
 Status (2026-09-18): two data layers at different depths.
-- X broadcaster data ends 2026-05-12 (13,974 scored posts, 100% LLM
-  stance). Extending it to September needs ~$42 of X credit (balance
-  was $4.40); the plan is in *Budget discipline* below.
+- X broadcaster data runs to 2026-09-18 (19,605 scored posts, 100% LLM
+  stance; the May 10 -> Sep 18 refresh read 5,631 tweets for ~$28 with
+  the five heaviest accounts sampled at 450). Keyword searches are
+  frozen at May 12 (7-day recent search only). X's user timeline only
+  returns an account's most recent ~3,200 tweets, so prolific accounts
+  have holes: Levin before Jun 20, Loomer before Jul 4, WhiteHouse
+  before Jul 17, Alex Jones before Jul 31. Refresh heavy accounts at
+  least every ~2 months or that data is gone for good.
 - Truth Social is current through 2026-09-16: Trump's feed (4,087
   posts) and 83,054 replies to 6 tracked posts, RoBERTa-scored with a
   992-row Haiku stance sample.
-- Timeline runs to 2026-09-15. `ANALYSIS_END` tracks the X data, not
-  the catalogue.
+- Timeline runs to 2026-09-15 (84 events); `ANALYSIS_END` = 2026-09-18.
 Nothing runs on a schedule. The only cluster use is the one-shot GPU
 experiment Jobs in `k8s/` -- see *Cluster use* below.
 
@@ -160,10 +164,11 @@ inference. Guardrails in `src/analysis/sentiment.py` + `config/settings.py`:
 7. **Explicit model cleanup** — `del pipe; gc.collect()` in a
    `try/finally` so aborts still release memory.
 
-Baseline on this hardware: RoBERTa peaks at ~1.36 GB RSS on 9,477
-posts, runtime ~10 min (measured 2026-04; the dataset is 13,974 posts
-as of 2026-05-12, so expect ~15 min). If these numbers drift
-substantially, something is leaking or the thread cap got removed.
+Baseline on this hardware: RoBERTa peaks at ~1.3 GB RSS and runs ~1-1.7 s
+per 16-post batch (5,631 posts in ~9 min on 2026-09-18; 26k replies in
+33 min on 2026-09-16). The resume path means a refresh only scores new
+posts. If these numbers drift substantially, something is leaking or the
+thread cap got removed.
 
 ## Cluster use: GPU experiment Jobs only
 

@@ -1,21 +1,22 @@
 # iran-sentiment
 
 Sentiment analysis of US political messaging during the 2026 Iran war
-(Feb 1 -- May 12, 2026). Tracks the Trump administration, MAGA
+(Feb 1 -- Sep 18, 2026). Tracks the Trump administration, MAGA
 influencers (both pro- and anti-war), the opposition, media, and the
 Pope Leo XIV / Vatican moral axis across X and Truth Social, from a
-month before the Feb 28 strikes through the Apr 8 ceasefire and three
-weeks of the post-ceasefire negotiation period.
+month before the Feb 28 strikes through the Apr 8 ceasefire, the June
+Islamabad deal and its July collapse, and the renewed strikes of
+September.
 
-The X broadcaster data ends 2026-05-12 (accounts through May 10,
-keyword searches through May 12). The Truth Social layer -- Trump's
-feed and the reply-level audience analysis -- runs through 2026-09-16.
-Nothing runs on a schedule.
+X broadcaster data runs to 2026-09-18 (keyword searches are frozen at
+May 12); the Truth Social layer -- Trump's feed and the reply-level
+audience analysis -- runs through 2026-09-16. Nothing runs on a
+schedule.
 
 ## Findings
 
-13,974 posts from 17 X/Twitter accounts across 6 political tiers plus
-4 keyword searches (a public-sentiment proxy), plus 83,054 Truth Social
+19,605 posts from 17 X/Twitter accounts across 6 political tiers plus
+4 keyword searches (a public-sentiment proxy, Feb-May only), plus 83,054 Truth Social
 replies to 6 Trump posts (three from the April escalation, three from
 the May-September deal-and-collapse cycle) and Trump's own Truth Social
 feed from Apr 4 to Sep 16 (4,087 posts). Every post carries three scores: VADER
@@ -30,13 +31,13 @@ column is shown to make its miscalibration visible.
 
 | Tier | LLM stance | RoBERTa | n |
 |------|-----------:|--------:|--:|
-| admin | +0.236 | +0.136 | 2,604 |
-| maga_prowar | -0.058 | -0.206 | 4,676 |
-| media | -0.098 | -0.035 | 908 |
-| religious_authority | -0.207 | **+0.296** | 1,176 |
-| maga_antiwar | -0.209 | -0.189 | 2,718 |
-| search (public) | -0.326 | -0.346 | 1,768 |
-| opposition | -0.344 | -0.293 | 124 |
+| admin | +0.174 | +0.143 | 4,879 |
+| maga_prowar | -0.056 | -0.199 | 5,261 |
+| media | -0.119 | -0.032 | 1,358 |
+| religious_authority | -0.180 | **+0.302** | 2,239 |
+| maga_antiwar | -0.206 | -0.180 | 3,755 |
+| search (public, Feb-May) | -0.326 | -0.346 | 1,768 |
+| opposition | -0.376 | -0.303 | 345 |
 
 The administration is the only net-pro-war tier. Everyone else is
 net-negative, including the "pro-war" MAGA influencers: Levin and
@@ -47,53 +48,72 @@ pro-war and anti-war influencer tiers.
 ### The religious sign flip
 
 RoBERTa reads the Vatican tier as the *most positive* tier in the
-dataset (+0.296) because faith-based anti-war language ("peace",
+dataset (+0.302) because faith-based anti-war language ("peace",
 "mercy", "dialogue") is lexically positive. The LLM stance score puts
-the same posts at -0.207, and @Pontifex at **-0.443 -- the single most
-anti-war account in the dataset** (RoBERTa: +0.374). Of 1,176
-religious-tier posts, zero were labelled pro-war. This tier is the
+the same posts at -0.180, and @Pontifex at **-0.407 -- the most
+anti-war account in the dataset** (RoBERTa: +0.330). Of 2,239
+religious-tier posts, none were labelled pro-war. This tier is the
 reason the project moved to LLM stance scoring; see the *Sentiment
 scoring* section.
 
 ### Who the hawks actually are
 
-The operational arms out-hawk the PR shop. @PeteHegseth (+0.327) and
-@StateDept (+0.293) are the two most pro-war accounts; @POTUS is
-+0.143 and @WhiteHouse only +0.071, even though RoBERTa had the White
-House as the most positive account in the dataset (+0.380). @VP, the
-lead negotiator from the Apr 11 Islamabad talks, sits at +0.044.
+The operational arms out-hawk the PR shop. @PeteHegseth (+0.295) and
+@StateDept (+0.228) are the two most pro-war accounts; @POTUS is
++0.104 and @WhiteHouse only +0.051, even though RoBERTa had the White
+House among the most positive accounts in the dataset (+0.331). @VP,
+the lead negotiator from the Apr 11 Islamabad talks, sits at +0.034.
 
-### After the ceasefire (Apr 22 -- May 12)
+### Seven months: the administration talked itself down
 
-| Tier | Feb 1 -- Apr 21 | Apr 22 -- May 12 |
-|------|---------------:|----------------:|
-| admin | +0.235 | +0.239 |
-| maga_prowar | -0.044 | -0.107 |
-| maga_antiwar | -0.231 | -0.150 |
-| religious_authority | -0.227 | -0.136 |
-| opposition | -0.352 | -0.310 |
-| search (public) | -0.307 | -0.364 |
+LLM stance by tier across the four phases of the war (keyword searches
+excluded; they end May 12):
 
-Administration messaging did not move. The anti-war influencers and
-the Vatican softened once the shooting stopped, the pro-war
-influencers hardened (blockade and negotiation criticism), and the
-keyword searches got more negative. The weekly series shows its most
-negative week at May 11 (-0.37), but that bucket is search-only (the
-accounts were last refreshed May 10) and should not be read as a
-cross-tier shift.
+| Tier | Feb 1 -- Apr 21<br>strikes, ceasefire | Apr 22 -- Jun 17<br>talks, MOU | Jun 18 -- Aug 17<br>collapse, blockade | Aug 18 -- Sep 18<br>expiry, strikes |
+|---|--:|--:|--:|--:|
+| admin | +0.235 | +0.181 | +0.108 | +0.073 |
+| maga_prowar | -0.044 | -0.107 | -0.024 | -0.053 |
+| media | -0.092 | -0.116 | -0.169 | -0.170 |
+| religious_authority | -0.227 | -0.158 | -0.141 | -0.133 |
+| maga_antiwar | -0.231 | -0.153 | -0.248 | -0.169 |
+| opposition | -0.352 | -0.380 | -0.397 | -0.374 |
+| posts | 9,419 | 4,088 | 2,614 | 1,716 |
+
+- **The administration's own messaging got steadily less hawkish**, from
+  +0.235 in the strike phase to +0.073 in the September strikes phase.
+  The decline is in the diplomatic and presidential accounts, not the
+  Pentagon: @StateDept +0.30 to +0.06, @SecRubio +0.16 to +0.04,
+  @POTUS +0.14 to +0.04, while @PeteHegseth held between +0.24 and
+  +0.34 throughout. By September the only consistently hawkish voice
+  in the administration was the Secretary of War.
+- **The opposition never moved.** @SenSanders sits between -0.35 and
+  -0.40 in every phase.
+- **The anti-war MAGA tier split internally.** @mtgreenee hardened
+  (-0.32 to -0.37) and @RealAlexJones was most anti-war during the
+  July collapse (-0.34), while @RealCandaceO softened from -0.29 to
+  -0.16 after April.
+- **The Vatican softened once the shooting paused and did not
+  re-harden when it resumed**: @Pontifex -0.48 in the strike phase,
+  -0.35 to -0.39 thereafter. Media (@BarakRavid) went the other way,
+  -0.09 to -0.17.
+
+![Tier comparison](docs/figures/tier_comparison_score_llm.png)
 
 ### Per-account detail
 
 ![Account heatmap](docs/figures/account_heatmap_score_llm.png)
 
-- @SenSanders is the most anti-war non-Vatican voice (-0.344). VADER
+- @SenSanders is the most anti-war non-Vatican voice (-0.376). VADER
   scores him positive because anti-war vocabulary is lexically
   positive.
-- @LauraLoomer moves from RoBERTa -0.290 to LLM -0.080: her angry
+- @LauraLoomer moves from RoBERTa -0.276 to LLM -0.067: her angry
   pro-war posts read as negative valence but near-neutral stance.
-- @TuckerCarlson posts rarely (104 tweets) but is consistently
-  anti-war from the strikes onward (-0.264).
-- @mtgreenee is the most anti-war MAGA voice (-0.317).
+- @TuckerCarlson posts rarely (221 tweets in seven months) but is
+  consistently anti-war from the strikes onward (-0.251).
+- @mtgreenee is the most anti-war MAGA voice (-0.302).
+- Blank weeks in the heatmap for Levin, Loomer, Alex Jones and the
+  White House between May and July are a collection limit, not
+  silence: see *Limitations*.
 
 ### Audience replies: six Trump posts, April to September
 
@@ -145,17 +165,20 @@ negative (-0.55) and `pro_trump_antiwar` replies read as positive
 - X/Twitter: v2 API, per-account JSONL caching, incremental refresh
   (each run appends only tweets newer than the latest cached one),
   capped at 500 tweets per account per run to control cost
-  ($0.005/read).
+  ($0.005/read). Long gaps are walked in two-week slices with the cap
+  shared across slices, so a cap hit thins a fortnight rather than
+  dropping months; the five most prolific accounts were sampled at 450
+  for the May-September refresh.
 - Keyword searches use `/search/recent`, which only reaches back 7
-  days. Searches were refreshed on Apr 16 and May 12, so search
-  coverage has a gap from roughly Apr 20 to May 5; the collector logs
-  the unfetched gap rather than silently skipping it.
+  days. Searches were refreshed on Apr 16 and May 12 and not since, so
+  the search tier covers Feb 1 to May 12 with a gap from roughly Apr 20
+  to May 5, and is excluded from the phase comparisons above.
 - Truth Social: `curl_cffi` (Cloudflare bypass). Account feeds via the
   public API with an incremental, resume-safe refresh; replies via the
   authenticated v2 descendants endpoint after a one-time `ts-login`
   (Truth Social's new-device security-code check).
-- Window: Feb 1 -- May 12, 2026, with pre-war context events back to
-  Jun 2025.
+- Window: Feb 1 -- Sep 18, 2026 for accounts, with pre-war context
+  events back to Jun 2025.
 
 ### Sentiment scoring
 
@@ -275,11 +298,17 @@ docs/figures/             # the LLM-stance figures referenced above
 - VADER and RoBERTa are valence proxies. Any stance comparison across
   tiers must use `score_llm`; the RoBERTa number for the religious
   tier is actively misleading.
-- The 500-tweet-per-run cap was hit by @marklevinshow, @RealAlexJones
-  and @LauraLoomer in the May 10 refresh, so those accounts are
-  truncated within Apr 22 -- May 10.
-- Search coverage has a gap in late April (see *Data collection*), and
-  the final week of the series is search-only.
+- X's user-timeline endpoint only returns an account's most recent
+  ~3,200 tweets. The September refresh came four months after the
+  last one, so for the most prolific accounts the early part of that
+  gap is unrecoverable: no posts before Jun 20 for @marklevinshow,
+  Jul 4 for @LauraLoomer, Jul 17 for @WhiteHouse and Jul 31 for
+  @RealAlexJones. Their phase-two numbers rest on April and early May
+  only. The remaining 13 accounts are continuous.
+- The five most prolific accounts are sampled (450 per refresh spread
+  across two-week slices), not exhaustive, from May 10 on.
+- Search coverage stops at May 12 and has a gap in late April (see
+  *Data collection*).
 - Truth Social's API may truncate large reply trees. Coverage is
   validated per-post during collection.
 - This is observational sentiment tracking, not causal inference. Event
@@ -289,7 +318,7 @@ docs/figures/             # the LLM-stance figures referenced above
 
 X API reads cost $0.005/tweet. Collection through Apr 20 (9,477
 tweets) cost about $47; the May 10/12 refresh added roughly 4,500
-tweets, about $22 more. LLM stance scoring of the full dataset ran
+tweets, about $22; the Sep 18 refresh read 5,631 tweets, about $28. LLM stance scoring of the full dataset ran
 about $15 on Claude Haiku through April; the May 12 pass over the
 ~4,500 new posts was about $2 (672k input + 267k output tokens on
 Haiku 4.5, from the console usage page). Truth Social API access is
