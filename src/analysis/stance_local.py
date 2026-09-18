@@ -44,6 +44,7 @@ def training_frame(df: pd.DataFrame) -> pd.DataFrame:
         d = d[d["label_llm"] != "off_topic"]
     d = d[d["text"].fillna("").str.strip().str.len() > 0]
     keep = [c for c in ["id", "text", "user", "tier", "score_llm", "score_transformer"] if c in d]
+    keep += [c for c in d.columns if c.startswith("score_") and c not in keep]  # alt teachers (score_opus)
     return d[keep].reset_index(drop=True)
 
 

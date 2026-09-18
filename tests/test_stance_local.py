@@ -29,6 +29,7 @@ def test_training_frame_drops_off_topic_and_empty():
     out = sl.training_frame(df)
     assert len(out) == 120 - 5 - 2
     assert set(out.columns) == {"id", "text", "user", "tier", "score_llm", "score_transformer"}
+    assert "score_opus" in sl.training_frame(df.assign(score_opus=0.0)).columns
 
 
 def test_split_is_per_tier_and_disjoint():

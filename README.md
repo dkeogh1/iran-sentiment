@@ -255,16 +255,17 @@ labels the dataset carries:
 | Qwen2.5-7B-Instruct, 4-bit, same prompt as Haiku (920 posts) | 0.47 | 0.38 | 49% | 9.7% |
 | Qwen3-8B, 4-bit, thinking off, same prompt (920 posts) | 0.48 | 0.38 | 63% | 8.8% |
 | Qwen3-8B, 4-bit, thinking on, 1,024-token budget (363 of 400 posts parsed) | 0.59 | 0.32 | 68% | 5.2% |
-| **RoBERTa-large fine-tuned on the Haiku labels** (3,893 posts) | **0.74** | **0.16** | **75%** | **5.2%** |
+| RoBERTa-large fine-tuned on the Haiku labels (3,893 posts) | 0.75 | 0.15 | 78% | 4.9% |
+| **DeBERTa-v3-large fine-tuned on the Haiku labels** (3,893 posts) | **0.79** | **0.14** | **78%** | **4.1%** |
 
 The distilled encoder is the clear winner: 7.5 minutes of training, then
-83,000 replies in a few minutes. A recipe sweep (four RoBERTa-large
-settings, the Twitter-pretrained RoBERTa base, roberta-base) landed
-everything between 0.71 and 0.75 Pearson; the winner, RoBERTa-large for
-5 epochs, cross-validates at **0.76 Pearson (5 folds, spread under
-0.01)** and 78% sign agreement, so the number is stable and the ceiling is the
-labels, not the architecture. The final model trained on all 19,457
-labels is `data/models/stance_distilled_final/`. It is strongest exactly where the valence
+83,000 replies in a few minutes. A recipe sweep put six RoBERTa variants between 0.71 and 0.75
+Pearson, and DeBERTa-v3-large (fit with 8-bit AdamW and gradient
+checkpointing to fit the 10 GB card) at 0.79. The winner cross-validates
+at **0.79 Pearson (5 folds, spread 0.003)** with 78% sign agreement and
+4.5% flips. Architecture bought four points; the rest of the gap to a
+perfect reproduction is the labels' own noise (Haiku agrees with Opus 5 at
+only 0.64), which is what the Opus relabel below addresses. It is strongest exactly where the valence
 model failed, 0.90 Pearson and 0.4% flips on the religious tier. The
 open 7B/8B models with the Claude prompt are only modestly better than
 valence and not a Haiku substitute; the 2025 generation (Qwen3) fixes
