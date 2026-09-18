@@ -357,11 +357,15 @@ def parse_llm_json(raw: str) -> dict | None:
 
 
 def score_llm(text: str, user: str = "", context: str = "Iran war",
-              model: str | None = None) -> tuple[float | None, str | None]:
+              model: str | None = None, max_tokens: int | None = None,
+              effort: str | None = None) -> tuple[float | None, str | None]:
     """
     Use Claude for context-aware scoring. Returns (None, None) if the
     Anthropic SDK isn't installed or ANTHROPIC_API_KEY isn't set.
     `model` overrides settings.LLM_MODEL (used by the teacher check).
+    Models that think by default (Opus 5) spend thinking tokens inside
+    max_tokens, so the teacher check passes a larger budget and a low
+    effort; the Haiku default keeps the original 200-token cap.
     """
     try:
         import anthropic
@@ -373,10 +377,14 @@ def score_llm(text: str, user: str = "", context: str = "Iran war",
         return (None, None)
 
     client = anthropic.Anthropic(api_key=api_key)
+    kwargs = {}
+    if effort:
+        kwargs["output_config"] = {"effort": effort}
     resp = client.messages.create(
         model=model or settings.LLM_MODEL,
-        max_tokens=200,
+        max_tokens=max_tokens or 200,
         messages=[{"role": "user", "content": llm_prompt(text, user, context)}],
+        **kwargs,
     )
 
     # Models with thinking on (Opus 5 by default) return a thinking block

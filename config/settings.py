@@ -121,6 +121,11 @@ MODELS_DIR = DATA_DIR / "models"
 # measure disagreement with the Haiku labels before distilling from them.
 TEACHER_CHECK_MODEL = "claude-opus-5"
 TEACHER_CHECK_N = 500
+# Opus 5 thinks by default and thinking tokens count against max_tokens:
+# the Haiku 200-token cap truncated its JSON (seen 2026-09-18). Low effort
+# keeps the thinking short for a one-line classification.
+TEACHER_MAX_TOKENS = 1024
+TEACHER_EFFORT = "low"
 # Distillation: fine-tune an encoder to regress score_llm.
 DISTILL_BASE_MODEL = "roberta-large"
 DISTILL_EPOCHS = 3

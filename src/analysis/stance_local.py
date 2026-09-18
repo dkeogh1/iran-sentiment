@@ -122,7 +122,8 @@ def teacher_check(df: pd.DataFrame, *, n: int = settings.TEACHER_CHECK_N,
 
     results = []
     with ThreadPoolExecutor(max_workers=concurrency) as ex:
-        futs = {ex.submit(score_llm, r.text, r.user, "Iran war", model): r.id
+        futs = {ex.submit(score_llm, r.text, r.user, "Iran war", model,
+                          settings.TEACHER_MAX_TOKENS, settings.TEACHER_EFFORT): r.id
                 for r in todo.itertuples()}
         for f in as_completed(futs):
             try:

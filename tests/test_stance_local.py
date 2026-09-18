@@ -70,8 +70,10 @@ def test_parse_llm_json_tolerates_fences_and_prose():
 def test_score_llm_takes_first_text_block(monkeypatch):
     import types
     from src.analysis import sentiment as sent
+    seen = {}
     class _Msgs:
         def create(self, **kw):
+            seen.update(kw)
             return types.SimpleNamespace(content=[
                 types.SimpleNamespace(type="thinking", thinking="..."),
                 types.SimpleNamespace(type="text", text='{"score": -0.4, "label": "negative"}'),
@@ -82,4 +84,6 @@ def test_score_llm_takes_first_text_block(monkeypatch):
     import anthropic
     monkeypatch.setattr(anthropic, "Anthropic", _Client)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
-    assert sent.score_llm("post", "u", model="claude-opus-5") == (-0.4, "negative")
+    assert sent.score_llm("post", "u", model="claude-opus-5", max_tokens=1024, effort="low") == (-0.4, "negative")
+    assert seen["max_tokens"] == 1024 and seen["output_config"] == {"effort": "low"}
+    assert sent.score_llm("post", "u") == (-0.4, "negative") and seen["max_tokens"] == 200
