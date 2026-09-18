@@ -5,4 +5,4 @@ resources:
 images:
   - name: iran-sentiment
     newName: localhost:30500/iran-sentiment
-    newTag: 779ef7bc5da7
+    newTag: 88b4ca65e671
