@@ -45,7 +45,7 @@ COLLECTION_END = (
 # window but only print a label for events at or above this importance
 # (1-5; pre-May events default to 3). Raise to 4 for a readable plot once
 # the window spans the whole war.
-EVENT_LABEL_MIN_IMPORTANCE = 3
+EVENT_LABEL_MIN_IMPORTANCE = 4   # raised from 3 on 2026-09-18: the window now spans Feb-Sep
 
 
 # ── Budget caps (per-account) ──────────────────────────────────────
@@ -60,13 +60,22 @@ X_READ_COST_USD = 0.005
 # SAMPLE high-volume accounts (Levin, Loomer, Jones post 35+/day) rather
 # than let the cap silently truncate them. Empty = every account uses the
 # default cap.
-ACCOUNT_CAP_OVERRIDES: dict[str, int] = {}
+ACCOUNT_CAP_OVERRIDES: dict[str, int] = {
+    # 2026-09-18 May 10 -> Sep 18 refresh: the five accounts projected far
+    # over the cap are sampled at ~450 (spread across ~10 two-week slices);
+    # everything else fits under 500 and is fetched in full.
+    "LauraLoomer": 450,
+    "marklevinshow": 450,
+    "RealAlexJones": 450,
+    "BarakRavid": 450,
+    "StateDept": 450,
+}
 
 # Hard ceiling on one `collect` run. The CLI prints the per-account plan
 # and refuses to start if the plan's maximum spend exceeds this. Set it to
 # the X credit you are actually willing to burn (balance was $4.40 on
 # 2026-09-16); raise it deliberately, per run.
-X_RUN_BUDGET_USD = 4.00
+X_RUN_BUDGET_USD = 45.00   # raised 2026-09-18 after a top-up for the May->Sep refresh
 
 
 # ── Truth Social pacing ────────────────────────────────────────────

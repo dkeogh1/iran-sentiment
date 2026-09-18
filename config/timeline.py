@@ -744,5 +744,4 @@ EVENTS: list[Event] = [
 
 # Date range for primary analysis window
 ANALYSIS_START = date(2026, 2, 1)
-ANALYSIS_END = date(2026, 5, 12)  # last DATA refresh. Events run to Sep 15 2026;
-                                  # move this forward when the data is re-pulled.
+ANALYSIS_END = date(2026, 9, 18)  # last X data refresh (May 10 -> Sep 18 pull, 2026-09-18)
