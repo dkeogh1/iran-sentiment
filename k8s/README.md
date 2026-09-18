@@ -10,6 +10,8 @@ runs free on dkbl2's RTX 3080, plus a check that Haiku is a fit teacher:
 | `local-llm` | `stance-local-llm` | yes | can Qwen2.5-7B (4-bit) with the same prompt match the teacher? |
 | `score-distilled` | `score-distilled` | yes | population-level stance for all 83k replies with the distilled model |
 | `local-llm-qwen3`, `local-llm-qwen3-think` | `stance-local-llm --model Qwen/Qwen3-8B [--thinking]` | yes | the 2025 Qwen generation, reasoning off / on, same holdout sample |
+| `distill-opus` | `stance-distill --recipe deb-128-1e5-3 --label-col score_opus --fit-all` | yes | the sweep winner retrained on the Opus 5 labels (`relabel merge` first, then `sync-data.sh push`); holdout eval + final model |
+| `score-distilled-opus` | `score-distilled --model-dir .../stance_distilled_final_score_opus --col score_opus_distilled` | yes | population reply stance from the Opus-taught model |
 | `sweep` | `stance-sweep` | yes | every recipe in `DISTILL_SWEEP` on the shared split, 5-fold CV on the best, final fit on all labels (~3 h, resumable) |
 
 Layout follows the quant tenant conventions (homelab-infra

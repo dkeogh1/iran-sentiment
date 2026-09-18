@@ -691,11 +691,16 @@ def teacher_check_cmd(n: int, model: str):
 @click.option("--base-model", default=settings.DISTILL_BASE_MODEL, show_default=True)
 @click.option("--epochs", default=settings.DISTILL_EPOCHS, show_default=True)
 @click.option("--label-col", default="score_llm", show_default=True,
-              help="Teacher column to regress (e.g. a merged Opus relabel)")
-def stance_distill_cmd(base_model: str, epochs: int, label_col: str):
+              help="Teacher column to regress (e.g. score_opus after `relabel merge`)")
+@click.option("--recipe", default=None,
+              help="Name of a settings.DISTILL_SWEEP recipe; overrides base-model/epochs")
+@click.option("--fit-all", is_flag=True,
+              help="After the holdout evaluation, refit on all labels -> stance_distilled_final[_<label>]")
+def stance_distill_cmd(base_model: str, epochs: int, label_col: str, recipe: str | None, fit_all: bool):
     """Fine-tune an encoder to reproduce the teacher stance score (GPU)."""
     from src.analysis.stance_local import distill
-    m = distill(_load_scored_frame(), base_model=base_model, epochs=epochs, label_col=label_col)
+    m = distill(_load_scored_frame(), base_model=base_model, epochs=epochs, label_col=label_col,
+                recipe=recipe, fit_all=fit_all)
     click.echo(f"distilled vs teacher: {m['distilled_vs_teacher']}")
     if "roberta_valence_vs_teacher" in m:
         click.echo(f"RoBERTa valence vs teacher (same rows): {m['roberta_valence_vs_teacher']}")
@@ -747,11 +752,14 @@ def stance_local_llm_cmd(model: str, n: int, thinking: bool, max_new_tokens: int
 
 
 @main.command("score-distilled")
-def score_distilled_cmd():
-    """Score every cached reply with the distilled model (population-level stance)."""
+@click.option("--model-dir", default=None, help="Model directory (default MODELS_DIR/stance_distilled)")
+@click.option("--col", default="score_distilled", show_default=True, help="Output column")
+def score_distilled_cmd(model_dir: str | None, col: str):
+    """Score every cached reply with a distilled model (population-level stance)."""
+    from pathlib import Path as _P
     from src.analysis.stance_local import score_replies
-    df = score_replies()
-    click.echo(df.groupby("tracked_slug")["score_distilled"].agg(["mean", "count"]).round(3).to_string())
+    df = score_replies(_P(model_dir) if model_dir else None, col=col)
+    click.echo(df.groupby("tracked_slug")[col].agg(["mean", "count"]).round(3).to_string())
 
 
 # ── relabel (Opus teacher via the Batch API) ──────────────────────

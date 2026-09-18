@@ -138,3 +138,27 @@ def test_strip_thinking_then_parse():
     raw = '<think>\nThe post praises the strikes... {"score": 0.1}\n</think>\n{"score": 0.8, "label": "positive"}'
     assert parse_llm_json(sl.strip_thinking(raw))["score"] == 0.8
     assert sl.strip_thinking('{"score": -0.2}') == '{"score": -0.2}'
+
+
+def test_recipe_by_name():
+    rc = sl.recipe_by_name("deb-128-1e5-3")
+    assert rc["base_model"].startswith("microsoft/deberta") and rc["optim"] == "adamw_bnb_8bit"
+    with pytest.raises(KeyError):
+        sl.recipe_by_name("nope")
+
+
+def test_distill_uses_recipe_and_fits_all(tmp_path, monkeypatch):
+    calls = []
+    def fake_fit(train, test, **kw):
+        calls.append(kw)
+        pred = test["score_opus"].values * 0.9 if test is not None else None
+        return {"base_model": kw["base_model"], "n_train": len(train)}, pred
+    monkeypatch.setattr(sl, "_fit_eval", fake_fit)
+    monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)
+    df = _frame().assign(score_opus=lambda d: d["score_llm"] * 0.8)
+    m = sl.distill(df, label_col="score_opus", recipe="deb-128-1e5-3", fit_all=True)
+    assert calls[0]["base_model"].startswith("microsoft/deberta") and calls[0]["optim"] == "adamw_bnb_8bit"
+    assert calls[0]["grad_accum"] == 2 and calls[0]["gradient_checkpointing"] is True
+    assert calls[1]["save_to"] == tmp_path / "stance_distilled_final_score_opus"
+    assert (tmp_path / "stance_distilled_final_score_opus" / "recipe.txt").read_text() == "deb-128-1e5-3"
+    assert m["label_col"] == "score_opus" and "final" in m

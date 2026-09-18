@@ -220,22 +220,40 @@ def _fit_eval(train: pd.DataFrame, test: pd.DataFrame | None, *, base_model: str
     return info, pred
 
 
+def recipe_by_name(name: str) -> dict:
+    rc = next((r for r in settings.DISTILL_SWEEP if r["name"] == name), None)
+    if rc is None:
+        raise KeyError(f"no recipe {name!r} in settings.DISTILL_SWEEP")
+    return rc
+
+
 def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
             epochs: int = settings.DISTILL_EPOCHS, holdout: float = settings.DISTILL_HOLDOUT,
             batch_size: int = settings.DISTILL_BATCH_SIZE, lr: float = settings.DISTILL_LR,
             max_len: int = settings.DISTILL_MAX_LEN, seed: int = settings.DISTILL_SEED,
-            label_col: str = "score_llm", out_dir: Path | None = None) -> dict:
-    """Fine-tune `base_model` to regress `label_col` in [-1, 1]. Saves the model
-    to MODELS_DIR/stance_distilled and metrics to distill_metrics.json."""
-    out_dir = out_dir or (settings.MODELS_DIR / "stance_distilled")
+            label_col: str = "score_llm", out_dir: Path | None = None,
+            recipe: str | None = None, fit_all: bool = False) -> dict:
+    """Fine-tune to regress `label_col` in [-1, 1]. With `recipe`, every
+    hyper-parameter (incl. optimizer / checkpointing) comes from that
+    DISTILL_SWEEP entry. Evaluates on the per-tier holdout; with `fit_all`
+    also refits on every label and saves that as the production model."""
+    rc = recipe_by_name(recipe) if recipe else {}
+    base_model = rc.get("base_model", base_model)
+    epochs, lr, max_len = rc.get("epochs", epochs), rc.get("lr", lr), rc.get("max_len", max_len)
+    batch_size = rc.get("batch_size", batch_size)
+    extra = {"grad_accum": rc.get("grad_accum", 1), "optim": rc.get("optim", "adamw_torch"),
+             "gradient_checkpointing": rc.get("gradient_checkpointing", False)}
+    suffix = "" if label_col == "score_llm" else f"_{label_col}"
+    out_dir = out_dir or (settings.MODELS_DIR / f"stance_distilled{suffix}")
     base = training_frame(df)
     if label_col != "score_llm":
         base = base[base[label_col].notna()]
     train, test = stratified_split(base, holdout, seed)
-    logger.info("distill: %d train / %d holdout rows, base=%s", len(train), len(test), base_model)
+    logger.info("distill: %d train / %d holdout rows, base=%s, label=%s, recipe=%s",
+                len(train), len(test), base_model, label_col, recipe)
     info, pred = _fit_eval(train, test, base_model=base_model, epochs=epochs, batch_size=batch_size,
                            lr=lr, max_len=max_len, seed=seed, label_col=label_col,
-                           work_dir=out_dir, save_to=out_dir)
+                           work_dir=out_dir, save_to=out_dir, **extra)
     test = test.assign(score_distilled=pred)
     metrics = {
         **info, "n_holdout": int(len(test)), "label_col": label_col,
@@ -245,6 +263,14 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
     if "score_transformer" in test:
         metrics["roberta_valence_vs_teacher"] = agreement(test[label_col].values, test["score_transformer"].values)
     test.to_parquet(out_dir / "holdout_predictions.parquet", index=False)
+    if fit_all:
+        final_dir = settings.MODELS_DIR / f"stance_distilled_final{suffix}"
+        finfo, _ = _fit_eval(base, None, base_model=base_model, epochs=epochs, batch_size=batch_size,
+                             lr=lr, max_len=max_len, seed=seed, label_col=label_col,
+                             work_dir=out_dir / "final", save_to=final_dir, **extra)
+        final_dir.mkdir(parents=True, exist_ok=True)
+        (final_dir / "recipe.txt").write_text(recipe or base_model)
+        metrics["final"] = {**finfo, "path": str(final_dir)}
     _write_json(out_dir / "distill_metrics.json", metrics)
     logger.info("distill: %s", json.dumps(metrics["distilled_vs_teacher"]))
     return metrics
@@ -273,7 +299,7 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
     """Run every recipe on the shared split, cross-validate the best, fit it on
     all labels. Results accumulate in sweep_results.json so a killed run resumes."""
     recipes = recipes or settings.DISTILL_SWEEP
-    out_dir = out_dir or (settings.MODELS_DIR / "sweep")
+    out_dir = out_dir or (settings.MODELS_DIR / ("sweep" if label_col == "score_llm" else f"sweep_{label_col}"))
     out_dir.mkdir(parents=True, exist_ok=True)
     results_path = out_dir / "sweep_results.json"
     results = json.loads(results_path.read_text()) if results_path.exists() else []
@@ -341,10 +367,11 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
                      "sign_flip_mean": float(arr[:, 2].mean()), "sign_flip_std": float(arr[:, 2].std())}
 
     # Final model on ALL labels.
-    final_dir = settings.MODELS_DIR / "stance_distilled_final"
+    final_dir = settings.MODELS_DIR / ("stance_distilled_final" if label_col == "score_llm"
+                                        else f"stance_distilled_final_{label_col}")
     marker = final_dir / "recipe.txt"
-    if not (final_dir / "config.json").exists() or \
-            (marker.exists() and marker.read_text().strip() != best["name"]):
+    if not (final_dir / "config.json").exists() or not marker.exists() \
+            or marker.read_text().strip() != best["name"]:
         info, _ = _fit_eval(base, None, base_model=rc["base_model"], epochs=rc["epochs"],
                             batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                             max_len=rc["max_len"], seed=seed, label_col=label_col,
@@ -376,14 +403,14 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
     return np.clip(out, -1, 1)
 
 
-def score_replies(model_dir: Path | None = None) -> pd.DataFrame:
-    """Add score_distilled to reply_sentiment.parquet (all cached replies)."""
+def score_replies(model_dir: Path | None = None, col: str = "score_distilled") -> pd.DataFrame:
+    """Add `col` (scores from the model at model_dir) to reply_sentiment.parquet."""
     out = settings.REPLY_SENTIMENT_OUTPUT
     df = pd.read_parquet(out)
-    todo = df["score_distilled"].isna() if "score_distilled" in df else pd.Series(True, index=df.index)
+    todo = df[col].isna() if col in df else pd.Series(True, index=df.index)
     if todo.any():
-        logger.info("scoring %d replies with the distilled model", int(todo.sum()))
-        df.loc[todo, "score_distilled"] = score_with_distilled(df.loc[todo, "text"].tolist(), model_dir)
+        logger.info("scoring %d replies with %s -> %s", int(todo.sum()), model_dir or "stance_distilled", col)
+        df.loc[todo, col] = score_with_distilled(df.loc[todo, "text"].tolist(), model_dir)
         df.to_parquet(out, index=False)
     return df
 
