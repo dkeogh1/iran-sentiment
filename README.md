@@ -151,6 +151,37 @@ classified by Claude Haiku into stance categories.
   posts** ("voted 3x for you, losing me as a supporter"), peaking on
   the April rant and the June deal, not on the strikes.
 
+**Population-level stance (Sep 18).** The distilled stance model (see
+*Stance-model experiments* below) scored every one of the 83,054
+replies, so these are proportions of each post's whole audience, not a
+sample:
+
+| Post | Replies | Stance mean | Anti-war | Neutral | Pro-war | Loyalty low / mid / high |
+|---|--:|--:|--:|--:|--:|---|
+| "Power Plant Day" rant | 23,656 | -0.101 | 46% | 21% | 34% | -0.16 / -0.06 / +0.10 |
+| "Whole civilisation will die" | 16,591 | **-0.167** | **51%** | 18% | 31% | -0.22 / -0.13 / +0.12 |
+| Two-week ceasefire | 16,808 | +0.005 | 39% | 20% | 41% | -0.05 / +0.04 / +0.16 |
+| "Hold off on our planned Military attack" | 8,800 | +0.062 | 39% | 17% | 45% | +0.03 / +0.08 / +0.16 |
+| "The Deal with Iran is now complete" | 12,609 | +0.117 | 25% | 21% | **54%** | +0.03 / +0.16 / +0.28 |
+| "Striking Iranian Targets near Hormuz" | 4,590 | **+0.164** | 28% | 20% | 52% | +0.10 / +0.20 / +0.28 |
+
+- **Stance and tone diverge most on the May 18 post.** By valence it
+  was the angriest post in the dataset (-0.48); by stance it is mildly
+  pro-war (+0.06, 45% pro-war). The audience was furious *that Trump
+  held off*, not that he had threatened to strike, which is what the
+  Haiku sample's high `pro_war_critical` share had hinted.
+- **Loyalty predicts hawkishness on every post, monotonically.** The
+  valence reading had loyalists as the *most negative* group on May 18;
+  in stance terms they are the most pro-war group on all six posts, and
+  the only group net pro-war on the two April escalation posts.
+- **The strikes post is the most pro-war of the six** (52% pro-war,
+  28% anti), the June deal a close second. The April "civilisation will
+  die" post remains the only one where anti-war replies are a majority.
+
+The distilled model was trained on Haiku labels and inherits Haiku's
+tendency to read angry hawkish text as anti-war (see the teacher check
+below), so the pro-war shares here are, if anything, lower bounds.
+
 Stance shares are from a bucket-balanced sample, so they describe the
 spectrum of each post's replies, not population proportions; the
 RoBERTa columns are the population numbers. RoBERTa's blind spots are
