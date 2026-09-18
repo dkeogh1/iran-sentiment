@@ -164,7 +164,8 @@ def teacher_report(joined: pd.DataFrame, model: str, out_dir: Path | None = None
 def _fit_eval(train: pd.DataFrame, test: pd.DataFrame | None, *, base_model: str, epochs: int,
               batch_size: int, lr: float, max_len: int, seed: int, label_col: str,
               work_dir: Path, save_to: Path | None = None,
-              grad_accum: int = 1) -> tuple[dict, np.ndarray | None]:
+              grad_accum: int = 1, optim: str = "adamw_torch",
+              gradient_checkpointing: bool = False) -> tuple[dict, np.ndarray | None]:
     """Fine-tune `base_model` (regression head) on `train`; predict `test` if
     given. Returns (info, predictions). Frees the GPU afterwards so a sweep
     can chain recipes in one process."""
@@ -191,7 +192,8 @@ def _fit_eval(train: pd.DataFrame, test: pd.DataFrame | None, *, base_model: str
     args = TrainingArguments(
         output_dir=str(work_dir / "trainer"), num_train_epochs=epochs,
         per_device_train_batch_size=batch_size, per_device_eval_batch_size=batch_size * 2,
-        gradient_accumulation_steps=grad_accum,
+        gradient_accumulation_steps=grad_accum, optim=optim,
+        gradient_checkpointing=gradient_checkpointing,
         learning_rate=lr, weight_decay=0.01, warmup_ratio=0.06,
         bf16=bf16, fp16=cuda and not bf16,
         eval_strategy="epoch" if ds_test is not None else "no", save_strategy="no",
@@ -207,7 +209,8 @@ def _fit_eval(train: pd.DataFrame, test: pd.DataFrame | None, *, base_model: str
         model.save_pretrained(save_to)
         tok.save_pretrained(save_to)
     info = {"base_model": base_model, "epochs": epochs, "lr": lr, "max_len": max_len,
-            "batch_size": batch_size, "grad_accum": grad_accum, "seed": seed, "n_train": int(len(train)),
+            "batch_size": batch_size, "grad_accum": grad_accum, "optim": optim,
+            "gradient_checkpointing": gradient_checkpointing, "seed": seed, "n_train": int(len(train)),
             "train_runtime_s": float(out.metrics.get("train_runtime", 0)),
             "train_loss": float(out.metrics.get("train_loss", float("nan")))}
     del trainer, model
@@ -293,7 +296,8 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
             info, pred = _fit_eval(train, test, base_model=rc["base_model"], epochs=rc["epochs"],
                                    batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                                    max_len=rc["max_len"], seed=seed, label_col=label_col,
-                                   work_dir=out_dir / rc["name"], grad_accum=rc.get("grad_accum", 1))
+                                   work_dir=out_dir / rc["name"], grad_accum=rc.get("grad_accum", 1), optim=rc.get("optim", "adamw_torch"),
+                                   gradient_checkpointing=rc.get("gradient_checkpointing", False))
             t = test.assign(pred=pred)
             entry = {"name": rc["name"], **info,
                      "holdout": agreement(t[label_col].values, t["pred"].values),
@@ -326,7 +330,8 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
         _, pred = _fit_eval(tr, te, base_model=rc["base_model"], epochs=rc["epochs"],
                             batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                             max_len=rc["max_len"], seed=seed + k, label_col=label_col,
-                            work_dir=out_dir / f"cv{k}", grad_accum=rc.get("grad_accum", 1))
+                            work_dir=out_dir / f"cv{k}", grad_accum=rc.get("grad_accum", 1), optim=rc.get("optim", "adamw_torch"),
+                                   gradient_checkpointing=rc.get("gradient_checkpointing", False))
         cv.append({"fold": k, "recipe": best["name"], **agreement(te[label_col].values, pred)})
         cv_path.write_text(json.dumps(cv, indent=2, default=float))
         logger.info("sweep: cv fold %d -> %s", k, json.dumps(cv[-1]))
@@ -343,7 +348,8 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
         info, _ = _fit_eval(base, None, base_model=rc["base_model"], epochs=rc["epochs"],
                             batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                             max_len=rc["max_len"], seed=seed, label_col=label_col,
-                            work_dir=out_dir / "final", save_to=final_dir, grad_accum=rc.get("grad_accum", 1))
+                            work_dir=out_dir / "final", save_to=final_dir, grad_accum=rc.get("grad_accum", 1), optim=rc.get("optim", "adamw_torch"),
+                                   gradient_checkpointing=rc.get("gradient_checkpointing", False))
         final_dir.mkdir(parents=True, exist_ok=True)
         marker.write_text(best["name"])
         summary["final"] = {**info, "path": str(final_dir)}

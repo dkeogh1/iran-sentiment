@@ -143,11 +143,14 @@ DISTILL_SWEEP = [
     {"name": "rl-128-1e5-4",  "base_model": "roberta-large", "max_len": 128, "lr": 1e-5, "epochs": 4},
     {"name": "rl-256-2e5-3",  "base_model": "roberta-large", "max_len": 256, "lr": 2e-5, "epochs": 3},
     {"name": "rl-128-2e5-5",  "base_model": "roberta-large", "max_len": 128, "lr": 2e-5, "epochs": 5},
-    # DeBERTa-v3-large OOMs on the 3080 at batch 16: batch 8 x 2 accumulation.
+    # DeBERTa-v3-large (435M params + a 128k-token embedding) does not fit
+    # the 10 GB 3080 with fp32 AdamW states even at batch 4: 8-bit AdamW
+    # (bitsandbytes) + gradient checkpointing + accumulation to an effective
+    # batch of 16.
     {"name": "deb-128-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 128, "lr": 1e-5, "epochs": 3,
-     "batch_size": 8, "grad_accum": 2},
+     "batch_size": 8, "grad_accum": 2, "optim": "adamw_bnb_8bit", "gradient_checkpointing": True},
     {"name": "deb-256-1e5-3", "base_model": "microsoft/deberta-v3-large", "max_len": 256, "lr": 1e-5, "epochs": 3,
-     "batch_size": 4, "grad_accum": 4},
+     "batch_size": 4, "grad_accum": 4, "optim": "adamw_bnb_8bit", "gradient_checkpointing": True},
     {"name": "twr-128-3e5-4", "base_model": "cardiffnlp/twitter-roberta-base-sentiment-latest", "max_len": 128, "lr": 3e-5, "epochs": 4},
     {"name": "rb-128-3e5-4",  "base_model": "roberta-base", "max_len": 128, "lr": 3e-5, "epochs": 4},
 ]
