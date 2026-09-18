@@ -43,6 +43,15 @@ COLLECTION_END = (
 )
 
 
+# ── Score columns ──────────────────────────────────────────────────
+# score_opus (Claude Opus 5 via `relabel`) is the stance of record since
+# 2026-09-18: Haiku (score_llm) reads angry hawkish posts as anti-war and
+# put the pro-war MAGA tier at -0.06 where Opus puts it at +0.25. Columns
+# absent from the frame are skipped by the plots.
+STANCE_SCORE_COL = "score_opus"
+PLOT_SCORE_COLS = ["score_vader", "score_transformer", "score_llm", "score_opus"]
+
+
 # ── Event overlays ─────────────────────────────────────────────────
 # Plots draw a marker line for every timeline event inside the analysis
 # window but only print a label for events at or above this importance

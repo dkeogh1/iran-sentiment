@@ -244,7 +244,7 @@ def generate_all(
 
     Excludes the keyword-search 'user' rows from account-level plots.
     """
-    score_cols = score_cols or ["score_vader", "score_transformer", "score_llm"]
+    score_cols = score_cols or settings.PLOT_SCORE_COLS
     df_accounts = df[~df["user"].astype(str).str.startswith("search:")]
     written: list[Path] = []
 

@@ -54,7 +54,7 @@ logger = logging.getLogger(__name__)
 # ── Score-column helpers ───────────────────────────────────────────
 
 #: Ordered preference — use the most context-aware score that's present.
-SCORE_COLS_IN_PREFERENCE = ("score_llm", "score_transformer", "score_vader")
+SCORE_COLS_IN_PREFERENCE = ("score_opus", "score_llm", "score_transformer", "score_vader")
 LABEL_COLS_IN_PREFERENCE = ("label_llm", "label_transformer", "label_vader")
 
 

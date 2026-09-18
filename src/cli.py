@@ -472,7 +472,7 @@ def visualize():
 # ── summary ─────────────────────────────────────────────────────────
 
 @main.command()
-@click.option("--score", default="score_vader", help="Score column to summarize")
+@click.option("--score", default=settings.STANCE_SCORE_COL, show_default=True, help="Score column to summarize")
 def summary(score: str):
     """Print stats tables: by account, by tier, weekly trend."""
     from src.analysis.sentiment import load_scored

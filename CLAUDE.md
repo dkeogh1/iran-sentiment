@@ -187,32 +187,32 @@ rule: `k8s/README.md`. `collect` is never a CronJob.
 
 ## Scoring strategies
 
-Three scorers live in `sentiment.py`, run in order of cost/accuracy:
+Four scorers, in order of cost/accuracy. `settings.STANCE_SCORE_COL`
+(`score_opus`) is the stance of record; `summary`, `event-study` and the
+plots default to it.
 
-- **VADER** — rule-based, always on. Fast but naive; flags anti-war
-  rhetoric as positive because words like "peace", "diplomacy",
-  "humanity" are lexically positive (see @SenSanders at VADER +0.110
-  despite being a loud anti-war voice).
+- **VADER** — rule-based, always on. Flags anti-war rhetoric as positive
+  because "peace", "diplomacy", "humanity" are lexically positive.
 - **RoBERTa** (`cardiffnlp/twitter-roberta-base-sentiment-latest`) —
-  Twitter-tuned sentiment. Better than VADER in general, but has a
-  systematic positive-bias on stance: institutional positive-valenced
-  language (religious, bureaucratic, victorious) reads as pro-war.
-- **Claude Haiku stance** (`--llm`) — context-aware JSON scoring
-  from −1.0 (anti-war) to +1.0 (pro-war). The source of truth for
-  stance; VADER and RoBERTa are valence proxies.
+  Twitter-tuned valence. Sign-flips faith-based anti-war voices
+  (@Pontifex RoBERTa +0.33 vs Opus −0.31) and reads angry hawks as
+  anti-war (@LauraLoomer −0.28 vs +0.15).
+- **Claude Haiku 4.5 stance** (`analyze --llm`, `score_llm`) — good on
+  most tiers (0.76–0.89 Pearson vs Opus on admin / anti-war MAGA /
+  religious) but has RoBERTa's pro-war failure in weaker form: Levin's
+  attacks on the anti-war right scored −0.85 where Opus gives +0.60;
+  `maga_prowar` tier −0.06 (Haiku) vs +0.25 (Opus), 21% opposite signs.
+- **Claude Opus 5 stance** (`relabel`, `score_opus`) — same prompt at
+  effort=low through the Batch API (~$31 for 19.5k posts). Source of
+  truth since 2026-09-18. New posts: `relabel submit` after `analyze`.
+- **Distilled DeBERTa-v3-large** (`stance-distill`, GPU Job) — reproduces
+  its teacher at ~0.79 Pearson; scores 83k replies in minutes for free.
+  The Opus-taught final model is the reply scorer of record
+  (`score_opus_distilled`).
 
-**Known miscalibrations when stance is what matters:**
-- VADER confuses "we destroyed their nuclear facility" (triumphant
-  admin framing) with negative lexical.
-- RoBERTa sign-flips faith-based anti-war voices: @Pontifex at RoBERTa
-  +0.364 vs LLM −0.496 (full sign flip). The `religious_authority`
-  tier must use `score_llm`; the RoBERTa number is actively misleading.
-- RoBERTa underrates pro-war admin messaging (@WhiteHouse RoBERTa
-  +0.364 vs LLM +0.067) and overrates negative-valenced pro-war
-  voices (@LauraLoomer RoBERTa −0.335 vs LLM −0.007).
-
-Rule of thumb: use `score_transformer` for quick looks and `score_llm`
-for anything published or compared across tiers.
+Rule of thumb: `score_transformer` for a quick look, `score_opus` for
+anything published or compared across tiers; never mix scorers in one
+series.
 
 ## Python environment
 

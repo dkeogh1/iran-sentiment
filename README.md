@@ -19,98 +19,106 @@ schedule.
 4 keyword searches (a public-sentiment proxy, Feb-May only), plus 83,054 Truth Social
 replies to 6 Trump posts (three from the April escalation, three from
 the May-September deal-and-collapse cycle) and Trump's own Truth Social
-feed from Apr 4 to Sep 16 (4,087 posts). Every post carries three scores: VADER
-(lexicon baseline), RoBERTa (`cardiffnlp/twitter-roberta-base-sentiment-latest`,
-valence), and a Claude Haiku stance score from -1.0 (anti-war) to +1.0
-(pro-war). **Stance numbers below are the LLM score**; the RoBERTa
-column is shown to make its miscalibration visible.
+feed from Apr 4 to Sep 16 (4,087 posts). Every post carries four scores: VADER (lexicon baseline), RoBERTa
+(`cardiffnlp/twitter-roberta-base-sentiment-latest`, valence), a Claude
+Haiku 4.5 stance score, and a Claude Opus 5 stance score from -1.0
+(anti-war) to +1.0 (pro-war), the last obtained by relabelling every
+post through the Batch API after a teacher check showed Haiku misreading
+the pro-war tier (see *Stance-model experiments*). **Stance numbers
+below are the Opus score**; Haiku and RoBERTa are shown to make their
+miscalibrations visible.
 
 ### Tier divergence
 
-![Tier comparison](docs/figures/tier_comparison_score_llm.png)
+![Tier comparison](docs/figures/tier_comparison_score_opus.png)
 
-| Tier | LLM stance | RoBERTa | n |
-|------|-----------:|--------:|--:|
-| admin | +0.174 | +0.143 | 4,879 |
-| maga_prowar | -0.056 | -0.199 | 5,261 |
-| media | -0.119 | -0.032 | 1,358 |
-| religious_authority | -0.180 | **+0.302** | 2,239 |
-| maga_antiwar | -0.206 | -0.180 | 3,755 |
-| search (public, Feb-May) | -0.326 | -0.346 | 1,768 |
-| opposition | -0.376 | -0.303 | 345 |
+| Tier | Opus stance | Haiku stance | RoBERTa | n |
+|------|-----------:|-------------:|--------:|--:|
+| maga_prowar | **+0.247** | -0.056 | -0.199 | 5,174 |
+| admin | +0.211 | +0.175 | +0.143 | 4,806 |
+| media | -0.062 | -0.120 | -0.032 | 1,337 |
+| religious_authority | -0.137 | -0.180 | **+0.302** | 2,238 |
+| search (public, Feb-May) | -0.143 | -0.325 | -0.346 | 1,765 |
+| opposition | -0.199 | -0.384 | -0.303 | 338 |
+| maga_antiwar | -0.234 | -0.206 | -0.180 | 3,747 |
 
-The administration is the only net-pro-war tier. Everyone else is
-net-negative, including the "pro-war" MAGA influencers: Levin and
-Loomer are hawkish in framing but critical in tone, and land near zero
-on stance. The MAGA split shows up as a 0.15-point gap between the
-pro-war and anti-war influencer tiers.
+Two net-pro-war tiers, and the pro-war influencers edge out the
+administration itself. Everyone else is net-negative, with the anti-war
+MAGA voices now the most anti-war tier in the dataset, ahead of the
+opposition. The MAGA split is 0.48 points wide, three times what the
+Haiku labels showed.
+
+### The pro-war tier was mislabelled, twice
+
+Both cheap scorers put Mark Levin and Laura Loomer on the anti-war side
+of zero. RoBERTa does it because their posts are vicious in tone; Haiku
+does it for the same reason in weaker form, scoring Levin's attacks on
+"Qatarlson" and "genocidal regimes" at -0.85 where Opus reads them as
++0.60. On the whole dataset the two teachers agree well everywhere
+except this tier: 0.35 Pearson and 21% opposite-sign labels on
+`maga_prowar`, against 0.76 to 0.89 and under 5% flips on admin,
+anti-war MAGA and religious posts. Corrected, @marklevinshow is +0.281
+and @LauraLoomer +0.150: the pro-war influencers are hawks, full stop.
 
 ### The religious sign flip
 
 RoBERTa reads the Vatican tier as the *most positive* tier in the
 dataset (+0.302) because faith-based anti-war language ("peace",
-"mercy", "dialogue") is lexically positive. The LLM stance score puts
-the same posts at -0.180, and @Pontifex at **-0.407 -- the most
-anti-war account in the dataset** (RoBERTa: +0.330). Of 2,239
-religious-tier posts, none were labelled pro-war. This tier is the
-reason the project moved to LLM stance scoring; see the *Sentiment
-scoring* section.
+"mercy", "dialogue") is lexically positive. Opus puts the same posts at
+-0.137, and @Pontifex at **-0.310, tied with @mtgreenee as the most
+anti-war account in the dataset**. Of 2,238 religious-tier posts, none
+were labelled pro-war by either Claude model. This tier is the reason
+the project moved to LLM stance scoring in the first place.
 
 ### Who the hawks actually are
 
-The operational arms out-hawk the PR shop. @PeteHegseth (+0.295) and
-@StateDept (+0.228) are the two most pro-war accounts; @POTUS is
-+0.104 and @WhiteHouse only +0.051, even though RoBERTa had the White
-House among the most positive accounts in the dataset (+0.331). @VP,
-the lead negotiator from the Apr 11 Islamabad talks, sits at +0.034.
+The operational arms out-hawk the PR shop, and one radio host out-hawks
+most of the cabinet. @PeteHegseth (+0.373) is the most pro-war account,
+then @marklevinshow (+0.281), @StateDept (+0.240), @POTUS (+0.149),
+@LauraLoomer (+0.150), @WhiteHouse (+0.104), @SecRubio (+0.080) and
+@VP (+0.063).
 
-### Seven months: the administration talked itself down
+### Seven months: the administration talked itself down, the influencers didn't
 
-LLM stance by tier across the four phases of the war (keyword searches
+Opus stance by tier across the four phases of the war (keyword searches
 excluded; they end May 12):
 
 | Tier | Feb 1 -- Apr 21<br>strikes, ceasefire | Apr 22 -- Jun 17<br>talks, MOU | Jun 18 -- Aug 17<br>collapse, blockade | Aug 18 -- Sep 18<br>expiry, strikes |
 |---|--:|--:|--:|--:|
-| admin | +0.235 | +0.181 | +0.108 | +0.073 |
-| maga_prowar | -0.044 | -0.107 | -0.024 | -0.053 |
-| media | -0.092 | -0.116 | -0.169 | -0.170 |
-| religious_authority | -0.227 | -0.158 | -0.141 | -0.133 |
-| maga_antiwar | -0.231 | -0.153 | -0.248 | -0.169 |
-| opposition | -0.352 | -0.380 | -0.397 | -0.374 |
-| posts | 9,419 | 4,088 | 2,614 | 1,716 |
+| admin | +0.280 | +0.205 | +0.137 | +0.115 |
+| maga_prowar | +0.272 | +0.173 | +0.225 | +0.217 |
+| media | -0.049 | -0.044 | -0.100 | -0.106 |
+| religious_authority | -0.180 | -0.110 | -0.108 | -0.101 |
+| opposition | -0.222 | -0.164 | -0.223 | -0.158 |
+| maga_antiwar | -0.280 | -0.175 | -0.233 | -0.148 |
+| posts | 9,348 | 4,035 | 2,576 | 1,681 |
 
 - **The administration's own messaging got steadily less hawkish**, from
-  +0.235 in the strike phase to +0.073 in the September strikes phase.
+  +0.280 in the strike phase to +0.115 in the September strikes phase.
   The decline is in the diplomatic and presidential accounts, not the
-  Pentagon: @StateDept +0.30 to +0.06, @SecRubio +0.16 to +0.04,
-  @POTUS +0.14 to +0.04, while @PeteHegseth held between +0.24 and
-  +0.34 throughout. By September the only consistently hawkish voice
-  in the administration was the Secretary of War.
-- **The opposition never moved.** @SenSanders sits between -0.35 and
-  -0.40 in every phase.
-- **The anti-war MAGA tier split internally.** @mtgreenee hardened
-  (-0.32 to -0.37) and @RealAlexJones was most anti-war during the
-  July collapse (-0.34), while @RealCandaceO softened from -0.29 to
-  -0.16 after April.
-- **The Vatican softened once the shooting paused and did not
-  re-harden when it resumed**: @Pontifex -0.48 in the strike phase,
-  -0.35 to -0.39 thereafter. Media (@BarakRavid) went the other way,
-  -0.09 to -0.17.
-
-![Tier comparison](docs/figures/tier_comparison_score_llm.png)
+  Pentagon: @StateDept +0.31 to +0.11, @POTUS +0.20 to +0.07, @SecRubio
+  +0.10 to +0.03, while @PeteHegseth held between +0.31 and +0.42.
+- **The pro-war influencers did not follow.** They started level with
+  the administration and stayed there, so from the July collapse on
+  they were the more hawkish voice: +0.22 against the administration's
+  +0.12 to +0.14. @LauraLoomer's lowest phase was the negotiation
+  window, when she was attacking the deal rather than Iran.
+- **Everyone anti-war softened once the shooting paused and did not
+  fully re-harden**: anti-war MAGA -0.28 to -0.15, the Vatican -0.18 to
+  -0.10, @SenSanders -0.22 to -0.16. Only media (@BarakRavid) drifted
+  the other way, -0.05 to -0.11.
 
 ### Per-account detail
 
-![Account heatmap](docs/figures/account_heatmap_score_llm.png)
+![Account heatmap](docs/figures/account_heatmap_score_opus.png)
 
-- @SenSanders is the most anti-war non-Vatican voice (-0.376). VADER
-  scores him positive because anti-war vocabulary is lexically
-  positive.
-- @LauraLoomer moves from RoBERTa -0.276 to LLM -0.067: her angry
-  pro-war posts read as negative valence but near-neutral stance.
+- @mtgreenee (-0.317) and @Pontifex (-0.310) are the most anti-war
+  accounts; @TuckerCarlson and @RealCandaceO follow at -0.244.
+- @SenSanders lands at -0.199 under Opus against -0.384 under Haiku:
+  much of his output is procedural (war powers votes, hearings) and Opus
+  reads it as neutral where Haiku read it as opposition.
 - @TuckerCarlson posts rarely (221 tweets in seven months) but is
-  consistently anti-war from the strikes onward (-0.251).
-- @mtgreenee is the most anti-war MAGA voice (-0.302).
+  consistently anti-war from the strikes onward.
 - Blank weeks in the heatmap for Levin, Loomer, Alex Jones and the
   White House between May and July are a collection limit, not
   silence: see *Limitations*.
@@ -226,8 +234,11 @@ Three scorers, in order of cost:
    checkpointing (the pipeline runs on a fanless mini PC).
 3. Claude Haiku stance -- JSON-scored stance from -1.0 (anti-war) to
    +1.0 (pro-war), with an `off_topic` pre-filter. Run over the full
-   dataset (100% coverage); the source of truth for every stance
-   number in this README. Also used for the 500-reply stance sample.
+   dataset (100% coverage). Good on most tiers but reads angry hawkish
+   posts as anti-war (see *Stance-model experiments*).
+4. Claude Opus 5 stance -- the same prompt, verbatim, at low effort,
+   over every labelled post through the Message Batches API (half
+   price). The stance of record for every number in this README.
 
 ### Event overlay
 
