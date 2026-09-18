@@ -15,6 +15,7 @@ Commands:
   run-all         Full pipeline: collect → analyze → visualize → summary
 """
 
+import json
 import logging
 import sys
 
@@ -751,6 +752,56 @@ def score_distilled_cmd():
     from src.analysis.stance_local import score_replies
     df = score_replies()
     click.echo(df.groupby("tracked_slug")["score_distilled"].agg(["mean", "count"]).round(3).to_string())
+
+
+# ── relabel (Opus teacher via the Batch API) ──────────────────────
+
+@main.command("relabel")
+@click.argument("action", type=click.Choice(["estimate", "submit", "status", "collect", "merge", "resubmit"]))
+@click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
+@click.option("--yes", is_flag=True, help="Submit without the confirmation prompt")
+def relabel_cmd(action: str, model: str, yes: bool):
+    """Relabel every labelled post with a stronger teacher through the Batch
+    API (half price, ~1 h). Steps: estimate -> submit -> status -> collect
+    -> merge; `resubmit` retries the ids that failed in the last collect."""
+    from src.analysis import relabel as rl
+    if action in ("estimate", "submit", "resubmit", "merge"):
+        df = _load_scored_frame()
+    if action == "estimate":
+        n = len(rl.posts_to_label(df, model))
+        click.echo(f"{n} posts to label with {model}; batch cost ≈ ${rl.estimate_cost(n):.2f} "
+                   f"(direct would be ≈ ${rl.estimate_cost(n) / rl.BATCH_DISCOUNT:.2f})")
+        return
+    if action in ("submit", "resubmit"):
+        only = None
+        if action == "resubmit":
+            st = json.loads(rl.state_path().read_text())
+            only = set(st.get("collected", {}).get("failed_ids", []))
+            if not only:
+                click.echo("nothing to resubmit")
+                return
+        n = len(rl.posts_to_label(df, model, only))
+        click.echo(f"{n} posts -> {model}, batch cost ≈ ${rl.estimate_cost(n):.2f}")
+        if n and not yes and not click.confirm("Submit?", default=False):
+            click.echo("Aborted.")
+            return
+        st = rl.submit(df, model=model, only_ids=only)
+        click.echo(f"batch {st.get('batch_id')} {st.get('status')}  ({st.get('n_submitted')} requests)")
+        return
+    if action == "status":
+        st = rl.status()
+        click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('counts')}")
+        return
+    if action == "collect":
+        st = rl.collect()
+        click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
+        return
+    if action == "merge":
+        out = rl.merge(df, model)
+        out.to_parquet(settings.SENTIMENT_OUTPUT, index=False)
+        tag = rl.tag_for(model)
+        click.echo(f"score_{tag} on {int(out[f'score_{tag}'].notna().sum())}/{len(out)} posts -> "
+                   f"{settings.SENTIMENT_OUTPUT}")
 
 
 # ── status ──────────────────────────────────────────────────────────
