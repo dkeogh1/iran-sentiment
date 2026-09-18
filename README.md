@@ -211,6 +211,41 @@ which get labelled on plots. Source URLs for the new events are in
 `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`. Data currently
 ends May 12, so the later events are not yet plotted.
 
+## Stance-model experiments (GPU, Sep 2026)
+
+Can the per-post Haiku call be replaced by something that runs free on
+the homelab's RTX 3080? Three one-shot Kubernetes Jobs (`k8s/README.md`),
+all evaluated on the same per-tier held-out split against the Haiku
+labels the dataset carries:
+
+| Candidate | Pearson | MAE | Sign agreement | Sign flips |
+|---|--:|--:|--:|--:|
+| RoBERTa valence (`score_transformer`, the current quick-look scorer) | 0.28 | 0.45 | 38% | 14.9% |
+| Qwen2.5-7B-Instruct, 4-bit, same prompt as Haiku (920 posts) | 0.47 | 0.38 | 49% | 9.7% |
+| **RoBERTa-large fine-tuned on the Haiku labels** (3,893 posts) | **0.74** | **0.16** | **75%** | **5.2%** |
+
+The distilled encoder is the clear winner: 7.5 minutes of training, then
+83,000 replies in seconds. It is strongest exactly where the valence
+model failed, 0.90 Pearson and 0.4% flips on the religious tier. The
+open 7B model with the Claude prompt is only modestly better than
+valence and not a Haiku substitute.
+
+**But the teacher has a blind spot.** A check of 497 posts, 71 per tier,
+relabelled by Claude Opus 5 shows Haiku and Opus agreeing on most tiers
+(0.76 to 0.78 Pearson and 82 to 90% sign agreement on admin, anti-war
+MAGA and religious) but not on the pro-war tier: 0.34 Pearson and 24%
+sign flips. Haiku scores Mark Levin's vicious attacks on the anti-war
+right as anti-war (-0.85) because of their tone; Opus reads them as
+hawkish (+0.60). Haiku also marks praise of peace as pro-war (a USCCB
+post commending the agreement at +0.70). This is RoBERTa's failure mode
+in weaker form, so the `maga_prowar` averages in this README are likely
+too low, and a model distilled from Haiku inherits the bias. The next
+step is relabelling with Opus 5 and distilling from that.
+
+Artifacts: `data/models/stance_distilled/` (model, holdout predictions,
+metrics), `data/processed/teacher_check_claude-opus-5.*`,
+`data/processed/local_llm_Qwen_Qwen2.5-7B-Instruct.*`.
+
 ## Setup
 
 Requires Python 3.11+.
