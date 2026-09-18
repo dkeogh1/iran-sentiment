@@ -246,6 +246,7 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
              "gradient_checkpointing": rc.get("gradient_checkpointing", False)}
     suffix = "" if label_col == "score_llm" else f"_{label_col}"
     out_dir = out_dir or (settings.MODELS_DIR / f"stance_distilled{suffix}")
+    out_dir.mkdir(parents=True, exist_ok=True)
     base = training_frame(df)
     if label_col != "score_llm":
         base = base[base[label_col].notna()]
