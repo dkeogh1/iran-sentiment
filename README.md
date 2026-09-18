@@ -253,6 +253,7 @@ labels the dataset carries:
 |---|--:|--:|--:|--:|
 | RoBERTa valence (`score_transformer`, the current quick-look scorer) | 0.28 | 0.45 | 38% | 14.9% |
 | Qwen2.5-7B-Instruct, 4-bit, same prompt as Haiku (920 posts) | 0.47 | 0.38 | 49% | 9.7% |
+| Qwen3-8B, 4-bit, thinking off, same prompt (920 posts) | 0.48 | 0.38 | 63% | 8.8% |
 | **RoBERTa-large fine-tuned on the Haiku labels** (3,893 posts) | **0.74** | **0.16** | **75%** | **5.2%** |
 
 The distilled encoder is the clear winner: 7.5 minutes of training, then
@@ -264,8 +265,10 @@ agreement over 5 folds, so the number is stable and the ceiling is the
 labels, not the architecture. The final model trained on all 19,457
 labels is `data/models/stance_distilled_final/`. It is strongest exactly where the valence
 model failed, 0.90 Pearson and 0.4% flips on the religious tier. The
-open 7B model with the Claude prompt is only modestly better than
-valence and not a Haiku substitute.
+open 7B/8B models with the Claude prompt are only modestly better than
+valence and not a Haiku substitute; the 2025 generation (Qwen3) fixes
+many sign errors (63% agreement vs 49%) but its correlation with the
+teacher is unchanged, and it is weakest on the admin tier (0.18).
 
 **But the teacher has a blind spot.** A check of 497 posts, 71 per tier,
 relabelled by Claude Opus 5 shows Haiku and Opus agreeing on most tiers
@@ -281,7 +284,7 @@ step is relabelling with Opus 5 and distilling from that.
 
 Artifacts: `data/models/stance_distilled/` (model, holdout predictions,
 metrics), `data/processed/teacher_check_claude-opus-5.*`,
-`data/processed/local_llm_Qwen_Qwen2.5-7B-Instruct.*`.
+`data/processed/local_llm_Qwen_*.*`.
 
 ## Setup
 
