@@ -469,6 +469,16 @@ EVENTS: list[Event] = [
         category="media", impact="polarizing", importance=3,
     ),
     Event(
+        date=date(2026, 6, 22),
+        label="MTG: 'DONE with the America LAST Republican Party'",
+        description="Marjorie Taylor Greene backs Carlson's break, posting that "
+        "'a LOT of us are absolutely fed up and will not support a party that "
+        "betrays its voters' and 'we are DONE with the America LAST Republican "
+        "Party'; next day: 'too conservative to be a Democrat and too honest "
+        "to be a Republican'.",
+        category="media", impact="polarizing", importance=3,
+    ),
+    Event(
         date=date(2026, 6, 23),
         label="Senate passes war powers 50-48",
         description="Senate passes the concurrent resolution to end hostilities "
@@ -605,6 +615,16 @@ EVENTS: list[Event] = [
         "Fetterman again votes with Republicans; Collins, Murkowski and Paul "
         "vote with Democrats.",
         category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 8, 2),
+        label="Trump cancels attack: 'perimeters of a deal'",
+        description="Trump posts that the US is 'locked and loaded' at levels 'not "
+        "seen since World War II' but cancels the attack at Iran's and Gulf "
+        "states' request because 'the perimeters of a deal has been agreed "
+        "to', including full opening of Hormuz. Source: Truth Social post "
+        "117023461141824050 (9,653 replies).",
+        category="diplomatic", impact="polarizing", importance=4,
     ),
     Event(
         date=date(2026, 8, 3),

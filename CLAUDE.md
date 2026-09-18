@@ -3,15 +3,23 @@
 Sentiment analysis experiment on the 2026 Iran war. Tracks how Trump
 administration messaging, the MAGA influencer ecosystem, the
 opposition, and the Pope Leo XIV / Vatican moral axis shift over the
-Feb-May 2026 window (strikes Feb 28, ceasefire Apr 8, negotiations
-through mid-May), including the MAGA split between pro- and anti-war
-factions.
+war (strikes Feb 28, ceasefire Apr 8, Islamabad MOU Jun 17, collapse
+Jul 8, expiry Aug 17, renewed strikes Sep 1), including the MAGA split
+between pro- and anti-war factions, and how Trump's Truth Social
+audience reacts post by post.
 
-Status: closed experiment. Last data refresh 2026-05-12 (accounts
-through May 10, searches through May 12); 13,974 scored posts, 100%
-LLM stance coverage. Nothing runs on a schedule, and it does not
-belong on the k8s cluster (no recurring job, 66 MB of data, pay-per-
-read collector) -- see the *No cluster deployment* note below.
+Status (2026-09-18): two data layers at different depths.
+- X broadcaster data ends 2026-05-12 (13,974 scored posts, 100% LLM
+  stance). Extending it to September needs ~$42 of X credit (balance
+  was $4.40); the plan is in *Budget discipline* below.
+- Truth Social is current through 2026-09-16: Trump's feed (4,087
+  posts) and 83,054 replies to 6 tracked posts, RoBERTa-scored with a
+  992-row Haiku stance sample.
+- Timeline runs to 2026-09-15. `ANALYSIS_END` tracks the X data, not
+  the catalogue.
+Nothing runs on a schedule, and it does not belong on the k8s cluster
+(no recurring job, pay-per-read collector) -- see *No cluster
+deployment* below.
 
 ## Architecture
 
@@ -23,7 +31,7 @@ never hard-code them in scripts.
 config/
   settings.py      # paths, budget caps, batch sizes, tier colors, model names
   accounts.py      # X/Truth Social handles organized by tier
-  timeline.py      # 82 key events (through 2026-09-15) with importance 1-5
+  timeline.py      # 84 key events (through 2026-09-15) with importance 1-5
 src/
   cli.py                              # single entrypoint -- all commands live here
   collectors/x_collector.py           # per-account JSONL caching + incremental fetch

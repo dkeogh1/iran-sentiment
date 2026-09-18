@@ -7,9 +7,10 @@ Pope Leo XIV / Vatican moral axis across X and Truth Social, from a
 month before the Feb 28 strikes through the Apr 8 ceasefire and three
 weeks of the post-ceasefire negotiation period.
 
-The last data refresh was 2026-05-12 (accounts through May 10, keyword
-searches through May 12). The experiment is closed; nothing runs on a
-schedule.
+The X broadcaster data ends 2026-05-12 (accounts through May 10,
+keyword searches through May 12). The Truth Social layer -- Trump's
+feed and the reply-level audience analysis -- runs through 2026-09-16.
+Nothing runs on a schedule.
 
 ## Findings
 
@@ -176,9 +177,9 @@ Three scorers, in order of cost:
 
 ### Event overlay
 
-82 events are catalogued in `config/timeline.py` (military strikes,
+84 events are catalogued in `config/timeline.py` (military strikes,
 diplomatic moments, polling, media events) and overlaid on time-series
-plots. The first 36 cover the pre-war build-up through Apr 15; 46 more,
+plots. The first 36 cover the pre-war build-up through Apr 15; 48 more,
 added Sep 2026 from a web-research pass with independent fact-checking,
 cover May 12 -- Sep 15 (the Islamabad MOU of Jun 17, its collapse Jul 8,
 expiry Aug 17, and the renewed strikes of September). Each event carries
@@ -247,7 +248,7 @@ collect only spends tokens on new posts.
 config/
   settings.py          # paths, budget caps, batch sizes, tier colors
   accounts.py          # X/Truth Social handles organized by tier
-  timeline.py          # 82 key events (Jun 2025 - Sep 2026) for plot overlays
+  timeline.py          # 84 key events (Jun 2025 - Sep 2026) for plot overlays
   tracked_posts.py     # specific Trump posts for reply analysis
 src/
   cli.py               # Click CLI -- single entrypoint

@@ -114,8 +114,10 @@ def bootstrap_diff_ci(
     Bootstrap CI for (mean(a) - mean(b)). Resamples within each group
     independently (unequal-N friendly).
     """
-    a = np.asarray(a, dtype=float); a = a[~np.isnan(a)]
-    b = np.asarray(b, dtype=float); b = b[~np.isnan(b)]
+    a = np.asarray(a, dtype=float)
+    a = a[~np.isnan(a)]
+    b = np.asarray(b, dtype=float)
+    b = b[~np.isnan(b)]
     if len(a) == 0 or len(b) == 0:
         return (float("nan"), float("nan"), float("nan"))
 
@@ -479,7 +481,7 @@ def _parse_json_response(text: str) -> dict:
     text = text.strip()
     if text.startswith("```"):
         lines = text.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
+        lines = [ln for ln in lines if not ln.strip().startswith("```")]
         text = "\n".join(lines).strip()
     return json.loads(text)
 
