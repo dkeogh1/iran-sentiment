@@ -115,6 +115,8 @@ def teacher_check(df: pd.DataFrame, *, n: int = settings.TEACHER_CHECK_N,
     base = training_frame(df)
     sample = stratified_sample(base, n, seed)
     cached = pd.read_parquet(out) if out.exists() else pd.DataFrame()
+    if not cached.empty:
+        cached = cached[cached["score_teacher"].notna()]  # failed calls are retried
     have = set(cached["id"].astype(str)) if not cached.empty else set()
     todo = sample[~sample["id"].astype(str).isin(have)]
     logger.info("teacher check: %d sampled, %d cached, %d to score with %s",
