@@ -245,8 +245,8 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
     base_model = rc.get("base_model", base_model)
     epochs, lr, max_len = rc.get("epochs", epochs), rc.get("lr", lr), rc.get("max_len", max_len)
     batch_size = rc.get("batch_size", batch_size)
-    extra = {"grad_accum": rc.get("grad_accum", 1), "optim": rc.get("optim", "adamw_torch"),
-             "gradient_checkpointing": rc.get("gradient_checkpointing", False)}
+    fit_kw = {"grad_accum": rc.get("grad_accum", 1), "optim": rc.get("optim", "adamw_torch"),
+              "gradient_checkpointing": rc.get("gradient_checkpointing", False)}
     suffix = "" if label_col == "score_llm" else f"_{label_col}"
     if extra is not None and len(extra):
         suffix += "_mixed"
@@ -268,7 +268,7 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
                 len(train), len(test), base_model, label_col, recipe)
     info, pred = _fit_eval(train, test, base_model=base_model, epochs=epochs, batch_size=batch_size,
                            lr=lr, max_len=max_len, seed=seed, label_col=label_col,
-                           work_dir=out_dir, save_to=out_dir, **extra)
+                           work_dir=out_dir, save_to=out_dir, **fit_kw)
     test = test.assign(score_distilled=pred)
     metrics = {
         **info, "n_holdout": int(len(test)), "label_col": label_col,
@@ -282,7 +282,7 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
         final_dir = settings.MODELS_DIR / f"stance_distilled_final{suffix}"
         finfo, _ = _fit_eval(base, None, base_model=base_model, epochs=epochs, batch_size=batch_size,
                              lr=lr, max_len=max_len, seed=seed, label_col=label_col,
-                             work_dir=out_dir / "final", save_to=final_dir, **extra)
+                             work_dir=out_dir / "final", save_to=final_dir, **fit_kw)
         final_dir.mkdir(parents=True, exist_ok=True)
         (final_dir / "recipe.txt").write_text(recipe or base_model)
         metrics["final"] = {**finfo, "path": str(final_dir)}
