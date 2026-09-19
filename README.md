@@ -159,36 +159,45 @@ classified by Claude Haiku into stance categories.
   posts** ("voted 3x for you, losing me as a supporter"), peaking on
   the April rant and the June deal, not on the strikes.
 
-**Population-level stance (Sep 18).** The distilled stance model (see
+**Population-level stance (Sep 19).** The distilled stance model (see
 *Stance-model experiments* below) scored every one of the 83,054
 replies, so these are proportions of each post's whole audience, not a
-sample:
+sample. Three generations of the scorer are shown because the teacher
+matters far more than the student:
 
-| Post | Replies | Stance mean | Anti-war | Neutral | Pro-war | Loyalty low / mid / high |
-|---|--:|--:|--:|--:|--:|---|
-| "Power Plant Day" rant | 23,656 | -0.101 | 46% | 21% | 34% | -0.16 / -0.06 / +0.10 |
-| "Whole civilisation will die" | 16,591 | **-0.167** | **51%** | 18% | 31% | -0.22 / -0.13 / +0.12 |
-| Two-week ceasefire | 16,808 | +0.005 | 39% | 20% | 41% | -0.05 / +0.04 / +0.16 |
-| "Hold off on our planned Military attack" | 8,800 | +0.062 | 39% | 17% | 45% | +0.03 / +0.08 / +0.16 |
-| "The Deal with Iran is now complete" | 12,609 | +0.117 | 25% | 21% | **54%** | +0.03 / +0.16 / +0.28 |
-| "Striking Iranian Targets near Hormuz" | 4,590 | **+0.164** | 28% | 20% | 52% | +0.10 / +0.19 / +0.30 |
+| Post | Replies | RoBERTa on Haiku | DeBERTa on Haiku | **DeBERTa on Opus** | Anti-war | Pro-war | Loyalty low / mid / high |
+|---|--:|--:|--:|--:|--:|--:|---|
+| "Power Plant Day" rant | 23,656 | -0.101 | -0.134 | **+0.042** | 37% | 46% | +0.01 / +0.06 / +0.18 |
+| "Whole civilisation will die" | 16,591 | -0.167 | -0.201 | **-0.000** | 40% | 48% | -0.03 / +0.02 / +0.20 |
+| Two-week ceasefire | 16,808 | +0.005 | -0.010 | **+0.197** | 25% | 61% | +0.16 / +0.22 / +0.30 |
+| "Hold off on our planned Military attack" | 8,800 | +0.062 | +0.040 | **+0.234** | 26% | 61% | +0.21 / +0.24 / +0.31 |
+| "The Deal with Iran is now complete" | 12,609 | +0.117 | +0.081 | **+0.213** | 18% | 64% | +0.18 / +0.23 / +0.32 |
+| "Striking Iranian Targets near Hormuz" | 4,590 | +0.164 | +0.166 | **+0.312** | 21% | 69% | +0.24 / +0.35 / +0.45 |
 
-- **Stance and tone diverge most on the May 18 post.** By valence it
-  was the angriest post in the dataset (-0.48); by stance it is mildly
-  pro-war (+0.06, 45% pro-war). The audience was furious *that Trump
-  held off*, not that he had threatened to strike, which is what the
-  Haiku sample's high `pro_war_critical` share had hinted.
-- **Loyalty predicts hawkishness on every post, monotonically.** The
-  valence reading had loyalists as the *most negative* group on May 18;
-  in stance terms they are the most pro-war group on all six posts, and
-  the only group net pro-war on the two April escalation posts.
-- **The strikes post is the most pro-war of the six** (52% pro-war,
-  28% anti), the June deal a close second. The April "civilisation will
-  die" post remains the only one where anti-war replies are a majority.
+- **The audience is more hawkish than any earlier scorer said.** Under
+  the Opus-taught model no post is net anti-war; four of six have a
+  pro-war majority, and even the April "civilisation will die" post,
+  the one the NYT reported as majority-critical, splits 48% pro-war to
+  40% anti. Swapping the student (RoBERTa to DeBERTa, both on Haiku
+  labels) moved nothing; swapping the teacher moved every post by 0.15
+  to 0.20 in the pro-war direction. The Haiku-taught numbers were the
+  same tone-as-stance error the teacher check found on Mark Levin,
+  applied to an audience that is angry and hawkish at once.
+- **Stance and tone still diverge most on May 18.** The angriest post by
+  valence (-0.48) is one of the most pro-war by stance (+0.23, 61%
+  pro-war): the audience was furious *that Trump held off*.
+- **Loyalty predicts hawkishness monotonically on every post**, and the
+  September strikes post is the most pro-war audience of the war, 69%,
+  with the most loyal accounts at +0.45.
+- **The only posts where the anti-war share reaches 40%** are the two
+  April escalation posts, before the ceasefire, when the "voted 3x for
+  you" betrayal voice was loudest.
 
-The distilled model was trained on Haiku labels and inherits Haiku's
-tendency to read angry hawkish text as anti-war (see the teacher check
-below), so the pro-war shares here are, if anything, lower bounds.
+One caveat the numbers cannot resolve on their own: the distilled model
+was trained on broadcaster posts and applied to replies, a different
+register. The 992-reply Haiku stance sample is the only reply-level
+ground truth so far; relabelling it with Opus (about $2) would put a
+number on the domain shift.
 
 Stance shares are from a bucket-balanced sample, so they describe the
 spectrum of each post's replies, not population proportions; the
@@ -267,7 +276,8 @@ labels the dataset carries:
 | Qwen3-8B, 4-bit, thinking off, same prompt (920 posts) | 0.48 | 0.38 | 63% | 8.8% |
 | Qwen3-8B, 4-bit, thinking on, 1,024-token budget (363 of 400 posts parsed) | 0.59 | 0.32 | 68% | 5.2% |
 | RoBERTa-large fine-tuned on the Haiku labels (3,893 posts) | 0.75 | 0.15 | 78% | 4.9% |
-| **DeBERTa-v3-large fine-tuned on the Haiku labels** (3,893 posts) | **0.79** | **0.14** | **78%** | **4.1%** |
+| DeBERTa-v3-large fine-tuned on the Haiku labels (3,893 posts) | 0.79 | 0.14 | 78% | 4.1% |
+| **DeBERTa-v3-large fine-tuned on the Opus labels** (3,881 posts, vs Opus) | **0.88** | **0.11** | 78% | **2.1%** |
 
 The distilled encoder is the clear winner: 7.5 minutes of training, then
 83,000 replies in a few minutes. A recipe sweep put six RoBERTa variants between 0.71 and 0.75
@@ -287,7 +297,20 @@ Letting it reason first lifts it to 0.59 with 5% flips, at a price:
 took 2.6 hours, so it is neither accurate enough to replace the
 distilled model nor fast enough to score 83,000 replies.
 
-**But the teacher has a blind spot.** A check of 497 posts, 71 per tier,
+**The relabel.** Every labelled post was re-scored by Claude Opus 5
+through the Batch API (19,405 of 19,457 parsed, about $31). Retrained on
+those labels, the same DeBERTa recipe reproduces its teacher at 0.88
+Pearson with 2.1% flips, against 0.79 and 4.1% on Haiku's: the Opus
+labels are simply more self-consistent, so the "ceiling is the labels"
+diagnosis was right. Per tier the Opus-taught model reaches 0.90 on
+admin, 0.91 on religious and 0.82 on the pro-war tier where the
+Haiku-taught one had its second-weakest result. On the same held-out
+rows, RoBERTa valence agrees with Opus stance at 0.06 Pearson, which is
+to say not at all. The Opus-taught model is
+`data/models/stance_distilled_final_score_opus/` and is the reply scorer
+of record (`score_opus_distilled`).
+
+**Why the teacher had to change.** A check of 497 posts, 71 per tier,
 relabelled by Claude Opus 5 shows Haiku and Opus agreeing on most tiers
 (0.76 to 0.78 Pearson and 82 to 90% sign agreement on admin, anti-war
 MAGA and religious) but not on the pro-war tier: 0.34 Pearson and 24%
@@ -299,8 +322,8 @@ in weaker form, so the `maga_prowar` averages in this README are likely
 too low, and a model distilled from Haiku inherits the bias. The next
 step is relabelling with Opus 5 and distilling from that.
 
-Artifacts: `data/models/stance_distilled/` (model, holdout predictions,
-metrics), `data/processed/teacher_check_claude-opus-5.*`,
+Artifacts: `data/models/stance_distilled*/` (models, holdout predictions,
+metrics), `data/models/sweep/`, `data/processed/teacher_check_claude-opus-5.*`,
 `data/processed/local_llm_Qwen_*.*`.
 
 ## Setup
