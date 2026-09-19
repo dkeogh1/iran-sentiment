@@ -193,11 +193,18 @@ matters far more than the student:
   April escalation posts, before the ceasefire, when the "voted 3x for
   you" betrayal voice was loudest.
 
-One caveat the numbers cannot resolve on their own: the distilled model
-was trained on broadcaster posts and applied to replies, a different
-register. The 992-reply Haiku stance sample is the only reply-level
-ground truth so far; relabelling it with Opus (about $2) would put a
-number on the domain shift.
+**Domain shift, measured.** The model was trained on broadcaster posts
+and applied to replies, a different register, so the 959 sampled replies
+were relabelled by Opus directly (about $2). Against those, the reply
+scores reproduce Opus at 0.71 Pearson with 13% opposite-sign labels,
+against 0.88 and 2% on posts. The error runs pro-war: on the sample the
+model calls 59% of replies pro-war where Opus calls 51%, and its mean is
++0.20 to Opus's +0.16. So the population shares above are inflated by
+roughly five to ten points, and the honest reading is "about half of
+Trump's audience replies are pro-war, a quarter to a third anti-war",
+still hawkish, still nothing like the majority-critical picture the
+valence scores gave. The fix, a retrain that includes the labelled
+replies, is queued.
 
 Stance shares are from a bucket-balanced sample, so they describe the
 spectrum of each post's replies, not population proportions; the
