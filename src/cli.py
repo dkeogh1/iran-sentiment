@@ -812,6 +812,40 @@ def relabel_cmd(action: str, model: str, yes: bool):
                    f"{settings.SENTIMENT_OUTPUT}")
 
 
+# ── score-posts / reply-teacher-check ─────────────────────────────
+
+@main.command("score-posts")
+@click.argument("inputs", nargs=-1, required=True, type=click.Path(exists=True))
+@click.option("--out", required=True, type=click.Path(), help="Output parquet")
+@click.option("--model-dir", default=None, help="Distilled model dir (default MODELS_DIR/stance_distilled)")
+@click.option("--col", default="score_opus_distilled", show_default=True)
+def score_posts_cmd(inputs, out: str, model_dir: str | None, col: str):
+    """Score raw JSONL post files (e.g. Trump's Truth Social feed) with a distilled model (GPU)."""
+    from pathlib import Path as _P
+    from src.analysis.stance_local import score_post_file
+    df = score_post_file([_P(i) for i in inputs], _P(out), _P(model_dir) if model_dir else None, col=col)
+    click.echo(f"{len(df)} posts -> {out}; mean {col} = {df[col].mean():+.3f}")
+
+
+@main.command("reply-teacher-check")
+@click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
+@click.option("--col", default="score_opus_distilled", show_default=True,
+              help="Reply column to test against the teacher")
+def reply_teacher_check_cmd(model: str, col: str):
+    """Relabel the 992-reply stance sample with the teacher and report how well
+    the distilled reply scores reproduce it (domain-shift check). API only, ~$2."""
+    from src.analysis.stance_local import reply_teacher_check
+    rep = reply_teacher_check(model=model, col=col)
+    d, v = rep["distilled_vs_teacher"], rep["roberta_valence_vs_teacher"]
+    click.echo(f"\n{col} vs {model} on {rep['n']} replies: pearson {d['pearson']:.3f}, "
+               f"sign agr {d['sign_agreement']:.1%}, flips {d['sign_flip_rate']:.1%}")
+    click.echo(f"RoBERTa valence vs {model} (same rows): pearson {v['pearson']:.3f}, "
+               f"sign agr {v['sign_agreement']:.1%}, flips {v['sign_flip_rate']:.1%}")
+    click.echo(f"\n{'post':22s}{'n':>5s}{'pearson':>9s}{'sign agr':>10s}{'flips':>7s}")
+    for r in rep["by_post"]:
+        click.echo(f"{r['tier']:22s}{r['n']:>5d}{r['pearson']:>9.3f}{r['sign_agreement']:>10.1%}{r['sign_flip_rate']:>7.1%}")
+
+
 # ── status ──────────────────────────────────────────────────────────
 
 @main.command()

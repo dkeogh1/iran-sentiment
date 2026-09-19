@@ -163,3 +163,18 @@ def test_distill_uses_recipe_and_fits_all(tmp_path, monkeypatch):
     assert calls[1]["save_to"] == tmp_path / "stance_distilled_final_score_opus"
     assert (tmp_path / "stance_distilled_final_score_opus" / "recipe.txt").read_text() == "deb-128-1e5-3"
     assert m["label_col"] == "score_opus" and "final" in m
+
+
+def test_score_post_file_incremental(tmp_path, monkeypatch):
+    import json as _j
+    f = tmp_path / "posts.jsonl"
+    f.write_text("".join(_j.dumps({"id": str(i), "user": "t", "tier": "admin", "platform": "truthsocial",
+                                   "created_at": "2026-05-01T00:00:00Z", "text": f"post {i}"}) + "\n" for i in range(5)))
+    calls = []
+    monkeypatch.setattr(sl, "score_with_distilled", lambda texts, md, bs: (calls.append(len(texts)) or np.zeros(len(texts))))
+    out = tmp_path / "scored.parquet"
+    df = sl.score_post_file([f], out)
+    assert len(df) == 5 and calls == [5] and "score_opus_distilled" in df
+    f.write_text(f.read_text() + _j.dumps({"id": "9", "user": "t", "text": "new"}) + "\n")
+    df2 = sl.score_post_file([f], out)
+    assert len(df2) == 6 and calls == [5, 1]                       # only the new id scored

@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: iran-score-trump-feed
+  namespace: iran-sentiment
+  labels:
+    app.kubernetes.io/name: iran-sentiment
+    app.kubernetes.io/component: score-trump-feed
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 14400
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: iran-sentiment
+        app.kubernetes.io/component: score-trump-feed
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        kubernetes.io/hostname: dkbl2
+      runtimeClassName: nvidia
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        runAsNonRoot: true
+      containers:
+        - name: score-trump-feed
+          image: iran-sentiment
+          imagePullPolicy: IfNotPresent
+          args: ['score-posts', '/data/raw/truthsocial/realDonaldTrump.jsonl', '--out', '/data/processed/truthsocial_trump_stance.parquet', '--model-dir', '/data/models/stance_distilled_final_score_opus']
+          envFrom:
+            - secretRef:
+                name: iran-sentiment-env
+                optional: true
+          env:
+            - name: IRAN_DATA_DIR
+              value: /data
+            - name: HF_HOME
+              value: /data/hf
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: "2"
+              memory: 6Gi
+            limits:
+              memory: 20Gi
+              nvidia.com/gpu: 1
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: iran-sentiment-data

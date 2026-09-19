@@ -488,3 +488,83 @@ def local_llm_eval(df: pd.DataFrame, *, model_name: str = settings.LOCAL_LLM_MOD
     _write_json(out_dir / f"local_llm_{tag}.json", metrics)
     logger.info("local llm: %s", json.dumps(metrics["local_vs_teacher"]))
     return metrics
+
+
+# ── Scoring arbitrary post files (e.g. Trump's Truth Social feed) ──
+
+def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None,
+                    col: str = "score_opus_distilled", batch_size: int = 64) -> pd.DataFrame:
+    """Score every record in the given JSONL files with a distilled model and
+    write id / user / tier / platform / created_at / text / <col> to `out`.
+    Incremental: ids already in `out` are kept, not rescored."""
+    rows = []
+    for path in inputs:
+        with open(path) as f:
+            for line in f:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                rows.append({k: r.get(k) for k in ("id", "user", "tier", "platform", "created_at", "text")})
+    df = pd.DataFrame(rows).drop_duplicates("id")
+    have = pd.read_parquet(out) if out.exists() else pd.DataFrame()
+    todo = df[~df["id"].astype(str).isin(set(have["id"].astype(str)))] if not have.empty else df
+    if not todo.empty:
+        logger.info("scoring %d posts from %d file(s) -> %s", len(todo), len(inputs), col)
+        todo = todo.assign(**{col: score_with_distilled(todo["text"].fillna("").tolist(), model_dir, batch_size)})
+    result = pd.concat([have, todo], ignore_index=True) if not have.empty else todo
+    out.parent.mkdir(parents=True, exist_ok=True)
+    result.to_parquet(out, index=False)
+    return result
+
+
+# ── Reply-domain check: Opus on the sampled replies vs the distilled model ──
+
+def reply_teacher_check(*, model: str = settings.TEACHER_CHECK_MODEL, max_tokens: int = settings.TEACHER_MAX_TOKENS,
+                        effort: str = settings.TEACHER_EFFORT, concurrency: int = settings.LLM_CONCURRENCY,
+                        col: str = "score_opus_distilled") -> dict:
+    """Score the stratified reply sample (stance_sample.parquet) with the
+    teacher using the broadcaster prompt, then measure how well the reply
+    column `col` in reply_sentiment.parquet reproduces it -- the domain-shift
+    number for a model trained on broadcaster posts. Cached per reply id."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from src.analysis.sentiment import score_llm
+    from src.analysis.event_study import STANCE_OUTPUT
+
+    sample = pd.read_parquet(STANCE_OUTPUT)
+    sample = sample[sample["stance"] != "media_only"][["id", "tracked_slug", "user", "text"]]
+    out = settings.PROCESSED_DIR / f"teacher_labels_replies_{model.replace('/', '_')}.parquet"
+    cached = pd.read_parquet(out) if out.exists() else pd.DataFrame()
+    have = set(cached["id"].astype(str)) if not cached.empty else set()
+    todo = sample[~sample["id"].astype(str).isin(have)]
+    logger.info("reply teacher check: %d sampled, %d cached, %d to score with %s",
+                len(sample), len(have), len(todo), model)
+    results = []
+    with ThreadPoolExecutor(max_workers=concurrency) as ex:
+        futs = {ex.submit(score_llm, r.text, r.user, "Iran war", model, max_tokens, effort): r.id
+                for r in todo.itertuples()}
+        for f in as_completed(futs):
+            try:
+                sc, lab = f.result()
+            except Exception as e:
+                logger.warning("teacher call failed for %s: %s", futs[f], str(e)[:120])
+                sc, lab = None, None
+            results.append({"id": futs[f], "score_teacher": sc, "label_teacher": lab})
+    new = pd.DataFrame(results)
+    labels = pd.concat([cached, new], ignore_index=True) if not cached.empty else new
+    labels = labels[labels["score_teacher"].notna()]
+    labels.to_parquet(out, index=False)
+
+    replies = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    replies["id"] = replies["id"].astype(str)
+    labels["id"] = labels["id"].astype(str)
+    j = sample.assign(id=sample["id"].astype(str)).merge(labels, on="id").merge(
+        replies[["id", col, "score_transformer"]], on="id", how="left")
+    j["tier"] = j["tracked_slug"]  # per-post breakdown reuses the per-tier helper
+    report = {"model": model, "n": int(len(j)),
+              "distilled_vs_teacher": agreement(j["score_teacher"].values, j[col].values),
+              "roberta_valence_vs_teacher": agreement(j["score_teacher"].values, j["score_transformer"].values),
+              "by_post": agreement_by_tier(j, "score_teacher", col).reset_index().to_dict("records")}
+    _write_json(settings.PROCESSED_DIR / f"reply_teacher_check_{model.replace('/', '_')}.json", report)
+    return report
+
