@@ -18,8 +18,15 @@ case "$MODE" in
     ;;
   pull)
     mkdir -p data/models data/processed
+    # Final model dirs come back whole; sweep / holdout dirs only their result
+    # files (the per-recipe trainer and CV dirs are large and reproducible).
     kubectl -n $NS exec $POD -- sh -c 'ls /data/models 2>/dev/null' | while read -r m; do
-        kubectl -n $NS cp "$POD:/data/models/$m" "data/models/$m"; done
+        case "$m" in
+            stance_distilled_final*) kubectl -n $NS cp "$POD:/data/models/$m" "data/models/$m" 2>&1 | grep -v '^tar:' ;;
+            *) mkdir -p "data/models/$m"
+               for f in $(kubectl -n $NS exec $POD -- sh -c "cd /data/models/$m && ls *.json *.parquet 2>/dev/null"); do
+                   kubectl -n $NS cp "$POD:/data/models/$m/$f" "data/models/$m/$f" 2>&1 | grep -v '^tar:'; done ;;
+        esac; done
     for f in $(kubectl -n $NS exec $POD -- sh -c 'cd /data/processed && ls teacher_check_* local_llm_* truthsocial_trump_stance.parquet 2>/dev/null'); do
         kubectl -n $NS cp "$POD:/data/processed/$f" "data/processed/$f"; done
     kubectl -n $NS exec $POD -- test -f /data/processed/reply_sentiment.parquet \

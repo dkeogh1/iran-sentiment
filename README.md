@@ -108,6 +108,27 @@ excluded; they end May 12):
   -0.10, @SenSanders -0.22 to -0.16. Only media (@BarakRavid) drifted
   the other way, -0.05 to -0.11.
 
+### Trump's own feed did not soften
+
+The X series above samples @POTUS at 789 posts, only 65 of them about
+Iran. Trump's Truth Social feed is the presidential voice at full
+fidelity: 4,087 posts from Apr 4 to Sep 16, scored with the Opus-taught
+model, 293 of them naming Iran, Hormuz or the regime.
+
+| Phase | Trump TS, Iran posts | Trump TS, all posts | X @POTUS, all posts |
+|---|--:|--:|--:|
+| Feb 1 -- Apr 21 | +0.518 (n=76) | +0.168 | +0.202 |
+| Apr 22 -- Jun 17 | +0.436 (n=82) | +0.111 | +0.139 |
+| Jun 18 -- Aug 17 | +0.413 (n=85) | +0.099 | +0.099 |
+| Aug 18 -- Sep 18 | +0.453 (n=50) | +0.097 | +0.072 |
+
+When Trump posts about Iran he is as hawkish in September as in the
+strike phase, around +0.45. The decline in his accounts' overall
+average is composition: Iran became a smaller share of what he posts
+about, not a softer one. The administration that talked itself down is
+the agencies and the staff accounts (State, the White House, Rubio),
+not the president's own Iran messaging, and not the Pentagon.
+
 ### Per-account detail
 
 ![Account heatmap](docs/figures/account_heatmap_score_opus.png)
@@ -285,6 +306,7 @@ labels the dataset carries:
 | RoBERTa-large fine-tuned on the Haiku labels (3,893 posts) | 0.75 | 0.15 | 78% | 4.9% |
 | DeBERTa-v3-large fine-tuned on the Haiku labels (3,893 posts) | 0.79 | 0.14 | 78% | 4.1% |
 | **DeBERTa-v3-large fine-tuned on the Opus labels** (3,881 posts, vs Opus) | **0.88** | **0.11** | 78% | **2.1%** |
+| Full recipe sweep on the Opus labels: six RoBERTa variants 0.81 to 0.87, DeBERTa 256-token winner **0.869 +/- 0.011** over 5 folds | | | | |
 
 The distilled encoder is the clear winner: 7.5 minutes of training, then
 83,000 replies in a few minutes. A recipe sweep put six RoBERTa variants between 0.71 and 0.75
@@ -313,9 +335,11 @@ diagnosis was right. Per tier the Opus-taught model reaches 0.90 on
 admin, 0.91 on religious and 0.82 on the pro-war tier where the
 Haiku-taught one had its second-weakest result. On the same held-out
 rows, RoBERTa valence agrees with Opus stance at 0.06 Pearson, which is
-to say not at all. The Opus-taught model is
-`data/models/stance_distilled_final_score_opus/` and is the reply scorer
-of record (`score_opus_distilled`).
+to say not at all. Rerunning the whole recipe sweep on the Opus labels moved every recipe
+up by about a tenth and kept the ranking: DeBERTa-v3-large at 256 tokens
+won at 0.876 and cross-validates at 0.869 +/- 0.011 with 2.4% flips. Its
+full-label fit is `data/models/stance_distilled_final_score_opus/`, the
+reply scorer of record (`score_opus_distilled`).
 
 **Why the teacher had to change.** A check of 497 posts, 71 per tier,
 relabelled by Claude Opus 5 shows Haiku and Opus agreeing on most tiers
@@ -330,7 +354,7 @@ too low, and a model distilled from Haiku inherits the bias. The next
 step is relabelling with Opus 5 and distilling from that.
 
 Artifacts: `data/models/stance_distilled*/` (models, holdout predictions,
-metrics), `data/models/sweep/`, `data/processed/teacher_check_claude-opus-5.*`,
+metrics), `data/models/sweep*/`, `data/processed/truthsocial_trump_stance.parquet`, `data/processed/teacher_check_claude-opus-5.*`,
 `data/processed/local_llm_Qwen_*.*`.
 
 ## Setup
