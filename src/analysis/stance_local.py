@@ -112,7 +112,9 @@ def teacher_check(df: pd.DataFrame, *, n: int = settings.TEACHER_CHECK_N,
     teacher_check_<model>.parquet (incremental); return the joined frame with
     score_llm (Haiku) and score_teacher."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from dotenv import load_dotenv
     from src.analysis.sentiment import score_llm
+    load_dotenv(settings.PROJECT_ROOT / ".env", override=True)  # host runs need the key
 
     out_dir = out_dir or settings.PROCESSED_DIR
     out = out_dir / f"teacher_check_{model.replace('/', '_')}.parquet"
@@ -528,8 +530,10 @@ def reply_teacher_check(*, model: str = settings.TEACHER_CHECK_MODEL, max_tokens
     column `col` in reply_sentiment.parquet reproduces it -- the domain-shift
     number for a model trained on broadcaster posts. Cached per reply id."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
+    from dotenv import load_dotenv
     from src.analysis.sentiment import score_llm
     from src.analysis.event_study import STANCE_OUTPUT
+    load_dotenv(settings.PROJECT_ROOT / ".env", override=True)  # host runs need the key
 
     sample = pd.read_parquet(STANCE_OUTPUT)
     sample = sample[sample["stance"] != "media_only"][["id", "tracked_slug", "user", "text"]]
