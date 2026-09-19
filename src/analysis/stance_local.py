@@ -235,7 +235,8 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
             batch_size: int = settings.DISTILL_BATCH_SIZE, lr: float = settings.DISTILL_LR,
             max_len: int = settings.DISTILL_MAX_LEN, seed: int = settings.DISTILL_SEED,
             label_col: str = "score_llm", out_dir: Path | None = None,
-            recipe: str | None = None, fit_all: bool = False) -> dict:
+            recipe: str | None = None, fit_all: bool = False,
+            extra: pd.DataFrame | None = None) -> dict:
     """Fine-tune to regress `label_col` in [-1, 1]. With `recipe`, every
     hyper-parameter (incl. optimizer / checkpointing) comes from that
     DISTILL_SWEEP entry. Evaluates on the per-tier holdout; with `fit_all`
@@ -247,11 +248,21 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
     extra = {"grad_accum": rc.get("grad_accum", 1), "optim": rc.get("optim", "adamw_torch"),
              "gradient_checkpointing": rc.get("gradient_checkpointing", False)}
     suffix = "" if label_col == "score_llm" else f"_{label_col}"
+    if extra is not None and len(extra):
+        suffix += "_mixed"
     out_dir = out_dir or (settings.MODELS_DIR / f"stance_distilled{suffix}")
     out_dir.mkdir(parents=True, exist_ok=True)
     base = training_frame(df)
     if label_col != "score_llm":
         base = base[base[label_col].notna()]
+    if extra is not None and len(extra):
+        # Extra labelled rows (e.g. Opus-labelled replies, tier="reply_<post>")
+        # join the pool; the per-tier split holds 20% of each of their tiers
+        # out, so the metrics report the new domain separately.
+        cols = ["id", "text", "user", "tier", label_col]
+        base = pd.concat([base, extra[cols].assign(id=extra["id"].astype(str))], ignore_index=True)
+        base = base.drop_duplicates("id")
+        logger.info("distill: +%d extra labelled rows", len(extra))
     train, test = stratified_split(base, holdout, seed)
     logger.info("distill: %d train / %d holdout rows, base=%s, label=%s, recipe=%s",
                 len(train), len(test), base_model, label_col, recipe)
@@ -571,4 +582,17 @@ def reply_teacher_check(*, model: str = settings.TEACHER_CHECK_MODEL, max_tokens
               "by_post": agreement_by_tier(j, "score_teacher", col).reset_index().to_dict("records")}
     _write_json(settings.PROCESSED_DIR / f"reply_teacher_check_{model.replace('/', '_')}.json", report)
     return report
+
+
+def reply_label_frame(model: str = settings.TEACHER_CHECK_MODEL, label_col: str = "score_opus") -> pd.DataFrame:
+    """The teacher-labelled reply sample as extra training rows:
+    id / text / user / tier=reply_<post> / <label_col>."""
+    from src.analysis.event_study import STANCE_OUTPUT
+    labels = pd.read_parquet(settings.PROCESSED_DIR / f"teacher_labels_replies_{model.replace('/', '_')}.parquet")
+    labels["id"] = labels["id"].astype(str)
+    smp = pd.read_parquet(STANCE_OUTPUT)
+    smp["id"] = smp["id"].astype(str)
+    j = smp[["id", "tracked_slug", "user", "text"]].merge(labels, on="id")
+    return pd.DataFrame({"id": j["id"], "text": j["text"], "user": j["user"],
+                         "tier": "reply_" + j["tracked_slug"].astype(str), label_col: j["score_teacher"]})
 

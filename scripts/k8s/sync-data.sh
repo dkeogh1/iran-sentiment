@@ -11,7 +11,8 @@ kubectl -n $NS wait --for=condition=Ready pod/$POD --timeout=300s >/dev/null
 case "$MODE" in
   push)
     kubectl -n $NS cp data/processed/sentiment_all.parquet $POD:/data/processed/sentiment_all.parquet
-    [ -f data/processed/reply_sentiment.parquet ] && kubectl -n $NS cp data/processed/reply_sentiment.parquet $POD:/data/processed/reply_sentiment.parquet
+    for f in data/processed/reply_sentiment.parquet data/processed/stance_sample.parquet data/processed/teacher_labels_replies_*.parquet; do
+        [ -f "$f" ] && kubectl -n $NS cp "$f" "$POD:/data/processed/$(basename "$f")"; done
     for f in data/raw/truthsocial/*.jsonl; do kubectl -n $NS cp "$f" "$POD:/data/raw/truthsocial/$(basename "$f")"; done
     kubectl -n $NS exec $POD -- sh -c 'du -sh /data/processed /data/raw/truthsocial'
     ;;

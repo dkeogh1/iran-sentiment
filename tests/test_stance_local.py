@@ -178,3 +178,20 @@ def test_score_post_file_incremental(tmp_path, monkeypatch):
     f.write_text(f.read_text() + _j.dumps({"id": "9", "user": "t", "text": "new"}) + "\n")
     df2 = sl.score_post_file([f], out)
     assert len(df2) == 6 and calls == [5, 1]                       # only the new id scored
+
+
+def test_distill_extra_rows_join_pool_and_split(tmp_path, monkeypatch):
+    seen = {}
+    def fake_fit(train, test, **kw):
+        seen["train_tiers"] = set(train["tier"])
+        seen["test_tiers"] = set(test["tier"]) if test is not None else set()
+        return {"base_model": kw["base_model"], "n_train": len(train)}, (test["score_opus"].values if test is not None else None)
+    monkeypatch.setattr(sl, "_fit_eval", fake_fit)
+    monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)
+    df = _frame().assign(score_opus=lambda d: d["score_llm"])
+    extra = pd.DataFrame({"id": [f"r{i}" for i in range(40)], "text": ["reply"] * 40, "user": ["x"] * 40,
+                          "tier": ["reply_a"] * 20 + ["reply_b"] * 20, "score_opus": np.linspace(-1, 1, 40)})
+    m = sl.distill(df, label_col="score_opus", recipe="deb-128-1e5-3", extra=extra)
+    assert {"reply_a", "reply_b"} <= seen["train_tiers"] and {"reply_a", "reply_b"} <= seen["test_tiers"]
+    assert any(r["tier"] == "reply_a" for r in m["distilled_by_tier"])
+    assert (tmp_path / "stance_distilled_score_opus_mixed" / "distill_metrics.json").exists()

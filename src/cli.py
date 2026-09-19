@@ -696,11 +696,19 @@ def teacher_check_cmd(n: int, model: str):
               help="Name of a settings.DISTILL_SWEEP recipe; overrides base-model/epochs")
 @click.option("--fit-all", is_flag=True,
               help="After the holdout evaluation, refit on all labels -> stance_distilled_final[_<label>]")
-def stance_distill_cmd(base_model: str, epochs: int, label_col: str, recipe: str | None, fit_all: bool):
+@click.option("--with-replies", is_flag=True,
+              help="Mix the teacher-labelled reply sample into training (tier=reply_<post>; 20%% held out)")
+def stance_distill_cmd(base_model: str, epochs: int, label_col: str, recipe: str | None, fit_all: bool,
+                       with_replies: bool):
     """Fine-tune an encoder to reproduce the teacher stance score (GPU)."""
-    from src.analysis.stance_local import distill
+    from src.analysis.stance_local import distill, reply_label_frame
+    extra = reply_label_frame(label_col=label_col) if with_replies else None
     m = distill(_load_scored_frame(), base_model=base_model, epochs=epochs, label_col=label_col,
-                recipe=recipe, fit_all=fit_all)
+                recipe=recipe, fit_all=fit_all, extra=extra)
+    for r in m.get("distilled_by_tier", []):
+        if str(r["tier"]).startswith("reply_") or r["tier"] == "ALL":
+            click.echo(f"  {r['tier']:26s} n={r['n']:4d} pearson={r['pearson']:.3f} "
+                       f"sign_agr={r['sign_agreement']:.1%} flips={r['sign_flip_rate']:.1%}")
     click.echo(f"distilled vs teacher: {m['distilled_vs_teacher']}")
     if "roberta_valence_vs_teacher" in m:
         click.echo(f"RoBERTa valence vs teacher (same rows): {m['roberta_valence_vs_teacher']}")

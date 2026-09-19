@@ -12,6 +12,7 @@ runs free on dkbl2's RTX 3080, plus a check that Haiku is a fit teacher:
 | `local-llm-qwen3`, `local-llm-qwen3-think` | `stance-local-llm --model Qwen/Qwen3-8B [--thinking]` | yes | the 2025 Qwen generation, reasoning off / on, same holdout sample |
 | `distill-opus` | `stance-distill --recipe deb-128-1e5-3 --label-col score_opus --fit-all` | yes | the sweep winner retrained on the Opus 5 labels (`relabel merge` first, then `sync-data.sh push`); holdout eval + final model |
 | `score-distilled-opus` | `score-distilled --model-dir .../stance_distilled_final_score_opus --col score_opus_distilled` | yes | population reply stance from the Opus-taught model |
+| `distill-opus-mixed`, `score-distilled-mixed` | `stance-distill ... --with-replies` / `score-distilled --col score_mixed_distilled` | yes | the Opus retrain with the 959 Opus-labelled replies mixed in (reply tiers held out 20%), then replies rescored |
 | `score-trump-feed` | `score-posts /data/raw/truthsocial/realDonaldTrump.jsonl ...` | yes | Trump's own 4,087 Truth Social posts scored with the Opus-taught model |
 | `sweep-opus` | `stance-sweep --label-col score_opus` | yes | the same sweep + CV + final fit on the Opus labels (~3 h) |
 | `sweep` | `stance-sweep` | yes | every recipe in `DISTILL_SWEEP` on the shared split, 5-fold CV on the best, final fit on all labels (~3 h, resumable) |
