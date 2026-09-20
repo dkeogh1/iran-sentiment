@@ -1,5 +1,7 @@
-# Helper pod for kubectl cp in/out of the data volume. Pinned to dkbl2 so
-# the PVC binds there. No GPU. Deleted by sync-data.sh when finished.
+# Helper pod for looking inside the data volume (kubectl exec ls / cat).
+# Pinned to dkbl2 so the PVC binds there. No GPU. Not used for transfers
+# any more: sync-data.sh rsyncs over SSH straight into the PVC directory on
+# dkbl2. Delete it when done: kubectl -n iran-sentiment delete pod data-sync
 apiVersion: v1
 kind: Pod
 metadata:

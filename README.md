@@ -341,6 +341,22 @@ won at 0.876 and cross-validates at 0.869 +/- 0.011 with 2.4% flips. Its
 full-label fit is `data/models/stance_distilled_final_score_opus/`, the
 reply scorer of record (`score_opus_distilled`).
 
+**Mixing replies into the training set did not help.** The same recipe
+retrained with the 959 Opus-labelled replies added (767 in training, 191
+held out by post) reproduces Opus at 0.861 Pearson with 77% sign
+agreement and 2.6% flips on the combined holdout, against 0.876 / 78% /
+2.1% for the posts-only model on posts alone. On the held-out replies it
+lands at 0.71 Pearson and 64% sign agreement with about 10% flips per
+post, which is exactly what the posts-only model already scored on the
+same kind of rows (0.71 / 64% on all 959). Reply stance is harder than
+post stance for both students -- short, sarcastic, addressed to Trump
+rather than about the war -- and a few hundred extra labels do not move
+it. Scored over all 83,054 replies the two models agree at 0.88 Pearson
+and 80% on sign, and no post mean moves by more than 0.06, so every
+population-level number above stands. `score_mixed_distilled` is kept as
+a column for comparison; `score_opus_distilled` remains the scorer of
+record.
+
 **Why the teacher had to change.** A check of 497 posts, 71 per tier,
 relabelled by Claude Opus 5 shows Haiku and Opus agreeing on most tiers
 (0.76 to 0.78 Pearson and 82 to 90% sign agreement on admin, anti-war

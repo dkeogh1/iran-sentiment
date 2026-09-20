@@ -208,7 +208,10 @@ plots default to it.
 - **Distilled DeBERTa-v3-large** (`stance-distill`, GPU Job) — reproduces
   its teacher at ~0.79 Pearson; scores 83k replies in minutes for free.
   The Opus-taught final model is the reply scorer of record
-  (`score_opus_distilled`).
+  (`score_opus_distilled`). A retrain with the 959 Opus-labelled replies
+  mixed in (`score_mixed_distilled`, 2026-09-19) was no better on replies
+  (0.71 Pearson, 64% sign agreement either way) and slightly worse on
+  posts, so it stays a comparison column only.
 
 Rule of thumb: `score_transformer` for a quick look, `score_opus` for
 anything published or compared across tiers; never mix scorers in one

@@ -1,38 +1,70 @@
 #!/usr/bin/env bash
 # Move data between dkbl1's data/ (source of truth) and the PVC on dkbl2.
-#   sync-data.sh push   # sentiment_all.parquet, reply_sentiment.parquet, replies_*.jsonl -> /data
-#   sync-data.sh pull   # models/, *metrics*.json, teacher_check_*, local_llm_*, reply_sentiment.parquet <- /data
+#   sync-data.sh push    # sentiment_all / reply_sentiment / stance_sample / teacher_labels_replies_* parquet, raw/truthsocial/*.jsonl -> PVC
+#   sync-data.sh pull    # models/ (final dirs whole, other dirs their result files), teacher_check_*, local_llm_*,
+#                        # truthsocial_trump_stance.parquet, reply_sentiment.parquet <- PVC; then verify
+#   sync-data.sh verify  # checksum dry-run of the pull set; lists anything on dkbl1 that differs from the PVC
+#
+# Goes over SSH straight into the PVC's local-path directory on dkbl2, not
+# through kubectl cp. On 2026-09-19 a kubectl-cp pull -- one 1.7 GB stream
+# through the API server on dkbl1, then a burst of short kubectl processes,
+# one per small file -- coincided with dkbl1 hard-powering off mid-copy
+# (homelab-infra docs/dkbl1-cstate.md: bursty idle/busy load is the known
+# trigger, and the C-state pin was active). rsync is one process and one
+# steady, rate-capped stream, resumable, and checked by checksum afterwards.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$REPO"
-NS=iran-sentiment; POD=data-sync
-MODE="${1:?usage: sync-data.sh push|pull}"
-kubectl apply -f k8s/data-sync.yaml >/dev/null
-kubectl -n $NS wait --for=condition=Ready pod/$POD --timeout=300s >/dev/null
+NS=iran-sentiment; PVC=iran-sentiment-data
+# dkbl2 over the LAN: its tailnet address does not answer on 22 from dkbl1.
+SYNC_HOST="${SYNC_HOST:-dk@192.168.1.186}"
+# KB/s. ~20 MB/s keeps the transfer flat; the pulls that survived ran at 40-48.
+BWLIMIT="${SYNC_BWLIMIT_KBPS:-20000}"
+MODE="${1:?usage: sync-data.sh push|pull|verify}"
+
+PV=$(kubectl -n $NS get pvc $PVC -o jsonpath='{.spec.volumeName}')
+PVC_DIR=$(kubectl get pv "$PV" -o jsonpath='{.spec.local.path}{.spec.hostPath.path}')
+[ -n "$PVC_DIR" ] || { echo "cannot resolve the host path of PVC $NS/$PVC" >&2; exit 1; }
+ssh "$SYNC_HOST" "command -v rsync >/dev/null && test -d '$PVC_DIR'" \
+    || { echo "$SYNC_HOST: rsync missing or $PVC_DIR absent" >&2; exit 1; }
+
+# -a keeps mtimes so re-runs are cheap; -c decides by checksum, which is what
+# catches the 0-byte and truncated files a cut-off copy leaves behind; -W sends
+# whole files (no delta computation on either end); --partial keeps a cut-off
+# file so the next run resumes it.
+RSYNC=(rsync -acW --partial --bwlimit="$BWLIMIT" --human-readable --info=progress2,stats1)
+# Final model dirs come back whole; sweep / holdout dirs only their top-level
+# result files (the trainer and CV dirs are large and reproducible).
+MODEL_FILTER=(--include='/stance_distilled_final*/***' --include='/*/' --include='/*/*.json' --include='/*/*.parquet' --exclude='*')
+PROCESSED_FILTER=(--include='teacher_check_*' --include='local_llm_*' --include='truthsocial_trump_stance.parquet' --include='reply_sentiment.parquet' --exclude='*')
+
+verify() {
+    # Itemised checksum dry-run; only file lines count (directory mtimes may differ).
+    local diff
+    diff=$( { rsync -acn --itemize-changes "${MODEL_FILTER[@]}" "$SYNC_HOST:$PVC_DIR/models/" data/models/;
+             rsync -acn --itemize-changes "${PROCESSED_FILTER[@]}" "$SYNC_HOST:$PVC_DIR/processed/" data/processed/; } | grep -E '^[<>]f' || true)
+    if [ -n "$diff" ]; then
+        echo "differs from the PVC:"; echo "$diff"; return 1
+    fi
+    echo "verify: data/models and data/processed match the PVC"
+}
+
 case "$MODE" in
   push)
-    kubectl -n $NS cp data/processed/sentiment_all.parquet $POD:/data/processed/sentiment_all.parquet
+    ssh "$SYNC_HOST" "mkdir -p '$PVC_DIR/processed' '$PVC_DIR/raw/truthsocial' '$PVC_DIR/models'"
+    files=(data/processed/sentiment_all.parquet)
     for f in data/processed/reply_sentiment.parquet data/processed/stance_sample.parquet data/processed/teacher_labels_replies_*.parquet; do
-        [ -f "$f" ] && kubectl -n $NS cp "$f" "$POD:/data/processed/$(basename "$f")"; done
-    for f in data/raw/truthsocial/*.jsonl; do kubectl -n $NS cp "$f" "$POD:/data/raw/truthsocial/$(basename "$f")"; done
-    kubectl -n $NS exec $POD -- sh -c 'du -sh /data/processed /data/raw/truthsocial'
+        [ -f "$f" ] && files+=("$f"); done
+    "${RSYNC[@]}" "${files[@]}" "$SYNC_HOST:$PVC_DIR/processed/"
+    "${RSYNC[@]}" data/raw/truthsocial/*.jsonl "$SYNC_HOST:$PVC_DIR/raw/truthsocial/"
+    ssh "$SYNC_HOST" "du -sh '$PVC_DIR/processed' '$PVC_DIR/raw/truthsocial'"
     ;;
   pull)
     mkdir -p data/models data/processed
-    # Final model dirs come back whole; sweep / holdout dirs only their result
-    # files (the per-recipe trainer and CV dirs are large and reproducible).
-    kubectl -n $NS exec $POD -- sh -c 'ls /data/models 2>/dev/null' | while read -r m; do
-        case "$m" in
-            stance_distilled_final*) kubectl -n $NS cp "$POD:/data/models/$m" "data/models/$m" 2>&1 | grep -v '^tar:' ;;
-            *) mkdir -p "data/models/$m"
-               for f in $(kubectl -n $NS exec $POD -- sh -c "cd /data/models/$m && ls *.json *.parquet 2>/dev/null"); do
-                   kubectl -n $NS cp "$POD:/data/models/$m/$f" "data/models/$m/$f" 2>&1 | grep -v '^tar:'; done ;;
-        esac; done
-    for f in $(kubectl -n $NS exec $POD -- sh -c 'cd /data/processed && ls teacher_check_* local_llm_* truthsocial_trump_stance.parquet 2>/dev/null'); do
-        kubectl -n $NS cp "$POD:/data/processed/$f" "data/processed/$f"; done
-    kubectl -n $NS exec $POD -- test -f /data/processed/reply_sentiment.parquet \
-        && kubectl -n $NS cp $POD:/data/processed/reply_sentiment.parquet data/processed/reply_sentiment.parquet
+    "${RSYNC[@]}" "${MODEL_FILTER[@]}" "$SYNC_HOST:$PVC_DIR/models/" data/models/
+    "${RSYNC[@]}" "${PROCESSED_FILTER[@]}" "$SYNC_HOST:$PVC_DIR/processed/" data/processed/
+    verify
     ls -la data/models data/processed | head -40
     ;;
+  verify) verify ;;
   *) echo "unknown mode: $MODE" >&2; exit 2 ;;
 esac
-kubectl -n $NS delete pod $POD --wait=false >/dev/null

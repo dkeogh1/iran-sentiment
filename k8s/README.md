@@ -21,7 +21,11 @@ Layout follows the quant tenant conventions (homelab-infra
 `docs/k8s-workloads.md`): one namespace, image built in-cluster and
 pulled as `localhost:30500/iran-sentiment:<sha>`, pods as uid 1000,
 Secret from `.env`. Data is a local-path PVC on dkbl2 filled by
-`kubectl cp`; the source of truth stays in `data/` on dkbl1.
+`scripts/k8s/sync-data.sh`, which rsyncs over SSH straight into the PVC's
+directory on dkbl2 (LAN address, rate-capped, checksum-verified) rather
+than through `kubectl cp` -- a kubectl-cp pull through the API server
+coincided with dkbl1 hard-powering off on 2026-09-19. The source of truth
+stays in `data/` on dkbl1.
 
 ```bash
 scripts/k8s/build.sh                 # buildctl -> BuildKit -> registry (tag = git sha)
@@ -33,7 +37,8 @@ scripts/k8s/run-now.sh distill       # ~15 min on the 3080
 scripts/k8s/run-now.sh local-llm     # first run downloads ~15 GB of weights into /data/hf
 scripts/k8s/run-now.sh score-distilled
 scripts/k8s/run-now.sh sweep         # overnight; sweep_results.json / cv_results.json / sweep_summary.json
-scripts/k8s/sync-data.sh pull        # models/, metrics, parquet <- PVC
+scripts/k8s/sync-data.sh pull        # models/, metrics, parquet <- PVC, then a checksum verify
+scripts/k8s/sync-data.sh verify      # checksum dry-run only: what on dkbl1 differs from the PVC
 ```
 
 Metrics land in `data/processed/*.json` and
