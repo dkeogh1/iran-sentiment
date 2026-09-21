@@ -287,8 +287,8 @@ cover May 12 -- Sep 15 (the Islamabad MOU of Jun 17, its collapse Jul 8,
 expiry Aug 17, and the renewed strikes of September). Each event carries
 an importance score; `EVENT_LABEL_MIN_IMPORTANCE` in settings controls
 which get labelled on plots. Source URLs for the new events are in
-`docs/timeline_candidates_2026-05-12_to_2026-09-15.json`. Data currently
-ends May 12, so the later events are not yet plotted.
+`docs/timeline_candidates_2026-05-12_to_2026-09-15.json`. Both data
+layers now run past Sep 15, so every event is plotted.
 
 ## Stance-model experiments (GPU, Sep 2026)
 
@@ -327,7 +327,7 @@ took 2.6 hours, so it is neither accurate enough to replace the
 distilled model nor fast enough to score 83,000 replies.
 
 **The relabel.** Every labelled post was re-scored by Claude Opus 5
-through the Batch API (19,405 of 19,457 parsed, about $31). Retrained on
+through the Batch API (19,452 of 19,457 parsed after one resubmit, about $31). Retrained on
 those labels, the same DeBERTa recipe reproduces its teacher at 0.88
 Pearson with 2.1% flips, against 0.79 and 4.1% on Haiku's: the Opus
 labels are simply more self-consistent, so the "ceiling is the labels"
