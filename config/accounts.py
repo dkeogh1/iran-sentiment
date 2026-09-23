@@ -65,6 +65,18 @@ X_ACCOUNTS: dict[str, list[str]] = {
 }
 
 
+# Display names for charts meant for readers (the dkweb post); anything
+# missing falls back to @handle.
+ACCOUNT_NAMES: dict[str, str] = {
+    "POTUS": "@POTUS", "SecRubio": "Rubio", "PeteHegseth": "Hegseth", "VP": "Vance",
+    "StateDept": "State Dept", "WhiteHouse": "White House",
+    "LauraLoomer": "Loomer", "marklevinshow": "Levin",
+    "TuckerCarlson": "Tucker", "RealCandaceO": "Candace Owens", "RealAlexJones": "Alex Jones",
+    "mtgreenee": "MTG", "SenSanders": "Sanders", "BarakRavid": "Ravid (Axios)",
+    "Pontifex": "Pope Leo XIV", "USCCB": "US bishops", "VaticanNews": "Vatican News",
+}
+
+
 # ── Truth Social handles ────────────────────────────────────────────
 # Truth Social has limited public API access. Trump and Vance are
 # available without auth; most other accounts require a logged-in client.

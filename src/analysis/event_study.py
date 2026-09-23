@@ -486,6 +486,32 @@ def _parse_json_response(text: str) -> dict:
     return json.loads(text)
 
 
+#: Valence buckets (critical / mid / supportive) the reply sample is drawn
+#: from, [lo, hi) on the score column. inference.reply_population weights
+#: the draws back to the population with the same edges.
+STANCE_BUCKETS = [(-999, -0.3), (-0.3, 0.3), (0.3, 999)]
+
+
+def bucket_draws(
+    df: pd.DataFrame,
+    n_per_bucket: int = 50,
+    seed: int = 42,
+    score_col: str | None = None,
+) -> pd.DataFrame:
+    """The random part of the stance sample: `n_per_bucket` replies from each
+    STANCE_BUCKETS bucket of each tracked post."""
+    score_col = score_col or pick_score_col(df)
+    samples: list[pd.DataFrame] = []
+    for slug in sorted(df["tracked_slug"].dropna().unique()):
+        sub = df[df["tracked_slug"] == slug]
+        for lo, hi in STANCE_BUCKETS:
+            bucket = sub[(sub[score_col] >= lo) & (sub[score_col] < hi)]
+            n = min(n_per_bucket, len(bucket))
+            if n > 0:
+                samples.append(bucket.sample(n=n, random_state=seed))
+    return pd.concat(samples) if samples else df.iloc[0:0]
+
+
 def stratified_stance_sample(
     df: pd.DataFrame,
     n_per_bucket: int = 50,
@@ -502,15 +528,7 @@ def stratified_stance_sample(
     power_plant_day but turned critical on civilisation_dies.
     """
     score_col = pick_score_col(df)
-    samples: list[pd.DataFrame] = []
-
-    for slug in sorted(df["tracked_slug"].dropna().unique()):
-        sub = df[df["tracked_slug"] == slug]
-        for lo, hi in [(-999, -0.3), (-0.3, 0.3), (0.3, 999)]:
-            bucket = sub[(sub[score_col] >= lo) & (sub[score_col] < hi)]
-            n = min(n_per_bucket, len(bucket))
-            if n > 0:
-                samples.append(bucket.sample(n=n, random_state=seed))
+    samples: list[pd.DataFrame] = [bucket_draws(df, n_per_bucket, seed, score_col)]
 
     # Flipper cohort
     user_slug_score = df.groupby(["user", "tracked_slug"])[score_col].mean()

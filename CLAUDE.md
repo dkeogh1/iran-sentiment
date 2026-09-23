@@ -71,6 +71,9 @@ python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm
 python -m src.cli visualize  # regenerate all figures (incl. score_llm-based ones)
 python -m src.cli summary    # print stats tables (use --score score_llm for true stance)
 python -m src.cli run-all    # full pipeline
+python -m src.cli phases     # tier x phase stance with CIs, split into war posts / topic share
+python -m src.cli export-web # chart JSON for the dkweb blog post
+python -m src.cli backup     # sync data/ to the off-box S3 bucket (after any paid run)
 ```
 
 `collect` is incremental at the per-account level: each rerun fetches
@@ -122,6 +125,48 @@ python -m src.cli analyze --llm
 `analyze --llm` is restart-safe: posts that already have `score_llm`
 are skipped, a partial run periodically saves progress, and a full
 rerun picks up from the prior `sentiment_all.parquet`.
+
+## Statistical checks (free, no API)
+
+- `phases [--source x|trump] [--by tier|user] [--topic llm|keyword]` --
+  stance by phase with 95% CIs from an account-day block bootstrap
+  (`src/analysis/inference.py`), split into posts about the war and the
+  rest, and each phase's change from the first split into a topic-share
+  effect and an on-war stance effect. **Report war-post stance, not the
+  all-post mean**: the stance prompt makes Opus score every post "about the
+  Iran war", so off-topic posts ("Deport them!", "Amen") get a stance from
+  the author's leanings, and a tier's all-post mean moves when its war
+  share moves. The about-the-war flag is the Haiku label from
+  `topic-label` (Batch API, ~$3 for 22k posts, 2026-09-23); the keyword
+  pattern `WAR_TOPIC_PATTERN` is the fallback and misses about half the
+  war posts.
+- `reply-population` -- the reply audience's Opus stance per post, from
+  the 870 random bucket draws of the Opus-labelled reply sample weighted to
+  the population (model-assisted: distilled census + weighted correction).
+  Use these shares, not the raw `score_opus_distilled` shares, which run
+  ~8 points pro-war.
+- `teacher-retest` -- Opus labelled 497 posts twice (direct teacher check,
+  batch relabel): 82% identical, Pearson 0.991, no sign flips. Label noise
+  is negligible next to the effects reported.
+
+## Blog charts (dkweb)
+
+`export-web` writes chart JSON into `~/repos/dkweb/src/content/blog/iran-war-stance/`
+(`WEB_EXPORT_DIR`); the post's MDX draws them with Observable Plot at build
+time. Rerun it after any rescoring, then `npm run build` in dkweb. Stance
+colours are the `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in dkweb's
+`global.css`.
+
+## Off-box backup (S3)
+
+`backup` syncs `data/raw` and `data/processed` (Standard) and `data/models`
+(Glacier IR) to the bucket in homelab-infra `terraform/iran-sentiment-backups.tf`,
+quant-style: no `--delete`, writer without `DeleteObject`, versioned bucket.
+`.env` needs `IRAN_BACKUP_S3_BUCKET`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`. Nothing is scheduled: run it after every paid
+`collect`, `relabel` or `topic-label`. The local restic backup to the
+SanDisk drive only runs when the drive is plugged in (it was not from Apr 23
+to at least Sep 22).
 
 ## Budget discipline (X API)
 

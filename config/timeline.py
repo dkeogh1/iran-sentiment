@@ -745,3 +745,12 @@ EVENTS: list[Event] = [
 # Date range for primary analysis window
 ANALYSIS_START = date(2026, 2, 1)
 ANALYSIS_END = date(2026, 9, 18)  # last X data refresh (May 10 -> Sep 18 pull, 2026-09-18)
+
+# The four phases the README tables and `phases` command report on:
+# (label, first day, last day), both inclusive.
+PHASES = [
+    ("strikes, ceasefire", date(2026, 2, 1), date(2026, 4, 21)),
+    ("talks, MOU", date(2026, 4, 22), date(2026, 6, 17)),
+    ("collapse, blockade", date(2026, 6, 18), date(2026, 8, 17)),
+    ("expiry, strikes", date(2026, 8, 18), date(2026, 9, 18)),
+]

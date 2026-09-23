@@ -820,6 +820,156 @@ def relabel_cmd(action: str, model: str, yes: bool):
                    f"{settings.SENTIMENT_OUTPUT}")
 
 
+# ── phases / reply-population / teacher-retest ─────────────────────
+
+def _fmt_ci(r, k: str) -> str:
+    return f"{r[k]:+.3f} [{r[k + '_lo']:+.2f}, {r[k + '_hi']:+.2f}]"
+
+
+def _phase_frame(source: str, score: str | None):
+    """(frame, score column, group column) for `phases`: the X accounts or
+    Trump's own Truth Social feed."""
+    if source == "trump":
+        df = pd.read_parquet(settings.TRUMP_FEED_STANCE)
+        return df, score or "score_opus_distilled", "user"
+    return _load_scored_frame(), score or settings.STANCE_SCORE_COL, None
+
+
+@main.command()
+@click.option("--source", type=click.Choice(["x", "trump"]), default="x", show_default=True,
+              help="X broadcaster accounts, or Trump's own Truth Social feed")
+@click.option("--by", "group", type=click.Choice(["tier", "user"]), default="tier", show_default=True)
+@click.option("--score", default=None, help="Score column (default: stance of record for the source)")
+@click.option("--topic", "topic_source", type=click.Choice(["llm", "keyword"]),
+              default=settings.TOPIC_SOURCE, show_default=True,
+              help="About-the-war flag: Haiku topic labels or the keyword pattern")
+@click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
+def phases(source: str, group: str, score: str | None, topic_source: str, n_boot: int):
+    """Stance by phase with account-day block-bootstrap 95% CIs, split into
+    war posts and the rest, and each phase's change from the first split into
+    topic-share and on-war stance effects. Writes CSVs to data/processed/."""
+    from src.analysis import inference as inf
+    df, score, default_group = _phase_frame(source, score)
+    group = default_group or group
+    d = inf.prepare(df, score, group=group, topic_source=topic_source)
+    boot = inf.bootstrap_cells(d, score, n_boot=n_boot)
+    stats, contrasts = inf.phase_stats(boot), inf.phase_contrasts(boot)
+    gaps = inf.phase_gaps(boot, settings.PHASE_GAPS) if group == "tier" else pd.DataFrame()
+    tag = f"{source}_{group}_{score}_{topic_source}"
+    stats.to_csv(settings.PROCESSED_DIR / f"phases_{tag}.csv", index=False)
+    contrasts.to_csv(settings.PROCESSED_DIR / f"phase_contrasts_{tag}.csv", index=False)
+    if not gaps.empty:
+        gaps.to_csv(settings.PROCESSED_DIR / f"phase_gaps_{tag}.csv", index=False)
+
+    chk = inf.topic_filter_check(d, score)
+    click.echo(f"\n{len(d)} posts, {score}, topic={topic_source}: {chk['on_topic_share']:.0%} about the war; "
+               f"mean |stance| {chk['mean_abs_on']:.2f} on vs {chk['mean_abs_off']:.2f} off; "
+               f"{chk['strong_captured']:.0%} of |stance|>=0.3 posts are flagged on-war")
+    click.echo(f"\n{'group':22s}{'phase':22s}{'n':>6s}{'war':>6s}  {'all posts':24s}  {'war posts only':24s}")
+    for _, r in stats.iterrows():
+        click.echo(f"{r['group']:22s}{str(r['phase']):22s}{r['n']:>6d}{r['share']:>6.0%}  "
+                   f"{_fmt_ci(r, 'mean_all'):24s}  {_fmt_ci(r, 'mean_on'):24s}")
+    click.echo(f"\nChange from the first phase (all = share + on-war + off-war effects):")
+    click.echo(f"{'group':22s}{'phase':22s}{'all':24s}{'share effect':24s}{'war-post stance change':24s}")
+    for _, r in contrasts.iterrows():
+        click.echo(f"{r['group']:22s}{str(r['phase']):22s}{_fmt_ci(r, 'all'):24s}"
+                   f"{_fmt_ci(r, 'share_effect'):24s}{_fmt_ci(r, 'on_topic_change'):24s}")
+    if not gaps.empty:
+        click.echo(f"\nGaps:")
+        for _, r in gaps.iterrows():
+            click.echo(f"{r['pair']:30s}{str(r['phase']):22s}all {_fmt_ci(r, 'mean_all'):24s}"
+                       f"war {_fmt_ci(r, 'mean_on')}")
+
+
+@main.command("reply-population")
+@click.option("--col", default="score_opus_distilled", show_default=True)
+@click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
+def reply_population_cmd(col: str, n_boot: int):
+    """Opus stance of each tracked post's whole reply audience, estimated from
+    the Opus-labelled reply sample: direct (weighted sample) and model-assisted
+    (distilled census + weighted correction), with bootstrap CIs. No API."""
+    from src.analysis.inference import reply_population
+    rp = reply_population(col=col, n_boot=n_boot)
+    rp.to_csv(settings.PROCESSED_DIR / f"reply_population_{col}.csv", index=False)
+    click.echo(f"\n{'post':20s}{'replies':>8s}{'lab':>5s}  {'model mean':>10s}  {'Opus-corrected mean':24s}"
+               f"{'model pro':>10s}  {'corrected pro':24s}{'model anti':>11s}  {'corrected anti'}")
+    for _, r in rp.iterrows():
+        click.echo(f"{r['post']:20s}{r['n_replies']:>8d}{r['n_labelled']:>5d}  {r['model_mean']:>+10.3f}  "
+                   f"{_fmt_ci(r, 'assisted_mean'):24s}{r['model_pro']:>10.0%}  "
+                   f"{r['assisted_pro']:.0%} [{r['assisted_pro_lo']:.0%}, {r['assisted_pro_hi']:.0%}]{'':8s}"
+                   f"{r['model_anti']:>11.0%}  {r['assisted_anti']:.0%} [{r['assisted_anti_lo']:.0%}, {r['assisted_anti_hi']:.0%}]")
+
+
+@main.command("teacher-retest")
+@click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
+def teacher_retest_cmd(model: str):
+    """How much the Opus label moves when the same post is labelled twice
+    (direct teacher check vs batch relabel). No API."""
+    from src.analysis.inference import teacher_retest
+    by, s = teacher_retest(model)
+    click.echo(f"\n{model} test-retest on {s['n']} posts: {s['identical']:.0%} identical, "
+               f"{s['within_0.1']:.0%} within 0.1, per-label noise SD {s['noise_sd_per_label']:.3f}, "
+               f"mean shift {s['mean_shift']:+.3f}")
+    click.echo(f"{'tier':22s}{'n':>6s}{'pearson':>9s}{'mae':>7s}{'sign agr':>10s}{'flips':>7s}")
+    for tier, r in by.iterrows():
+        click.echo(f"{tier:22s}{int(r['n']):>6d}{r['pearson']:>9.3f}{r['mae']:>7.3f}"
+                   f"{r['sign_agreement']:>10.1%}{r['sign_flip_rate']:>7.1%}")
+
+
+# ── export-web ──────────────────────────────────────────────────────
+
+@main.command("export-web")
+@click.option("--out", "out_dir", default=str(settings.WEB_EXPORT_DIR), show_default=True,
+              type=click.Path(), help="Post folder in the dkweb repo")
+def export_web_cmd(out_dir: str):
+    """Write the chart JSON for the dkweb blog post (Observable Plot at build time)."""
+    from pathlib import Path as _P
+    from src.visualization.web_export import export
+    for p in export(_P(out_dir)):
+        click.echo(f"  {p}")
+
+
+# ── backup ──────────────────────────────────────────────────────────
+
+@main.command()
+@click.option("--dry-run", is_flag=True, help="Show what would be uploaded")
+def backup(dry_run: bool):
+    """Sync data/raw, data/processed and data/models to the off-box S3 bucket
+    (append-only, versioned). Run after any paid collect / relabel."""
+    from src.backup import run
+    failed = [(p, rc) for p, rc in run(dry_run=dry_run) if rc != 0]
+    for p, rc in failed:
+        click.secho(f"sync to {p} failed (exit {rc})", fg="red")
+    if failed:
+        sys.exit(1)
+    click.secho("✓ backup synced" + (" (dry run)" if dry_run else ""), fg="green")
+
+
+# ── topic-label ─────────────────────────────────────────────────────
+
+@main.command("topic-label")
+@click.argument("action", type=click.Choice(["estimate", "submit", "status", "collect"]))
+@click.option("--yes", is_flag=True, help="Submit without the confirmation prompt")
+def topic_label_cmd(action: str, yes: bool):
+    """Label every broadcaster post as about the Iran war or not (Haiku,
+    Batch API). `phases` uses the labels to split stance changes into topic
+    share and on-war stance. Steps: estimate -> submit -> status -> collect."""
+    from src.analysis import topic_label as tl
+    if action in ("estimate", "submit"):
+        n = len(tl.posts_to_label())
+        click.echo(f"{n} posts to label with {settings.LLM_MODEL}; batch cost ≈ ${tl.estimate_cost(n):.2f}")
+        if action == "estimate" or n == 0:
+            return
+        if not yes and not click.confirm("Submit?", default=False):
+            click.echo("Aborted.")
+            return
+        st = tl.submit()
+        click.echo(f"batch {st['batch_id']} {st['status']}  ({st['n_submitted']} requests)")
+        return
+    st = tl.status() if action == "status" else tl.collect()
+    click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
+
+
 # ── score-posts / reply-teacher-check ─────────────────────────────
 
 @main.command("score-posts")

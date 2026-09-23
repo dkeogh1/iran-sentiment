@@ -30,6 +30,9 @@ SENTIMENT_OUTPUT = PROCESSED_DIR / "sentiment_all.parquet"
 
 # Scored Truth Social reply data (separate from broadcaster sentiment)
 REPLY_SENTIMENT_OUTPUT = PROCESSED_DIR / "reply_sentiment.parquet"
+# Trump's own Truth Social feed, scored by the Opus-taught distilled model
+# (`score-posts ... --col score_opus_distilled`).
+TRUMP_FEED_STANCE = PROCESSED_DIR / "truthsocial_trump_stance.parquet"
 
 
 # ── Date window for data collection / analysis ────────────────────
@@ -50,6 +53,32 @@ COLLECTION_END = (
 # absent from the frame are skipped by the plots.
 STANCE_SCORE_COL = "score_opus"
 PLOT_SCORE_COLS = ["score_vader", "score_transformer", "score_llm", "score_opus"]
+
+
+# ── War-topic filter ───────────────────────────────────────────────
+# Most posts are not about the war (StateDept, POTUS and the VP post about
+# everything) and score ~0, so a tier's all-post mean moves when the SHARE of
+# war posts moves even if the war posts themselves do not. `phases` splits
+# each change into that share effect and the on-topic stance change. The
+# filter is keyword-only on purpose: it must not depend on the score it is
+# used to decompose. Case-insensitive.
+WAR_TOPIC_PATTERN = (
+    r"\biran|hormuz|tehran|khamenei|ayatollah|\birgc\b|islamic republic|persian gulf"
+    r"|nuclear|enrich|\bwars?\b|warmonger|strikes?\b|airstrike|ceasefire|cease-fire"
+    r"|\bbomb|missile|\bdrones?\b|\btroops\b|israel|\bidf\b|netanyahu|hezbollah|houthi"
+    r"|middle east|blockade|islamabad|regime"
+)
+# "llm" uses the Haiku about-the-war labels from `topic-label` (falls back to
+# the keyword pattern for posts without a label); "keyword" forces the regex.
+TOPIC_SOURCE = "llm"
+# Group pairs `phases` reports gaps for (a - b, within each phase).
+PHASE_GAPS = [("maga_prowar", "admin"), ("maga_prowar", "maga_antiwar")]
+# Bootstrap for the phase tables: posts are resampled in account-day blocks
+# within each account, so same-day posts move together and each account's
+# weight stays as observed. The intervals are sampling noise for THESE
+# accounts, not a claim about accounts we did not track.
+BOOTSTRAP_N = 1000
+BOOTSTRAP_SEED = 42
 
 
 # ── Event overlays ─────────────────────────────────────────────────
@@ -126,6 +155,20 @@ GAP_FILL_SLICE_DAYS = 14
 
 # ── Stance-model experiments (GPU Jobs on dkbl2, see k8s/README.md) ─
 MODELS_DIR = DATA_DIR / "models"
+
+# ── Off-box backup (`backup` command) ───────────────────────────────
+# S3 bucket from homelab-infra terraform/iran-sentiment-backups.tf; the bucket
+# name and the append-only writer's key live in .env
+# (IRAN_BACKUP_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY). Nothing
+# is scheduled: run it after a paid collect / relabel. (local dir, S3 prefix,
+# storage class): raw and the paid labels are small and irreplaceable; the
+# models are 8 GB and regenerable, so they go straight to Glacier IR.
+BACKUP_SYNC = [
+    (RAW_DIR, "raw/", "STANDARD"),
+    (PROCESSED_DIR, "processed/", "STANDARD"),
+    (MODELS_DIR, "models/", "GLACIER_IR"),
+]
+AWS_BIN = Path.home() / ".local" / "bin" / "aws"
 # Teacher check: relabel a stratified sample with a stronger model and
 # measure disagreement with the Haiku labels before distilling from them.
 TEACHER_CHECK_MODEL = "claude-opus-5"
@@ -240,6 +283,29 @@ LLM_CONCURRENCY = 5
 # crash only loses the last batch of in-flight scores, not the whole
 # run (a full LLM pass on 8k posts is a ~$12 / 30-min job).
 LLM_SAVE_EVERY_N = 100
+
+
+# ── dkweb export (`export-web`) ─────────────────────────────────────
+# Chart JSON for the blog post on dankeogh.com (repo ~/repos/dkweb, Astro +
+# Observable Plot rendered at build time). The post folder holds the MDX and
+# these files side by side.
+WEB_EXPORT_DIR = Path.home() / "repos" / "dkweb" / "src" / "content" / "blog" / "iran-war-stance"
+WEB_WEEKLY_TIERS = ["maga_prowar", "maga_antiwar", "admin"]
+WEB_MIN_WEEKLY_POSTS = 5      # weeks with fewer war posts in a tier are dropped
+WEB_MIN_ACCOUNT_POSTS = 20    # accounts with fewer war posts are left off the strip
+WEB_TIER_LABELS = {
+    "admin": "Administration", "maga_prowar": "Pro-war MAGA", "maga_antiwar": "Anti-war MAGA",
+    "opposition": "Opposition", "media": "Media", "religious_authority": "Vatican & bishops",
+}
+WEB_POST_LABELS = {
+    "power_plant_day": "\u201cPower Plant Day\u201d", "civilisation_dies": "\u201cA whole civilisation will die\u201d",
+    "ceasefire": "Two-week ceasefire", "hold_off_attack": "\u201cHold off\u201d on the attack",
+    "deal_complete": "\u201cThe Deal is complete\u201d", "strikes_resume_sep": "Strikes near Hormuz",
+}
+WEB_EVENTS = [
+    ("2026-02-28", "Strikes"), ("2026-04-08", "Ceasefire"), ("2026-06-17", "Islamabad MOU"),
+    ("2026-07-08", "MOU collapses"), ("2026-08-17", "MOU expires"), ("2026-09-01", "Strikes resume"),
+]
 
 
 # ── Plotting ───────────────────────────────────────────────────────
