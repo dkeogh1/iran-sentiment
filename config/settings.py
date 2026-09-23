@@ -68,9 +68,11 @@ WAR_TOPIC_PATTERN = (
     r"|\bbomb|missile|\bdrones?\b|\btroops\b|israel|\bidf\b|netanyahu|hezbollah|houthi"
     r"|middle east|blockade|islamabad|regime"
 )
-# "llm" uses the Haiku about-the-war labels from `topic-label` (falls back to
-# the keyword pattern for posts without a label); "keyword" forces the regex.
-TOPIC_SOURCE = "llm"
+# About-the-war flag for `phases` / `export-web`: "keyword" (the regex,
+# loose), "llm" (Haiku labels from `topic-label`, strict: it drops the Pope's
+# war appeals that never name Iran), or "either" (one or the other, the
+# default since 2026-09-23). Report only what holds under all three.
+TOPIC_SOURCE = "either"
 # Group pairs `phases` reports gaps for (a - b, within each phase).
 PHASE_GAPS = [("maga_prowar", "admin"), ("maga_prowar", "maga_antiwar")]
 # Bootstrap for the phase tables: posts are resampled in account-day blocks
@@ -291,7 +293,8 @@ LLM_SAVE_EVERY_N = 100
 # these files side by side.
 WEB_EXPORT_DIR = Path.home() / "repos" / "dkweb" / "src" / "content" / "blog" / "iran-war-stance"
 WEB_WEEKLY_TIERS = ["maga_prowar", "maga_antiwar", "admin"]
-WEB_MIN_WEEKLY_POSTS = 5      # weeks with fewer war posts in a tier are dropped
+WEB_SMOOTH_WEEKS = 3          # centred, post-weighted rolling window for the weekly chart
+WEB_MIN_WINDOW_POSTS = 15     # windows with fewer war posts are dropped
 WEB_MIN_ACCOUNT_POSTS = 20    # accounts with fewer war posts are left off the strip
 WEB_TIER_LABELS = {
     "admin": "Administration", "maga_prowar": "Pro-war MAGA", "maga_antiwar": "Anti-war MAGA",

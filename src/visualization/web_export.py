@@ -43,12 +43,25 @@ def _r(x, nd: int = 3):
 
 
 def maga_weekly(d: pd.DataFrame, score: str) -> list[dict]:
+    """Weekly war-post stance per tier plus a post-weighted centred rolling
+    mean over WEB_SMOOTH_WEEKS calendar weeks (a thin week cannot swing it,
+    and a missing week is a gap, not a join). Windows with fewer than
+    WEB_MIN_WINDOW_POSTS war posts are dropped."""
     w = d[d["on_topic"] & d["tier"].isin(settings.WEB_WEEKLY_TIERS)].copy()
     w["week"] = pd.to_datetime(w["created_at"], utc=True).dt.tz_localize(None).dt.to_period("W-SUN").dt.start_time
-    g = w.groupby(["tier", "week"])[score].agg(["mean", "count"]).reset_index()
-    g = g[g["count"] >= settings.WEB_MIN_WEEKLY_POSTS]
-    return [{"week": r.week.date().isoformat(), "tier": settings.WEB_TIER_LABELS.get(r.tier, r.tier),
-             "stance": _r(r["mean"]), "n": int(r["count"])} for _, r in g.iterrows()]
+    rows = []
+    for tier, g in w.groupby("tier"):
+        wk = g.groupby("week")[score].agg(["sum", "count"])
+        wk = wk.reindex(pd.date_range(wk.index.min(), wk.index.max(), freq="7D"), fill_value=0)
+        roll = wk.rolling(settings.WEB_SMOOTH_WEEKS, center=True, min_periods=1).sum()
+        for week, r in wk.iterrows():
+            n_win = int(roll.loc[week, "count"])
+            if n_win < settings.WEB_MIN_WINDOW_POSTS:
+                continue
+            rows.append({"week": week.date().isoformat(), "tier": settings.WEB_TIER_LABELS.get(tier, tier),
+                         "stance": _r(r["sum"] / r["count"]) if r["count"] else None, "n": int(r["count"]),
+                         "smooth": _r(roll.loc[week, "sum"] / n_win), "n_window": n_win})
+    return rows
 
 
 def accounts(df: pd.DataFrame, score: str) -> list[dict]:

@@ -55,6 +55,9 @@ def test_war_flag_prefers_llm_labels(tmp_path, monkeypatch):
     d = pd.DataFrame({"id": ["1", "2"], "text": ["Deport them!", "Iran strikes"]})
     assert inf.war_flag(d, "llm").tolist() == [True, True]      # 1 from the label, 2 from keywords
     assert inf.war_flag(d, "keyword").tolist() == [False, True]
+    pd.DataFrame({"id": ["1", "2"], "about_war": [False, False]}).to_parquet(tl.labels_path(), index=False)
+    assert inf.war_flag(d, "llm").tolist() == [False, False]    # the label wins where there is one
+    assert inf.war_flag(d, "either").tolist() == [False, True]  # ... unless the keyword fires
 
 
 def test_reply_population_weights_buckets(tmp_path, monkeypatch):

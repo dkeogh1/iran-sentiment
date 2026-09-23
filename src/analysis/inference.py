@@ -49,10 +49,13 @@ def on_topic(text: pd.Series, pattern: str = settings.WAR_TOPIC_PATTERN) -> pd.S
 
 
 def war_flag(d: pd.DataFrame, source: str = settings.TOPIC_SOURCE) -> pd.Series:
-    """About-the-war flag per row: the Haiku topic label where one exists
-    (source="llm"), the keyword pattern otherwise."""
+    """About-the-war flag per row. "keyword": the pattern. "llm": the Haiku
+    topic label, the pattern where there is none (link-only posts Haiku
+    would not judge). "either": flagged by one or the other -- Haiku is
+    strict (it drops the Pope's war appeals that never name Iran), the
+    pattern is loose (it misses unnamed strikes, catches "culture war")."""
     kw = on_topic(d["text"])
-    if source != "llm":
+    if source == "keyword":
         return kw
     from src.analysis.topic_label import load_labels
     lab = load_labels()
@@ -60,7 +63,8 @@ def war_flag(d: pd.DataFrame, source: str = settings.TOPIC_SOURCE) -> pd.Series:
         logger.warning("no topic labels yet (run `topic-label`); using the keyword filter")
         return kw
     m = d["id"].astype(str).map(lab.set_index("id")["about_war"])
-    return m.where(m.notna(), kw).astype(bool)
+    llm = m.where(m.notna(), kw).astype(bool)
+    return (llm | kw) if source == "either" else llm
 
 
 def prepare(df: pd.DataFrame, score_col: str, group: str = "tier",

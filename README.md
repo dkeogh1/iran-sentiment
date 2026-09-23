@@ -32,21 +32,30 @@ miscalibrations visible.
 
 ![Tier comparison](docs/figures/tier_comparison_score_opus.png)
 
-| Tier | Opus stance | Haiku stance | RoBERTa | n |
-|------|-----------:|-------------:|--------:|--:|
-| maga_prowar | **+0.247** | -0.056 | -0.199 | 5,174 |
-| admin | +0.211 | +0.175 | +0.143 | 4,806 |
-| media | -0.062 | -0.120 | -0.032 | 1,337 |
-| religious_authority | -0.137 | -0.180 | **+0.302** | 2,238 |
-| search (public, Feb-May) | -0.143 | -0.325 | -0.346 | 1,765 |
-| opposition | -0.199 | -0.384 | -0.303 | 338 |
-| maga_antiwar | -0.234 | -0.206 | -0.180 | 3,747 |
+| Tier | Opus, war posts | war share | Opus, all posts | Haiku, all | RoBERTa, all | n |
+|------|-----------:|--:|-----------:|-------------:|--------:|--:|
+| maga_prowar | **+0.54** [+0.52, +0.57] | 18% | **+0.247** | -0.056 | -0.199 | 5,174 |
+| admin | +0.46 [+0.43, +0.49] | 25% | +0.211 | +0.175 | +0.143 | 4,806 |
+| media | -0.03 [-0.05, -0.01] | 50% | -0.062 | -0.120 | -0.032 | 1,337 |
+| religious_authority | -0.58 [-0.62, -0.54] | 10% | -0.137 | -0.180 | **+0.302** | 2,238 |
+| search (public, Feb-May) | | | -0.143 | -0.325 | -0.346 | 1,765 |
+| maga_antiwar | -0.55 [-0.58, -0.52] | 24% | -0.234 | -0.206 | -0.180 | 3,747 |
+| opposition | -0.85 [-0.89, -0.79] | 18% | -0.199 | -0.384 | -0.303 | 338 |
 
-Two net-pro-war tiers, and the pro-war influencers edge out the
-administration itself. Everyone else is net-negative, with the anti-war
-MAGA voices now the most anti-war tier in the dataset, ahead of the
-opposition. The MAGA split is 0.48 points wide, three times what the
-Haiku labels showed.
+**Read the war-post column.** The stance prompt asks for a stance on the
+Iran war for every post, so Opus also scores "Deport them!", "Amen" and
+"THANK YOU, PRESIDENT TRUMP!" (all pro-war, from who wrote them). Most
+posts are not about the war, so an all-post average is mostly those
+projected scores, and it moves whenever a camp posts more or less about
+the war. The war-post column keeps only posts about the war (flagged by
+keyword or by a Haiku topic label, see *Robustness checks*) with 95%
+intervals from an account-day block bootstrap.
+
+On the war itself, the two MAGA camps are **1.1 points apart** on a
+two-point scale, not the 0.48 the all-post averages show. The pro-war
+influencers are more hawkish than the administration (+0.54 vs +0.46,
+intervals apart under every topic definition), and anti-war MAGA
+(-0.55) sits alongside the Vatican, short of Sanders (-0.85).
 
 ### The pro-war tier was mislabelled, twice
 
@@ -65,69 +74,83 @@ and @LauraLoomer +0.150: the pro-war influencers are hawks, full stop.
 RoBERTa reads the Vatican tier as the *most positive* tier in the
 dataset (+0.302) because faith-based anti-war language ("peace",
 "mercy", "dialogue") is lexically positive. Opus puts the same posts at
--0.137, and @Pontifex at **-0.310, tied with @mtgreenee as the most
-anti-war account in the dataset**. Of 2,238 religious-tier posts, none
+-0.137, and @Pontifex at -0.310 over all posts and **-0.76 on his war
+posts, level with @mtgreenee (-0.78) and behind only @SenSanders**. Of 2,238 religious-tier posts, none
 were labelled pro-war by either Claude model. This tier is the reason
 the project moved to LLM stance scoring in the first place.
 
 ### Who the hawks actually are
 
-The operational arms out-hawk the PR shop, and one radio host out-hawks
-most of the cabinet. @PeteHegseth (+0.373) is the most pro-war account,
-then @marklevinshow (+0.281), @StateDept (+0.240), @POTUS (+0.149),
-@LauraLoomer (+0.150), @WhiteHouse (+0.104), @SecRubio (+0.080) and
-@VP (+0.063).
+War posts only, Feb -- Sep: @PeteHegseth (+0.57) and @marklevinshow
+(+0.56) are the most pro-war accounts, then @POTUS (+0.52), @LauraLoomer
+(+0.45), @WhiteHouse (+0.44) and @StateDept (+0.43); @VP (+0.23) and
+@SecRubio (+0.17) are the administration's mildest voices. At the other
+end: @SenSanders (-0.85), @mtgreenee (-0.78), @Pontifex (-0.76) and
+@RealCandaceO (-0.75). @RealAlexJones (-0.43) is the least anti-war of
+the anti-war MAGA voices and @BarakRavid (-0.03) is neutral.
 
-### Seven months: the administration talked itself down, the influencers didn't
+### Seven months: the administration went quiet more than it went soft
 
-Opus stance by tier across the four phases of the war (keyword searches
-excluded; they end May 12):
+Opus stance of war posts by tier and phase, with the share of each
+tier's posts that were about the war (keyword searches excluded; they
+end May 12):
 
 | Tier | Feb 1 -- Apr 21<br>strikes, ceasefire | Apr 22 -- Jun 17<br>talks, MOU | Jun 18 -- Aug 17<br>collapse, blockade | Aug 18 -- Sep 18<br>expiry, strikes |
 |---|--:|--:|--:|--:|
-| admin | +0.280 | +0.205 | +0.137 | +0.115 |
-| maga_prowar | +0.272 | +0.173 | +0.225 | +0.217 |
-| media | -0.049 | -0.044 | -0.100 | -0.106 |
-| religious_authority | -0.180 | -0.110 | -0.108 | -0.101 |
-| opposition | -0.222 | -0.164 | -0.223 | -0.158 |
-| maga_antiwar | -0.280 | -0.175 | -0.233 | -0.148 |
-| posts | 9,348 | 4,035 | 2,576 | 1,681 |
+| admin | +0.51 (35%) | +0.41 (30%) | +0.33 (12%) | +0.38 (7%) |
+| maga_prowar | +0.57 (21%) | +0.46 (10%) | +0.47 (23%) | +0.41 (11%) |
+| media | -0.03 (61%) | -0.02 (43%) | -0.08 (46%) | +0.00 (33%) |
+| religious_authority | -0.62 (14%) | -0.53 (9%) | -0.54 (8%) | -0.55 (4%) |
+| maga_antiwar | -0.57 (28%) | -0.49 (19%) | -0.68 (19%) | -0.42 (18%) |
+| opposition | -0.86 (21%) | -0.80 (14%) | -0.83 (20%) | -0.91 (15%) |
 
-- **The administration's own messaging got steadily less hawkish**, from
-  +0.280 in the strike phase to +0.115 in the September strikes phase.
-  The decline is in the diplomatic and presidential accounts, not the
-  Pentagon: @StateDept +0.31 to +0.11, @POTUS +0.20 to +0.07, @SecRubio
-  +0.10 to +0.03, while @PeteHegseth held between +0.31 and +0.42.
-- **The pro-war influencers did not follow.** They started level with
-  the administration and stayed there, so from the July collapse on
-  they were the more hawkish voice: +0.22 against the administration's
-  +0.12 to +0.14. @LauraLoomer's lowest phase was the negotiation
-  window, when she was attacking the deal rather than Iran.
-- **Everyone anti-war softened once the shooting paused and did not
-  fully re-harden**: anti-war MAGA -0.28 to -0.15, the Vatican -0.18 to
-  -0.10, @SenSanders -0.22 to -0.16. Only media (@BarakRavid) drifted
-  the other way, -0.05 to -0.11.
+(`python -m src.cli phases`; intervals in
+`data/processed/phases_x_tier_score_opus_either.csv`.)
 
-### Trump's own feed did not soften
+- **The administration's all-post average fell from +0.28 to +0.12,
+  mostly because it stopped posting about the war.** War posts went
+  from 35% of its output to 7%. Splitting the -0.16 change: -0.09
+  [-0.11, -0.07] is the smaller war share, -0.03 [-0.05, -0.00] is
+  softer war posts, -0.05 is drift in its other posts. Its war posts did
+  soften during the talks and the collapse (+0.51 to +0.33, significant
+  under every topic definition), then hardened again with the September
+  strikes. @StateDept shows both effects: war posts fell from 58% of
+  its output in the strike phase to 5% (five posts) in September, and
+  those it did make eased from +0.45 to +0.31 by the collapse.
+- **The pro-war influencers kept talking.** Their war posts stayed at
+  +0.4 to +0.6 throughout (flat under the strict topic labels, easing
+  slightly under the loose ones), and their war share did not collapse.
+  That is why their all-post average overtakes the administration's from
+  July: volume, not a widening gap on the war itself.
+- **The anti-war side did not soften on the war.** Anti-war MAGA was
+  hardest in the collapse phase (-0.68). Its September figure (-0.42,
+  interval -0.57 to -0.28) is mostly composition: @RealAlexJones, the
+  least anti-war of the four, kept posting about the war (30% of his
+  posts) while @RealCandaceO fell to 5%. The Vatican's war posts held at
+  about -0.55; it talked about the war less (14% of posts to 4%), which
+  is all its all-post "softening" was. @SenSanders never moved.
+- **Media did not harden.** @BarakRavid's war posts stay near zero in
+  every phase; the all-post drift is in his other posts.
 
-The X series above samples @POTUS at 789 posts, only 65 of them about
-Iran. Trump's Truth Social feed is the presidential voice at full
-fidelity: 4,087 posts from Apr 4 to Sep 16, scored with the Opus-taught
-model, 293 of them naming Iran, Hormuz or the regime.
+### Trump's own feed did not soften either
 
-| Phase | Trump TS, Iran posts | Trump TS, all posts | X @POTUS, all posts |
+The X series above samples @POTUS at 789 posts. Trump's Truth Social
+feed is the presidential voice at full fidelity: 4,087 posts from Apr 4
+to Sep 16, scored with the Opus-taught distilled model (0.88 Pearson with
+Opus on posts).
+
+| Phase | War posts | share of all posts | all posts |
 |---|--:|--:|--:|
-| Feb 1 -- Apr 21 | +0.518 (n=76) | +0.168 | +0.202 |
-| Apr 22 -- Jun 17 | +0.436 (n=82) | +0.111 | +0.139 |
-| Jun 18 -- Aug 17 | +0.413 (n=85) | +0.099 | +0.099 |
-| Aug 18 -- Sep 18 | +0.453 (n=50) | +0.097 | +0.072 |
+| Apr 4 -- Apr 21 | +0.42 [+0.27, +0.55] | 26% | +0.168 |
+| Apr 22 -- Jun 17 | +0.36 [+0.28, +0.45] | 8% | +0.111 |
+| Jun 18 -- Aug 17 | +0.31 [+0.24, +0.38] | 8% | +0.099 |
+| Aug 18 -- Sep 16 | +0.37 [+0.31, +0.45] | 9% | +0.097 |
 
-When Trump posts about Iran he is as hawkish in September as in the
-strike phase, around +0.45. The decline in his accounts' overall
-average is composition: Iran became a smaller share of what he posts
-about, not a softer one. The administration that talked itself down is
-the agencies and the staff accounts (State, the White House, Rubio),
-not the president's own Iran messaging, and not the Pentagon.
+The intervals overlap in every phase and under every topic definition
+(the strict Haiku labels put all four between +0.42 and +0.51): Trump's
+war posts in September are as hawkish as in April. What changed is how
+much he talks about it, a quarter of his posts in April and under a
+tenth since, the same pattern as the administration's accounts on X.
 
 ### Per-account detail
 
@@ -180,52 +203,44 @@ classified by Claude Haiku into stance categories.
   posts** ("voted 3x for you, losing me as a supporter"), peaking on
   the April rant and the June deal, not on the strikes.
 
-**Population-level stance (Sep 19).** The distilled stance model (see
+**Population-level stance.** The distilled stance model (see
 *Stance-model experiments* below) scored every one of the 83,054
-replies, so these are proportions of each post's whole audience, not a
-sample. Three generations of the scorer are shown because the teacher
-matters far more than the student:
+replies. It was trained on broadcaster posts, and on replies it leans
+pro-war: against 959 replies Opus labelled directly it agrees at 0.71
+Pearson with 13% opposite-sign labels, and calls 59% pro-war where Opus
+calls 51%. So the table below corrects it: the 870 of those labelled
+replies that were random draws (50 per sentiment bucket per post) are
+weighted back to each post's full reply count, and the model's census
+figure is shifted by the weighted gap between Opus and the model on
+them (`python -m src.cli reply-population`; 95% intervals from
+resampling within buckets).
 
-| Post | Replies | RoBERTa on Haiku | DeBERTa on Haiku | **DeBERTa on Opus** | Anti-war | Pro-war | Loyalty low / mid / high |
-|---|--:|--:|--:|--:|--:|--:|---|
-| "Power Plant Day" rant | 23,656 | -0.101 | -0.134 | **+0.042** | 37% | 46% | +0.01 / +0.06 / +0.18 |
-| "Whole civilisation will die" | 16,591 | -0.167 | -0.201 | **-0.000** | 40% | 48% | -0.03 / +0.02 / +0.20 |
-| Two-week ceasefire | 16,808 | +0.005 | -0.010 | **+0.197** | 25% | 61% | +0.16 / +0.22 / +0.30 |
-| "Hold off on our planned Military attack" | 8,800 | +0.062 | +0.040 | **+0.234** | 26% | 61% | +0.21 / +0.24 / +0.31 |
-| "The Deal with Iran is now complete" | 12,609 | +0.117 | +0.081 | **+0.213** | 18% | 64% | +0.18 / +0.23 / +0.32 |
-| "Striking Iranian Targets near Hormuz" | 4,590 | +0.164 | +0.166 | **+0.312** | 21% | 69% | +0.24 / +0.35 / +0.45 |
+| Post | Replies | RoBERTa valence | Model stance | **Opus-corrected stance** | Anti-war | Pro-war |
+|---|--:|--:|--:|--:|--:|--:|
+| "Power Plant Day" rant | 23,656 | -0.225 | +0.042 | +0.05 [-0.03, +0.12] | 34% | 40% |
+| "Whole civilisation will die" | 16,591 | -0.342 | -0.000 | **-0.09** [-0.17, -0.03] | **45%** | 37% |
+| Two-week ceasefire | 16,808 | -0.303 | +0.197 | +0.09 [+0.01, +0.18] | 29% | 48% |
+| "Hold off on our planned Military attack" | 8,800 | **-0.475** | +0.234 | +0.10 [+0.02, +0.18] | 36% | 52% |
+| "The Deal with Iran is now complete" | 12,609 | +0.193 | +0.213 | +0.19 [+0.13, +0.25] | 26% | 61% |
+| "Striking Iranian Targets near Hormuz" | 4,590 | -0.246 | +0.312 | **+0.28** [+0.21, +0.36] | 26% | 62% |
+| All six | 83,054 | | +0.126 | +0.07 [+0.04, +0.10] | 34% | 47% |
 
-- **The audience is more hawkish than any earlier scorer said.** Under
-  the Opus-taught model no post is net anti-war; four of six have a
-  pro-war majority, and even the April "civilisation will die" post,
-  the one the NYT reported as majority-critical, splits 48% pro-war to
-  40% anti. Swapping the student (RoBERTa to DeBERTa, both on Haiku
-  labels) moved nothing; swapping the teacher moved every post by 0.15
-  to 0.20 in the pro-war direction. The Haiku-taught numbers were the
-  same tone-as-stance error the teacher check found on Mark Levin,
-  applied to an audience that is angry and hawkish at once.
-- **Stance and tone still diverge most on May 18.** The angriest post by
-  valence (-0.48) is one of the most pro-war by stance (+0.23, 61%
-  pro-war): the audience was furious *that Trump held off*.
-- **Loyalty predicts hawkishness monotonically on every post**, and the
-  September strikes post is the most pro-war audience of the war, 69%,
-  with the most loyal accounts at +0.45.
-- **The only posts where the anti-war share reaches 40%** are the two
-  April escalation posts, before the ceasefire, when the "voted 3x for
-  you" betrayal voice was loudest.
-
-**Domain shift, measured.** The model was trained on broadcaster posts
-and applied to replies, a different register, so the 959 sampled replies
-were relabelled by Opus directly (about $2). Against those, the reply
-scores reproduce Opus at 0.71 Pearson with 13% opposite-sign labels,
-against 0.88 and 2% on posts. The error runs pro-war: on the sample the
-model calls 59% of replies pro-war where Opus calls 51%, and its mean is
-+0.20 to Opus's +0.16. So the population shares above are inflated by
-roughly five to ten points, and the honest reading is "about half of
-Trump's audience replies are pro-war, a quarter to a third anti-war",
-still hawkish, still nothing like the majority-critical picture the
-valence scores gave. The fix, a retrain that includes the labelled
-replies, is queued.
+- **The audience leans pro-war, but not by the margin the model said.**
+  Across all six posts it is 47% pro-war to 34% anti. Five of six posts
+  are net pro-war; the September strikes post is the most hawkish
+  audience of the war (62% pro).
+- **"Civilisation will die" is the one net anti-war audience**: 45% anti
+  to 37% pro, interval clear of zero. The NYT's "majority critical"
+  reading of that post was about tone; on stance it is a plurality, not
+  a majority, but it is anti-war.
+- **Stance and tone diverge most on May 18.** The angriest post by
+  valence (-0.48) has a pro-war audience (+0.10, 52% pro): the base was
+  furious *that Trump held off*.
+- **Loyalty predicts hawkishness on every post** (distilled-model
+  scores; loyalty tiers low / mid / high: +0.01 / +0.06 / +0.18 on the
+  April rant, up to +0.24 / +0.35 / +0.45 on the September strikes). The
+  correction above is per post, not per loyalty tier, so these levels
+  carry the model's pro-war lean; the ordering is what to rely on.
 
 Stance shares are from a bucket-balanced sample, so they describe the
 spectrum of each post's replies, not population proportions; the
@@ -276,6 +291,36 @@ Three scorers, in order of cost:
 4. Claude Opus 5 stance -- the same prompt, verbatim, at low effort,
    over every labelled post through the Message Batches API (half
    price). The stance of record for every number in this README.
+
+### Robustness checks
+
+All free, all reproducible from the cached data (`src/analysis/inference.py`):
+
+- **What counts as a war post.** The stance prompt makes Opus score
+  every post, and it gives off-topic posts a stance from the author
+  (Hegseth's "It's time." +0.40, Levin's "Amen" +0.60). Three
+  definitions of "about the war"; every conclusion above holds under all
+  three: a keyword pattern (`WAR_TOPIC_PATTERN`, loose: misses unnamed
+  strikes, catches "culture war"), a Haiku 4.5 yes/no label on every
+  post (`topic-label`, Batch API, about $3 for 22,197 posts; strict:
+  drops the Pope's war appeals that never name Iran; 692 link-only posts
+  it would not judge fall back to the keyword), and either of the two
+  (the default, 23% of posts).
+- **Uncertainty.** 95% intervals resample account-days within each
+  account (1,000 replicates), so same-day posts move together and each
+  account's weight stays as observed. They are sampling noise for these
+  17 accounts, not a claim about accounts we did not track.
+- **Shift-share decomposition.** A tier's all-post change between two
+  phases splits exactly into (change in war share) x (war-post mean minus
+  other-post mean), (average war share) x (change in war-post stance),
+  and the same for other posts, each with its own interval.
+- **Opus test-retest.** 497 posts were labelled twice by Opus 5, once
+  through the direct API (the teacher check) and once in the batch
+  relabel: 82% identical scores, 95% within 0.1, Pearson 0.991, no
+  opposite-sign pairs (`teacher-retest`). Label noise is small next to
+  every effect reported.
+- **Reply population shares** are corrected against Opus labels on a
+  random, bucket-stratified sample (see *Audience replies*).
 
 ### Event overlay
 
@@ -473,6 +518,11 @@ docs/figures/             # the LLM-stance figures referenced above
   *Data collection*).
 - Truth Social's API may truncate large reply trees. Coverage is
   validated per-post during collection.
+- "About the war" has no crisp boundary (a papal appeal for peace that
+  names no country; an attack on Tucker Carlson). Every reported finding
+  holds under three definitions, but the levels move by up to 0.1.
+- The loyalty-tier reply numbers carry the distilled model's pro-war
+  lean; only the per-post shares are corrected.
 - This is observational sentiment tracking, not causal inference. Event
   overlays show correlation, not causation.
 
@@ -483,5 +533,8 @@ tweets) cost about $47; the May 10/12 refresh added roughly 4,500
 tweets, about $22; the Sep 18 refresh read 5,631 tweets, about $28. LLM stance scoring of the full dataset ran
 about $15 on Claude Haiku through April; the May 12 pass over the
 ~4,500 new posts was about $2 (672k input + 267k output tokens on
-Haiku 4.5, from the console usage page). Truth Social API access is
-free.
+Haiku 4.5, from the console usage page). September 2026 on the Anthropic
+side: about $3 for the Haiku refresh, $31 for the Opus 5 relabel of
+19,500 posts and $2 for 959 Opus reply labels (both Batch API), about $1
+for the teacher checks, and about $3 for the Haiku topic labels on 22,197
+posts. Truth Social API access is free.

@@ -840,9 +840,9 @@ def _phase_frame(source: str, score: str | None):
               help="X broadcaster accounts, or Trump's own Truth Social feed")
 @click.option("--by", "group", type=click.Choice(["tier", "user"]), default="tier", show_default=True)
 @click.option("--score", default=None, help="Score column (default: stance of record for the source)")
-@click.option("--topic", "topic_source", type=click.Choice(["llm", "keyword"]),
+@click.option("--topic", "topic_source", type=click.Choice(["llm", "keyword", "either"]),
               default=settings.TOPIC_SOURCE, show_default=True,
-              help="About-the-war flag: Haiku topic labels or the keyword pattern")
+              help="About-the-war flag: Haiku labels (strict), keyword pattern (loose), or either")
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
 def phases(source: str, group: str, score: str | None, topic_source: str, n_boot: int):
     """Stance by phase with account-day block-bootstrap 95% CIs, split into
@@ -950,7 +950,9 @@ def backup(dry_run: bool):
 @main.command("topic-label")
 @click.argument("action", type=click.Choice(["estimate", "submit", "status", "collect"]))
 @click.option("--yes", is_flag=True, help="Submit without the confirmation prompt")
-def topic_label_cmd(action: str, yes: bool):
+@click.option("--results-file", type=click.Path(exists=True), default=None,
+              help="collect from a downloaded results JSONL instead of streaming it")
+def topic_label_cmd(action: str, yes: bool, results_file: str | None):
     """Label every broadcaster post as about the Iran war or not (Haiku,
     Batch API). `phases` uses the labels to split stance changes into topic
     share and on-war stance. Steps: estimate -> submit -> status -> collect."""
@@ -966,7 +968,8 @@ def topic_label_cmd(action: str, yes: bool):
         st = tl.submit()
         click.echo(f"batch {st['batch_id']} {st['status']}  ({st['n_submitted']} requests)")
         return
-    st = tl.status() if action == "status" else tl.collect()
+    from pathlib import Path as _P
+    st = tl.status() if action == "status" else tl.collect(_P(results_file) if results_file else None)
     click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
 
 

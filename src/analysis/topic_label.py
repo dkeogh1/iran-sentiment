@@ -143,11 +143,26 @@ def parse_result(result) -> dict:
     return out
 
 
-def collect() -> dict:
+def _file_results(path: Path):
+    """Results from a downloaded results JSONL, shaped like the SDK objects
+    parse_result reads. The SDK stream broke mid-body on 2026-09-23 (httpx
+    ReadError, twice); `curl -C -` on the batch's results_url resumed fine."""
+    from types import SimpleNamespace as NS
+    for line in path.read_text().splitlines():
+        r = json.loads(line)
+        res = r["result"]
+        msg = res.get("message") or {}
+        content = [NS(type=b.get("type"), text=b.get("text", "")) for b in msg.get("content", [])]
+        yield NS(custom_id=r["custom_id"], result=NS(type=res["type"], message=NS(content=content)))
+
+
+def collect(results_file: Path | None = None) -> dict:
     st = status()
     if st["status"] not in ("ended", "collected"):
         return st
-    rows = [parse_result(r) for r in _client().messages.batches.results(st["batch_id"])]
+    results = (_file_results(results_file) if results_file
+               else _client().messages.batches.results(st["batch_id"]))
+    rows = [parse_result(r) for r in results]
     new = pd.DataFrame(rows)
     good = new[new["about_war"].notna()].copy()
     good["about_war"] = good["about_war"].astype(bool)
