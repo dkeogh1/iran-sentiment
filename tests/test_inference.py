@@ -100,3 +100,4 @@ def test_backup_commands_never_delete(tmp_path, monkeypatch):
     cmds = backup.sync_commands("s3://bucket/", dry_run=True)
     assert len(cmds) == 1 and cmds[0][4] == "s3://bucket/raw/"
     assert "--delete" not in cmds[0] and "--dryrun" in cmds[0]
+    assert backup.sync_commands("bucket", dry_run=True)[0][4] == "s3://bucket/raw/"

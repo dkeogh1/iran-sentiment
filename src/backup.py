@@ -13,6 +13,8 @@ from config import settings
 
 def sync_commands(bucket: str, dry_run: bool = False) -> list[list[str]]:
     bucket = bucket.rstrip("/")
+    if not bucket.startswith("s3://"):
+        bucket = f"s3://{bucket}"
     cmds = []
     for local, prefix, storage in settings.BACKUP_SYNC:
         if not local.exists():
@@ -31,7 +33,7 @@ def run(dry_run: bool = False) -> list[tuple[str, int]]:
     load_dotenv(settings.PROJECT_ROOT / ".env", override=True)
     bucket = os.environ.get("IRAN_BACKUP_S3_BUCKET")
     if not bucket:
-        raise RuntimeError("IRAN_BACKUP_S3_BUCKET is not set in .env (e.g. s3://iran-sentiment-backups-<account>)")
+        raise RuntimeError("IRAN_BACKUP_S3_BUCKET is not set in .env (e.g. iran-sentiment-backups-<account>; s3:// optional)")
     results = []
     for cmd in sync_commands(bucket, dry_run):
         rc = subprocess.run(cmd, env=os.environ.copy()).returncode
