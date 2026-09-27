@@ -5,5 +5,5 @@
 !config/
 !src/
 !README.md
-!CLAUDE.md
+!AGENTS.md
 **/__pycache__/

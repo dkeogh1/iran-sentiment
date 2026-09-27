@@ -1,269 +1,241 @@
 # iran-sentiment
 
-Sentiment analysis experiment on the 2026 Iran war. Tracks how Trump
-administration messaging, the MAGA influencer ecosystem, the
-opposition, and the Pope Leo XIV / Vatican moral axis shift over the
-war (strikes Feb 28, ceasefire Apr 8, Islamabad MOU Jun 17, collapse
-Jul 8, expiry Aug 17, renewed strikes Sep 1), including the MAGA split
-between pro- and anti-war factions, and how Trump's Truth Social
-audience reacts post by post.
+Stance analysis of US political messaging on the 2026 Iran war: X broadcaster
+accounts in political tiers, plus Trump's Truth Social feed and the replies to
+six of his posts, scored by Claude models. `README.md` is the public write-up;
+where the data stands is in [docs/STATUS.md](docs/STATUS.md).
 
-Status (2026-09-18): two data layers at different depths.
-- X broadcaster data runs to 2026-09-18 (19,605 scored posts, 100% LLM
-  stance; the May 10 -> Sep 18 refresh read 5,631 tweets for ~$28 with
-  the five heaviest accounts sampled at 450). Keyword searches are
-  frozen at May 12 (7-day recent search only). X's user timeline only
-  returns an account's most recent ~3,200 tweets, so prolific accounts
-  have holes: Levin before Jun 20, Loomer before Jul 4, WhiteHouse
-  before Jul 17, Alex Jones before Jul 31. Refresh heavy accounts at
-  least every ~2 months or that data is gone for good.
-- Truth Social is current through 2026-09-16: Trump's feed (4,087
-  posts) and 83,054 replies to 6 tracked posts, RoBERTa-scored with a
-  992-row Haiku stance sample.
-- Timeline runs to 2026-09-15 (84 events); `ANALYSIS_END` = 2026-09-18.
-Nothing runs on a schedule. The only cluster use is the one-shot GPU
-experiment Jobs in `k8s/` -- see *Cluster use* below.
+This repo is **public** on GitHub: no IP addresses, account IDs, bucket names,
+credit balances or personal data in anything committed.
 
-## Architecture
+## Ask first
 
-Everything runs through a single Click CLI -- no one-off scripts.
-Adding accounts, search terms, caps, or colors is a config-file edit;
-never hard-code them in scripts.
+Hand these to the user, with the estimate, instead of running them:
 
+- **Paid runs.** Estimate first, then ask.
+  - `collect` and `run-all` (X API, $0.005 per tweet read): run
+    `python -m src.cli collect --estimate` (cache only, no API calls) and ask
+    for the current X credit balance.
+  - `relabel submit|resubmit` and `topic-label submit` (Anthropic Batch API):
+    `relabel estimate` / `topic-label estimate` print the cost.
+  - `analyze --llm`, `stance`, `teacher-check`, `reply-teacher-check` (direct
+    Anthropic API): estimate from the post count (Haiku has run about
+    $0.50-1.50 per 1,000 posts, README *Cost*; `teacher-check` ~$1 and
+    `reply-teacher-check` ~$2 on Opus). Narrow `analyze --llm` with
+    `--llm-tiers` / `--llm-accounts` to the subset that needs it.
+- **The user's Truth Social account.** `ts-login` (the security code goes to
+  the user), `collect-replies`, and `collect-truth` unless `--anonymous`. Free,
+  but rate-limited and tied to the account.
+- **Cluster changes.** The global list, plus `scripts/k8s/build.sh` and
+  `sync-data.sh`, which rsyncs over SSH into dkbl2's PVC directory: this
+  repo's one exception to reading tenant data through kubectl (see *Never*).
+  Print them in run order. Read-only `kubectl get/describe/logs` is fine.
+
+## Never
+
+- Never `kubectl cp` bulk data to or from the cluster: `scripts/k8s/sync-data.sh`
+  is the only path (one rate-capped, checksum-verified rsync; why in
+  [docs/decisions.md](docs/decisions.md)).
+- Never re-fetch cached X data without `--force` and a reason: it is paid for.
+- Never add a paid API call without a cap in `config/settings.py`, an estimate
+  that makes no calls, and an on-disk cache that is skipped by default
+  (`--force` to redo).
+- Never schedule `collect` (no CronJob, no host cron): every run costs money.
+- Never add one-off scripts. New behaviour is a subcommand in `src/cli.py`,
+  kept thin over importable modules; tunables go in `config/settings.py`,
+  lists (accounts, search terms, events, tracked posts) in their `config/`
+  module. A one-off data migration is run and deleted, never committed.
+- `data/raw/` holds ~83k replies from private individuals: keep rows out of
+  git, issues and chat. Only the pipeline's own scoring calls send them out.
+
+## Fast path
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e '.[dev,truthsocial]'
+python -m pytest tests                # stub clients, no spend
+ruff check <paths> && ruff format <paths>
 ```
-config/
-  settings.py      # paths, budget caps, batch sizes, tier colors, model names
-  accounts.py      # X/Truth Social handles organized by tier
-  timeline.py      # 84 key events (through 2026-09-15) with importance 1-5
-src/
-  cli.py                              # single entrypoint -- all commands live here
-  collectors/x_collector.py           # per-account JSONL caching + incremental fetch
-  collectors/truthsocial_collector.py # truthbrush + public Mastodon API
-  analysis/sentiment.py               # VADER + RoBERTa + optional Claude LLM stance
-  visualization/plots.py              # timeline / tier_comparison / heatmap / search
-data/
-  raw/x/<handle>.jsonl       # one file per account; incremental-appended on refresh
-  raw/x/search_<query>.jsonl
-  processed/sentiment_all.parquet
-  processed/figures/*.png
-```
 
-## Tiers
-
-`config/accounts.py` organizes handles into political tiers. Current:
-admin, maga_prowar, maga_antiwar, opposition, media, religious_authority,
-plus `search` (keyword-query public-sentiment proxy). The
-`religious_authority` tier (Pontifex / USCCB / VaticanNews) exists
-because Pope Leo XIV became the single loudest anti-war voice in the
-dataset — and because sentiment models sign-flip his rhetoric. See
-`feedback_religious_rhetoric_stance.md` in auto-memory for the failure
-mode.
+- The system Python has no pip. If `python3 -m venv` fails, the user installs
+  `python3.12-venv` with apt. Always work inside `.venv`.
+- `.env` comes from the sops-encrypted `secrets.env` (the user runs
+  `sops -d secrets.env > .env`; README *Setup*). Without the key, copy
+  `.env.example`. `.env.example` lists every key the code reads.
+- The tree is not clean under `ruff check` or `ruff format` yet (line length
+  100): lint and format only the files you touch, never the whole repo in a
+  feature commit.
 
 ## Running things
 
-Always activate the venv first: `source .venv/bin/activate`. Then:
+Everything goes through one Click CLI, `python -m src.cli <command>`:
 
 ```bash
 python -m src.cli test       # verify X API credentials (free)
 python -m src.cli status     # show what's cached, what's missing
-python -m src.cli collect    # incremental fetch — appends only new tweets since last run
-python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm for stance)
-python -m src.cli visualize  # regenerate all figures (incl. score_llm-based ones)
-python -m src.cli summary    # print stats tables (use --score score_llm for true stance)
-python -m src.cli run-all    # full pipeline
+python -m src.cli collect    # incremental fetch -- appends only new tweets since last run
+python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm for Haiku stance)
+python -m src.cli visualize  # regenerate all figures
+python -m src.cli summary    # stats tables (default --score is the stance of record)
 python -m src.cli phases     # tier x phase stance with CIs, split into war posts / topic share
+                             #   [--source x|trump] [--by tier|user] [--topic llm|keyword|either]
+python -m src.cli reply-population  # reply audience's Opus-corrected stance per post (free)
+python -m src.cli teacher-retest    # Opus label test-retest on 497 posts (free)
 python -m src.cli export-web # chart JSON for the dkweb blog post
 python -m src.cli backup     # sync data/ to the off-box S3 bucket (after any paid run)
 ```
 
-`collect` is incremental at the per-account level: each rerun fetches
-only tweets newer than the latest cached `created_at` and appends. To
-fetch a brand-new account, add it to `config/accounts.py` and rerun.
-Pass `--force` to re-fetch a whole account's window from scratch.
+Refresh order (the paid steps are *Ask first*): Truth Social first, it is
+free (`collect-truth`, `collect-replies`, `event-study`); then
+`collect --estimate` and `collect`, refreshing heavy accounts before the
+timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
+`collect` -> `merge` for the new posts; `topic-label estimate|submit|status|collect`;
+`phases`, `visualize`, `export-web`; `backup`.
 
-Long gaps are walked oldest-slice-first in `GAP_FILL_SLICE_DAYS` (14)
-windows with the account's cap shared across slices, because the X
-timeline endpoint is newest-first and a single capped fetch over a
-multi-month gap would keep the newest 500 and permanently drop the rest.
-`python -m src.cli collect --estimate` prints the per-account plan and
-maximum spend from the cache alone (no API calls); a real run refuses to
-start if that maximum exceeds `X_RUN_BUDGET_USD`. Sample heavy accounts
-with `ACCOUNT_CAP_OVERRIDES` instead of letting the cap truncate them.
-Tests: `python -m pytest tests` (stub client, no spend).
+## Layout
 
-`collect-truth` is incremental too. With Truth Social credentials it uses
-truthbrush (authenticated, 300 req / 5 min) and refuses to append a batch
-whose oldest post does not touch the cache edge. `--anonymous` (or
-`TS_PREFER_AUTH = False`) walks the public API backward at
-`TS_PAGE_DELAY_S` pacing with 429 backoff, holding pages in
-`<handle>.partial.jsonl` and merging into the cache only when the walk
-reaches the edge, so a killed run resumes instead of leaving a hole.
-Truth Social ignores Mastodon's `min_id`, so there is no forward walk.
-Anonymous limit observed 2026-09-16: 5 pages (100 posts) per ~minute.
-
-Replies need a token: `python -m src.cli ts-login` walks Truth Social's
-new-device security-code flow once (`--deliver email`, then
-`--challenge-id X --code N`) and stores `TRUTHSOCIAL_TOKEN` in `.env`;
-`collect-replies` then walks `TS_DESCENDANTS_PATH` (the v2 endpoint --
-v1 is dead) at 1 req/s. `event-study` and `stance` are incremental:
-only replies / sampled rows missing from their parquet get scored.
-
-For LLM stance scoring, filter by tier or handle so tokens track the
-subset that actually needs it:
-
-```bash
-# Score only the religious tier (required — RoBERTa sign-flips these)
-python -m src.cli analyze --llm --llm-tiers religious_authority
-
-# Score specific handles
-python -m src.cli analyze --llm --llm-accounts WhiteHouse,POTUS
-
-# Full dataset (~$12 on Haiku 4.5, ~30 min with concurrency=5)
-python -m src.cli analyze --llm
+```
+config/  settings.py (paths, caps, batch sizes, models, colours), accounts.py (tiers),
+         timeline.py (events), tracked_posts.py (Trump posts for reply analysis)
+src/     cli.py (every command), backup.py
+  collectors/     x_collector.py, truthsocial_collector.py
+  analysis/       sentiment.py (VADER, RoBERTa, LLM stance), event_study.py (replies),
+                  relabel.py, topic_label.py (Batch API), inference.py (CIs, shift-share),
+                  stance_local.py (GPU experiments)
+  visualization/  plots.py, web_export.py
+data/    raw/x/<handle>.jsonl, raw/truthsocial/, processed/sentiment_all.parquet,
+         processed/reply_sentiment.parquet, models/   (gitignored)
+k8s/, scripts/k8s/   GPU experiment Jobs
 ```
 
-`analyze --llm` is restart-safe: posts that already have `score_llm`
-are skipped, a partial run periodically saves progress, and a full
-rerun picks up from the prior `sentiment_all.parquet`.
+## Where things run
 
-## Statistical checks (free, no API)
+- The pipeline runs in the host venv on dkbl1 (CPU), by hand. Nothing is
+  scheduled.
+- GPU work (stance-model experiments) runs as one-shot Jobs on dkbl2's RTX 3080
+  from `k8s/` (runbook and decision rule: [k8s/README.md](k8s/README.md)).
+  Nothing stays deployed: the user deletes the namespace when experiments
+  end. Reviving it is `build.sh`,
+  `deploy.sh <tag>`, `secrets.sh` (teacher-check only), `sync-data.sh push`,
+  then `run-now.sh <job>`, all the user's to run.
+- `data/` on dkbl1 is the source of truth. The PVC on dkbl2 is a working copy.
+- `export-web` writes into the sibling repo `~/repos/dkweb`
+  (`WEB_EXPORT_DIR`); the agent needs write access to it.
 
-- `phases [--source x|trump] [--by tier|user] [--topic llm|keyword]` --
-  stance by phase with 95% CIs from an account-day block bootstrap
-  (`src/analysis/inference.py`), split into posts about the war and the
-  rest, and each phase's change from the first split into a topic-share
-  effect and an on-war stance effect. **Report war-post stance, not the
-  all-post mean**: the stance prompt makes Opus score every post "about the
-  Iran war", so off-topic posts ("Deport them!", "Amen") get a stance from
-  the author's leanings, and a tier's all-post mean moves when its war
-  share moves. The about-the-war flag is the Haiku label from
-  `topic-label` (Batch API, ~$3 for 22k posts, 2026-09-23); the keyword
-  pattern `WAR_TOPIC_PATTERN` is the fallback and misses about half the
-  war posts.
-- `reply-population` -- the reply audience's Opus stance per post, from
-  the 870 random bucket draws of the Opus-labelled reply sample weighted to
-  the population (model-assisted: distilled census + weighted correction).
-  Use these shares, not the raw `score_opus_distilled` shares, which run
-  ~8 points pro-war.
-- `teacher-retest` -- Opus labelled 497 posts twice (direct teacher check,
-  batch relabel): 82% identical, Pearson 0.991, no sign flips. Label noise
-  is negligible next to the effects reported.
+## Conventions and invariants
 
-## Blog charts (dkweb)
+### Tiers and scorers
 
-`export-web` writes chart JSON into `~/repos/dkweb/src/content/blog/iran-war-stance/`
-(`WEB_EXPORT_DIR`); the post's MDX draws them with Observable Plot at build
-time. Rerun it after any rescoring, then `npm run build` in dkweb. Stance
-colours are the `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in dkweb's
-`global.css`.
+- `config/accounts.py` groups handles into tiers: admin, maga_prowar,
+  maga_antiwar, opposition, media, religious_authority, plus `search`
+  (keyword-query public-sentiment proxy). MTG is `@mtgreenee`.
+- `settings.STANCE_SCORE_COL` (`score_opus`, Claude Opus 5 via `relabel`) is
+  the stance of record; `summary`, `event-study` and the plots default to it.
+  `score_opus_distilled` (DeBERTa distilled from the Opus labels) is the reply
+  scorer of record. Other columns: `score_vader`, `score_transformer`
+  (RoBERTa valence, a quick look only), `score_llm` (Haiku). Anything
+  published or compared across tiers uses `score_opus`. Never mix scorers in
+  one series; a new scorer gets its own column or rescores the whole set.
+- **Report war-post stance, not the all-post mean.** The prompt makes Opus give
+  off-topic posts ("Deport them!", "Amen") a stance from the author, so a
+  tier's all-post mean moves with its war share. The about-the-war flag is the
+  Haiku label from `topic-label` (`TOPIC_SOURCE = "either"` also accepts the
+  keyword `WAR_TOPIC_PATTERN`, which alone misses about half the war posts).
+- **Faith-based voices need LLM stance.** VADER and RoBERTa sign-flip religious
+  anti-war rhetoric ("peace", "mercy" read as positive). Never report a
+  valence score for `religious_authority` or any future faith-based tier
+  unless flagged as miscalibrated. See README *The religious sign flip*.
+- The LLM parsers strip ```` ```json ```` fences before `json.loads`
+  (`sentiment.py`, `event_study.py`): Haiku wraps its JSON despite the
+  prompt. Keep stripping; don't prompt-engineer it away.
+- Reply population shares come from `reply-population` (Opus-corrected), not
+  raw `score_opus_distilled`, which runs ~8 points pro-war.
+- `analyze --llm` and `event-study` / `stance` are restart-safe and
+  incremental: only posts or replies without a score are sent.
 
-## Off-box backup (S3)
+### X collection and budget
+
+- Caps: `MAX_TWEETS_PER_USER` is a hard cap; sample prolific accounts with
+  `ACCOUNT_CAP_OVERRIDES`. A real `collect` refuses to start when its maximum
+  exceeds `X_RUN_BUDGET_USD` (`config/settings.py`).
+- `collect` is incremental per account (only tweets newer than the cached
+  `created_at`). Long gaps are walked oldest-slice-first in
+  `GAP_FILL_SLICE_DAYS` windows with the cap shared across slices: the timeline
+  endpoint is newest-first, so one capped fetch over a long gap would keep the
+  newest N and drop the rest.
+- X's user timeline returns only an account's latest ~3,200 tweets. Refresh
+  heavy accounts at least every ~2 months or the gap is lost for good.
+- Keyword search (`/search/recent`) reaches back only ~7 days.
+- To add an account or search term, edit `config/accounts.py` and rerun.
+
+### Truth Social
+
+- Plain httpx/requests get 403 from Cloudflare; everything goes through
+  `curl_cffi` (the `truthsocial` extra). `collect-truth` only appends runs
+  that reach the cache edge (Truth Social ignores `min_id`, so it walks
+  backward): authenticated, it refuses a batch that stops short; `--anonymous`
+  holds pages in `<handle>.partial.jsonl` until it gets there, so a killed
+  run resumes.
+- Replies use the v2 descendants endpoint (`TS_DESCENDANTS_PATH`; v1 is dead)
+  with the `TRUTHSOCIAL_TOKEN` that `ts-login` writes to `.env`. After a
+  `ts-login`, the user re-encrypts `secrets.env`.
+- truthbrush reads `TRUTHSOCIAL_USERNAME` / `TRUTHSOCIAL_PASSWORD`; parts of our
+  code read `TRUTH_SOCIAL_*`. Keep both set. Details:
+  [docs/truthsocial-api.md](docs/truthsocial-api.md).
+
+### CPU and memory (dkbl1 powers off under bursty or sustained load)
+
+Guardrails in `src/analysis/sentiment.py` + `config/settings.py`; keep them:
+
+1. Batched inference (`ROBERTA_BATCH_SIZE` 16): never score posts one by one.
+2. Thread cap (`TORCH_NUM_THREADS` 2, plus `OMP_NUM_THREADS` /
+   `MKL_NUM_THREADS`), set before the pipeline is imported.
+3. Checkpoints inside the RoBERTa loop every
+   `ROBERTA_CHECKPOINT_EVERY_N_BATCHES` (25), not only between phases.
+4. RSS ceiling (`ROBERTA_MAX_RSS_MB` 6144): abort cleanly, with a checkpoint,
+   before the OOM killer does. RSS is logged at phase boundaries and
+   checkpoints.
+5. Resume: `analyze` restores prior scores by post id plus any RoBERTa
+   checkpoint, so recovery is rerunning it.
+6. LLM scoring skips scored posts and saves every `LLM_SAVE_EVERY_N` (100).
+7. `del pipe; gc.collect()` in `try/finally`.
+
+Baseline: RoBERTa peaks at ~1.3 GB RSS and takes ~1-1.7 s per 16-post batch
+(~9 min for 5.6k posts, ~33 min for 26k replies). A big drift means a leak or
+a removed thread cap. Treat any bulk transfer the same way: one steady,
+rate-capped, resumable process.
+
+### GPU Jobs (`k8s/`)
+
+- One-shot Jobs only, on the quant tenant pattern (homelab-infra
+  `docs/k8s-workloads.md`): image built in-cluster from `Dockerfile`, pinned by
+  git sha with `deploy.sh <sha>`, uid 1000, Secret from `.env`, pods pinned to
+  dkbl2 by `nodeSelector`, local-path PVC there. A new experiment is a Job dir
+  under `k8s/jobs/`, a CLI subcommand and a row in `k8s/README.md`.
+- A failed Job pages Slack (`KubeJobFailed`); read the pod's `kubectl logs`
+  before proposing a fix.
+
+### Backup
 
 `backup` syncs `data/raw` and `data/processed` (Standard) and `data/models`
-(Glacier IR) to the bucket in homelab-infra `terraform/iran-sentiment-backups.tf`,
-quant-style: no `--delete`, writer without `DeleteObject`, versioned bucket.
-`.env` needs `IRAN_BACKUP_S3_BUCKET`, `AWS_ACCESS_KEY_ID`,
-`AWS_SECRET_ACCESS_KEY`. Nothing is scheduled: run it after every paid
-`collect`, `relabel` or `topic-label`. The local restic backup to the
-SanDisk drive only runs when the drive is plugged in (it was not from Apr 23
-to at least Sep 22).
+(Glacier IR) to the bucket in homelab-infra
+`terraform/iran-sentiment-backups.tf`: no `--delete`, writer without
+`DeleteObject`, versioned bucket. It needs `IRAN_BACKUP_S3_BUCKET` and the AWS
+keys in `.env`. Run it after every paid `collect`, `relabel` or `topic-label`.
+The host's restic drive is often unplugged, so S3 is the copy to count on.
 
-## Budget discipline (X API)
+### Blog charts (dkweb)
 
-X is pay-as-you-go at $0.005 per tweet read. A single prolific account
-can blow the budget (@marklevinshow alone was 2,544 tweets = ~$13).
-Always:
+Rerun `export-web` after any rescoring, then `npm run build` in dkweb. Stance
+colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
+`global.css`.
 
-1. Respect `settings.MAX_TWEETS_PER_USER` (currently 500) as a hard cap;
-   use `ACCOUNT_CAP_OVERRIDES` to sample prolific accounts
-2. Estimate cost before running: `python -m src.cli collect --estimate`
-   (the run itself is gated by `X_RUN_BUDGET_USD`, $4.00 as of 2026-09-16
-   when the X balance was $4.40)
-3. Check `data/raw/x/` first to see what's already cached -- never
-   re-fetch cached data without `--force`
-4. For keyword searches, `/search/recent` only covers ~7 days, so
-   historical searches require Pro tier ($$$)
+## Docs map
 
-## Memory & CPU discipline (sentiment analysis)
-
-The mini PC has powered off twice during `analyze` runs — once from
-OOM on unbatched RoBERTa, once from thermal trip on unthrottled CPU
-inference. Guardrails in `src/analysis/sentiment.py` + `config/settings.py`:
-
-1. **Batched inference** via `ROBERTA_BATCH_SIZE` (16, lowered from 32
-   after the second incident) — never score tweets one-by-one.
-2. **Thread cap** via `TORCH_NUM_THREADS` (2) — PyTorch saturates all
-   cores by default; capping prevents thermal trip on fanless hardware.
-   Set before importing the pipeline.
-3. **Mid-phase checkpointing** every `ROBERTA_CHECKPOINT_EVERY_N_BATCHES`
-   (25) — a crash mid-RoBERTa only loses up to 25 batches of work.
-4. **RSS ceiling** via `ROBERTA_MAX_RSS_MB` (6144) — in-loop check
-   aborts cleanly (with checkpoint write) before the kernel OOM-kills.
-5. **Resume path** — on startup, restore all scores from prior
-   `sentiment_all.parquet` by post id, plus RoBERTa checkpoint if
-   present. Only truly-new posts get re-scored. Re-running `analyze`
-   after a crash is a no-brainer recovery.
-6. **Cheap-refresh path for LLM** — `score_llm` skips posts with an
-   existing score; periodic save every `LLM_SAVE_EVERY_N` (100)
-   completions bounds the crash-loss of spent tokens.
-7. **Explicit model cleanup** — `del pipe; gc.collect()` in a
-   `try/finally` so aborts still release memory.
-
-Baseline on this hardware: RoBERTa peaks at ~1.3 GB RSS and runs ~1-1.7 s
-per 16-post batch (5,631 posts in ~9 min on 2026-09-18; 26k replies in
-33 min on 2026-09-16). The resume path means a refresh only scores new
-posts. If these numbers drift substantially, something is leaking or the
-thread cap got removed.
-
-## Cluster use: GPU experiment Jobs only
-
-The pipeline itself stays on the host venv: no scheduled job, `collect`
-costs money per run so it must stay manual, and `analyze` is a short CPU
-batch. What DOES run on the dkbl1/dkbl2 k3s cluster (homelab-infra
-`docs/k8s-workloads.md`) is the stance-model experiments in `k8s/`:
-one-shot Jobs on dkbl2's RTX 3080 that (a) check Haiku against Opus 5 as
-a teacher, (b) distil the Haiku/Opus labels into a fine-tuned encoder,
-(c) try an open 7B instruct model with the same prompt, and (d) score
-all 83k replies with the distilled model. Same tenant conventions as
-quant: image built in-cluster from `Dockerfile` (`scripts/k8s/build.sh`),
-kustomize manifests, uid 1000, Secret from `.env`, data on a local-path
-PVC on dkbl2 filled with `scripts/k8s/sync-data.sh`. Runbook and decision
-rule: `k8s/README.md`. `collect` is never a CronJob.
-
-## Scoring strategies
-
-Four scorers, in order of cost/accuracy. `settings.STANCE_SCORE_COL`
-(`score_opus`) is the stance of record; `summary`, `event-study` and the
-plots default to it.
-
-- **VADER** — rule-based, always on. Flags anti-war rhetoric as positive
-  because "peace", "diplomacy", "humanity" are lexically positive.
-- **RoBERTa** (`cardiffnlp/twitter-roberta-base-sentiment-latest`) —
-  Twitter-tuned valence. Sign-flips faith-based anti-war voices
-  (@Pontifex RoBERTa +0.33 vs Opus −0.31) and reads angry hawks as
-  anti-war (@LauraLoomer −0.28 vs +0.15).
-- **Claude Haiku 4.5 stance** (`analyze --llm`, `score_llm`) — good on
-  most tiers (0.76–0.89 Pearson vs Opus on admin / anti-war MAGA /
-  religious) but has RoBERTa's pro-war failure in weaker form: Levin's
-  attacks on the anti-war right scored −0.85 where Opus gives +0.60;
-  `maga_prowar` tier −0.06 (Haiku) vs +0.25 (Opus), 21% opposite signs.
-- **Claude Opus 5 stance** (`relabel`, `score_opus`) — same prompt at
-  effort=low through the Batch API (~$31 for 19.5k posts). Source of
-  truth since 2026-09-18. New posts: `relabel submit` after `analyze`.
-- **Distilled DeBERTa-v3-large** (`stance-distill`, GPU Job) — reproduces
-  its teacher at ~0.79 Pearson; scores 83k replies in minutes for free.
-  The Opus-taught final model is the reply scorer of record
-  (`score_opus_distilled`). A retrain with the 959 Opus-labelled replies
-  mixed in (`score_mixed_distilled`, 2026-09-19) was no better on replies
-  (0.71 Pearson, 64% sign agreement either way) and slightly worse on
-  posts, so it stays a comparison column only.
-
-Rule of thumb: `score_transformer` for a quick look, `score_opus` for
-anything published or compared across tiers; never mix scorers in one
-series.
-
-## Python environment
-
-Project uses a venv at `.venv/`. The system Python doesn't have pip
-installed, and `python3-venv` had to be installed manually via apt.
-Activate with `source .venv/bin/activate` before running anything.
+- [README.md](README.md): findings, methodology, stance-model experiments, setup, cost.
+- [docs/STATUS.md](docs/STATUS.md): data coverage, open work, what a refresh needs.
+- [docs/decisions.md](docs/decisions.md): dated decisions, why, and what was rejected.
+- [docs/truthsocial-api.md](docs/truthsocial-api.md): endpoints, auth flow, rate limits.
+- [k8s/README.md](k8s/README.md): GPU Job runbook and the scorer decision rule.
+- homelab-infra `docs/secrets.md` (sops), `docs/k8s-workloads.md` (tenant
+  conventions), `terraform/iran-sentiment-backups.tf` (backup bucket).

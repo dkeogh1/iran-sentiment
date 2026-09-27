@@ -1,0 +1,8 @@
+# Plaintext secrets: never index or read. secrets.env is the sops-encrypted copy.
+.env
+.env.*
+!.env.example
+
+# Collected data: third-party posts and replies, parquet, and GBs of model
+# weights. Inspect it through the CLI (status, summary, phases), not by indexing.
+data/

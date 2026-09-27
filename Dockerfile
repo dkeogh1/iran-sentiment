@@ -22,7 +22,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY config ./config
 COPY src ./src
-COPY README.md CLAUDE.md ./
+COPY README.md AGENTS.md ./
 RUN chown -R iran:iran /app
 
 ARG GIT_SHA=unknown

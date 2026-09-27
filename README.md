@@ -425,7 +425,7 @@ Requires Python 3.11+.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e '.[dev,truthsocial]'   # truthsocial brings curl_cffi; dev brings pytest + ruff
 ```
 
 Credentials live in `secrets.env`, committed encrypted with sops + age
@@ -460,7 +460,7 @@ python -m src.cli collect-replies  # fetch replies to tracked Trump posts (needs
 python -m src.cli analyze       # score all cached data (VADER + RoBERTa)
 python -m src.cli analyze --llm # add Claude stance scores (restart-safe)
 python -m src.cli visualize     # regenerate all figures
-python -m src.cli summary --score score_llm   # stance tables
+python -m src.cli summary       # stance tables (Opus stance of record by default)
 python -m src.cli event-study   # reply sentiment + event-window analysis
 python -m src.cli run-all       # full pipeline
 ```
@@ -503,7 +503,7 @@ docs/figures/             # the LLM-stance figures referenced above
 - 17 X accounts across 6 tiers is illustrative, not representative.
   The opposition tier is a single account (124 posts).
 - VADER and RoBERTa are valence proxies. Any stance comparison across
-  tiers must use `score_llm`; the RoBERTa number for the religious
+  tiers must use `score_opus`; the RoBERTa number for the religious
   tier is actively misleading.
 - X's user-timeline endpoint only returns an account's most recent
   ~3,200 tweets. The September refresh came four months after the
