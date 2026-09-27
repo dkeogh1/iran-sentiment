@@ -26,11 +26,13 @@ Hand these to the user, with the estimate, instead of running them:
 - **The user's Truth Social account.** `ts-login` (the security code goes to
   the user), `collect-replies`, and `collect-truth` unless `--anonymous`. Free,
   but rate-limited and tied to the account.
-- **Cluster changes.** The global list, plus `scripts/k8s/build.sh` and
-  `sync-data.sh`, which rsyncs over SSH (the `dkbl2-lan` alias in
-  `~/.ssh/config`) into dkbl2's PVC directory: this
-  repo's one exception to reading tenant data through kubectl (see *Never*).
-  Print them in run order. Read-only `kubectl get/describe/logs` is fine.
+- **Cluster changes.** The global list (`secrets.sh` is the user's, and so is
+  deleting the namespace). Deploys are yours: `build.sh`, `deploy.sh`,
+  `run-now.sh` for Jobs that call no paid API, and `sync-data.sh`, which rsyncs
+  over SSH (the `dkbl2-lan` alias in `~/.ssh/config`) into dkbl2's PVC
+  directory: this repo's one exception to reading tenant data through kubectl
+  (see *Never*). A Job that calls a paid API (e.g. `teacher-check`) is a paid
+  run: estimate and ask first.
 
 ## Never
 
@@ -116,9 +118,9 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 - GPU work (stance-model experiments) runs as one-shot Jobs on dkbl2's RTX 3080
   from `k8s/` (runbook and decision rule: [k8s/README.md](k8s/README.md)).
   Nothing stays deployed: the user deletes the namespace when experiments
-  end. Reviving it is `build.sh`,
-  `deploy.sh <tag>`, `secrets.sh` (teacher-check only), `sync-data.sh push`,
-  then `run-now.sh <job>`, all the user's to run.
+  end. Reviving it is `build.sh`, `deploy.sh <tag>`, `sync-data.sh push`, then
+  `run-now.sh <job>`, which you run (outside quant's windows), plus
+  `secrets.sh` (teacher-check only), which the user runs.
 - `data/` on dkbl1 is the source of truth. The PVC on dkbl2 is a working copy.
 - `export-web` writes into the sibling repo `~/repos/dkweb`
   (`WEB_EXPORT_DIR`); the agent needs write access to it.
