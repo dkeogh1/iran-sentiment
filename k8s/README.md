@@ -22,10 +22,12 @@ Layout follows the quant tenant conventions (homelab-infra
 pulled as `localhost:30500/iran-sentiment:<sha>`, pods as uid 1000,
 Secret from `.env`. Data is a local-path PVC on dkbl2 filled by
 `scripts/k8s/sync-data.sh`, which rsyncs over SSH straight into the PVC's
-directory on dkbl2 (LAN address, rate-capped, checksum-verified) rather
+directory on dkbl2 (over the LAN, rate-capped, checksum-verified) rather
 than through `kubectl cp` -- a kubectl-cp pull through the API server
 coincided with dkbl1 hard-powering off on 2026-09-19. The source of truth
-stays in `data/` on dkbl1.
+stays in `data/` on dkbl1. It reaches dkbl2 as `dkbl2-lan`, an alias in
+dkbl1's `~/.ssh/config` (`HostName` = dkbl2's LAN address, `User dk`),
+or whatever `SYNC_HOST` says.
 
 ```bash
 scripts/k8s/build.sh                 # buildctl -> BuildKit -> registry (tag = git sha)

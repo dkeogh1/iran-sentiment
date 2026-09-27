@@ -27,7 +27,8 @@ Hand these to the user, with the estimate, instead of running them:
   the user), `collect-replies`, and `collect-truth` unless `--anonymous`. Free,
   but rate-limited and tied to the account.
 - **Cluster changes.** The global list, plus `scripts/k8s/build.sh` and
-  `sync-data.sh`, which rsyncs over SSH into dkbl2's PVC directory: this
+  `sync-data.sh`, which rsyncs over SSH (the `dkbl2-lan` alias in
+  `~/.ssh/config`) into dkbl2's PVC directory: this
   repo's one exception to reading tenant data through kubectl (see *Never*).
   Print them in run order. Read-only `kubectl get/describe/logs` is fine.
 

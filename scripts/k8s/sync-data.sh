@@ -15,8 +15,10 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$REPO"
 NS=iran-sentiment; PVC=iran-sentiment-data
-# dkbl2 over the LAN: its tailnet address does not answer on 22 from dkbl1.
-SYNC_HOST="${SYNC_HOST:-dk@192.168.1.186}"
+# dkbl2 over the LAN, through an ~/.ssh/config alias on dkbl1 so the address
+# stays out of this public repo (k8s/README.md, *Data*). Tailscale SSH to dkbl2
+# is in check mode, which wants a browser approval: no good for a script.
+SYNC_HOST="${SYNC_HOST:-dkbl2-lan}"
 # KB/s. ~20 MB/s keeps the transfer flat; the pulls that survived ran at 40-48.
 BWLIMIT="${SYNC_BWLIMIT_KBPS:-20000}"
 MODE="${1:?usage: sync-data.sh push|pull|verify}"
