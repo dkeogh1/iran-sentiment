@@ -575,6 +575,7 @@ Haiku 4.5, from the console usage page). September 2026 on the Anthropic
 side: about $3 for the Haiku refresh, $31 for the Opus 5 relabel of
 19,500 posts and $2 for 959 Opus reply labels (both Batch API), about $1
 for the teacher checks, and about $3 for the Haiku topic labels on 22,197
-posts. The Sep 30 reply refresh added about $0.80 (Haiku stance on 300
-sampled replies, Opus labels on 267, direct API). Truth Social API
+posts. The Sep 30 refresh added about $0.90 (Haiku stance on 300 sampled
+replies and Opus labels on 267, direct API; Haiku topic labels on 838
+posts, Batch API). Truth Social API
 access is free.

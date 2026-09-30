@@ -10,7 +10,8 @@ Two layers at different depths. Nothing runs on a schedule.
   The May 10 -> Sep 18 refresh read 5,631 tweets for ~$28, with the five
   heaviest accounts (Loomer, Levin, Jones, Ravid, StateDept) sampled at 450.
   `score_opus` on 19,452 of 19,457 labelled posts after one resubmit (the 5
-  left are context-free quote-tweets); Haiku topic labels on 22,197 posts.
+  left are context-free quote-tweets); Haiku topic labels on 21,885 posts
+  (X and Trump's feed, complete as of 2026-09-30 except 458 link shares).
 - **Holes from the ~3,200-tweet timeline horizon** (unrecoverable): from
   May 10 up to Jun 20 for @marklevinshow, Jul 4 for @LauraLoomer, Jul 17 for
   @WhiteHouse and Jul 31 for @RealAlexJones. The other 13 accounts are
@@ -68,9 +69,11 @@ Two layers at different depths. Nothing runs on a schedule.
 - The mixed model beat the scorer of record on the two unseen posts (0.658
   vs 0.604 Pearson against Opus, gap CI [-0.01, +0.12]). Recheck when the
   next tracked posts get Opus labels.
-- Haiku topic labels are missing for the 273 feed posts from Sep 16 on; the
-  ~58 of them inside the last phase use the keyword flag until the next
-  `topic-label` run.
+- 458 posts are link shares Haiku will not judge (a bare URL, or "Amen" /
+  "Right on" over a link: it answers that it cannot open URLs and hits
+  `max_tokens`); 183 are Trump's, 172 Levin's. `war_flag` falls back to the
+  keyword pattern for them by design, but `topic-label` resubmits them on
+  every run (~$0.07). Worth recording them as unjudgeable.
 - 5 duplicate reply ids in the April reply files (3 `civilisation_dies`,
   2 `power_plant_day`); too few to move a number.
 - In `config/tracked_posts.py` but not collected: `armada` (Jan 28, before
