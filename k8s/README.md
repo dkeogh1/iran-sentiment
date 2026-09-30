@@ -34,7 +34,8 @@ or whatever `SYNC_HOST` says.
 scripts/k8s/build.sh                 # buildctl -> BuildKit -> registry (tag = git sha)
 scripts/k8s/deploy.sh <tag>          # pin tag in k8s/jobs/*/kustomization.yaml, apply base
 scripts/k8s/secrets.sh               # ANTHROPIC_API_KEY -> Secret (teacher-check only)
-scripts/k8s/sync-data.sh push        # parquet + replies -> PVC
+kubectl apply -f k8s/data-sync.yaml  # helper pod: local-path binds the PVC on first use
+scripts/k8s/sync-data.sh push        # parquet + replies + final models -> PVC
 scripts/k8s/run-now.sh teacher-check # ~$1 on Opus 5, prints per-tier agreement
 scripts/k8s/run-now.sh distill       # ~15 min on the 3080
 scripts/k8s/run-now.sh local-llm     # first run downloads ~15 GB of weights into /data/hf

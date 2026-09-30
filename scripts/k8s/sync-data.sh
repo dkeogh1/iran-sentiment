@@ -27,8 +27,16 @@ MODE="${1:?usage: sync-data.sh push|pull|verify}"
 PV=$(kubectl -n $NS get pvc $PVC -o jsonpath='{.spec.volumeName}')
 PVC_DIR=$(kubectl get pv "$PV" -o jsonpath='{.spec.local.path}{.spec.hostPath.path}')
 [ -n "$PVC_DIR" ] || { echo "cannot resolve the host path of PVC $NS/$PVC" >&2; exit 1; }
-ssh "$SYNC_HOST" "command -v rsync >/dev/null && test -d '$PVC_DIR'" \
-    || { echo "$SYNC_HOST: rsync missing or $PVC_DIR absent" >&2; exit 1; }
+rc=0; ssh "$SYNC_HOST" "command -v rsync >/dev/null || exit 3; test -d '$PVC_DIR' || exit 4" || rc=$?
+case $rc in
+  0) ;;
+  3) echo "$SYNC_HOST: rsync missing" >&2; exit 1 ;;
+  # local-path creates the storage dir 0700 root; dk needs to traverse it
+  # (homelab-infra docs/incidents.md, 2026-09-19). It reverted once already.
+  4) echo "$SYNC_HOST: cannot reach $PVC_DIR. If the PVC is Bound, on dkbl2 run:" \
+          "sudo chmod o+x $(dirname "$PVC_DIR")" >&2; exit 1 ;;
+  *) echo "$SYNC_HOST: ssh failed (exit $rc)" >&2; exit 1 ;;
+esac
 
 # -a keeps mtimes so re-runs are cheap; -c decides by checksum, which is what
 # catches the 0-byte and truncated files a cut-off copy leaves behind; -W sends

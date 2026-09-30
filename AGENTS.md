@@ -118,9 +118,11 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 - GPU work (stance-model experiments) runs as one-shot Jobs on dkbl2's RTX 3080
   from `k8s/` (runbook and decision rule: [k8s/README.md](k8s/README.md)).
   Nothing stays deployed: the user deletes the namespace when experiments
-  end. Reviving it is `build.sh`, `deploy.sh <tag>`, `sync-data.sh push`, then
+  end. Reviving it is `build.sh`, `deploy.sh <tag>`, `kubectl apply -f
+  k8s/data-sync.yaml` (binds the PVC), `sync-data.sh push`, then
   `run-now.sh <job>`, which you run (outside quant's windows), plus
-  `secrets.sh` (teacher-check only), which the user runs.
+  `secrets.sh` (teacher-check only) and, if the push says so, a `chmod o+x`
+  on dkbl2's storage dir, which the user runs.
 - `data/` on dkbl1 is the source of truth. The PVC on dkbl2 is a working copy.
 - `export-web` writes into the sibling repo `~/repos/dkweb`
   (`WEB_EXPORT_DIR`); the agent needs write access to it.
