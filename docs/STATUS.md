@@ -19,12 +19,14 @@ Two layers at different depths. Nothing runs on a schedule.
   May 5 (7-day recent search only).
 - **Truth Social**: Trump's feed current through 2026-09-30 (anonymous
   refresh), 4,360 posts from Apr 4 (contiguous), scored with
-  `score_opus_distilled` and `score_opus_distilled_256`. 98,668 replies to 8
-  tracked posts (`data/raw/truthsocial/replies_*.jsonl`; `these_fools` 4,441
-  and `trump_strait` 11,173 added 2026-09-30, 94.7% and 99.1% coverage),
-  scored with RoBERTa, `score_opus_distilled`, `score_opus_distilled_256` and
-  `score_mixed_distilled`, plus a 1,292-row Haiku stance sample (1 error to
-  retry) and 1,225 Opus-labelled replies.
+  `score_opus_distilled`. 98,668 replies to 8 tracked posts
+  (`data/raw/truthsocial/replies_*.jsonl`; `these_fools` 4,441 and
+  `trump_strait` 11,173 added 2026-09-30, 94.7% and 99.1% coverage), scored
+  with RoBERTa, `score_opus_distilled` and `score_mixed_distilled`, plus a
+  1,292-row Haiku stance sample (1 error to retry) and 1,225 Opus-labelled
+  replies. `score_opus_distilled` was rescored 2026-09-30 at its 256-token
+  training length; `score_opus_distilled_v0` keeps the old reply scores
+  (`docs/decisions.md`).
 - **Timeline**: 84 events through 2026-09-15 in `config/timeline.py`;
   `ANALYSIS_END` = 2026-09-18. Sources for the Sep 2026 additions are in
   `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`.
@@ -53,22 +55,9 @@ Two layers at different depths. Nothing runs on a schedule.
 - Heavy X accounts were last refreshed 2026-09-18: refresh them within about
   two months or the horizon opens new holes. Ask the user for the X credit
   balance before the pull.
-- **The reply column of record mixes two models.** The 83,054 older replies'
-  `score_opus_distilled` came from the 128-token `distill-opus` fit, which the
-  `sweep-opus` final fit (`deb-256-1e5-3`) overwrote in
-  `data/models/stance_distilled_final_score_opus/` on 2026-09-19 05:10 UTC;
-  the feed and the 15,614 new replies were scored by the current model. On
-  replies too short to truncate the old column correlates 0.915 with the
-  current model, and every current-model run reproduces exactly. Both are
-  about as good against Opus (0.713 vs 0.723 on 959 labels). Proposed:
-  `score_opus_distilled_256` (current model at its training length, all
-  98,668 replies) becomes the column of record; corrected reply shares move
-  a few points, within their CIs. Waiting on the user; `export-web` and the
-  README reply numbers wait on it too.
-- Scoring at 256 vs 128 tokens alone moves nothing that matters: Trump's
-  phase means by <= 0.01, reply agreement with Opus 0.692 -> 0.701.
-- The mixed model on the two unseen posts: 0.658 vs 0.604 Pearson against
-  Opus, gap CI [-0.01, +0.12]. A lean, not grounds to reverse 2026-09-19.
+- The mixed model beat the scorer of record on the two unseen posts (0.658
+  vs 0.604 Pearson against Opus, gap CI [-0.01, +0.12]). Recheck when the
+  next tracked posts get Opus labels.
 - Haiku topic labels are missing for the 273 feed posts from Sep 16 on; the
   ~58 of them inside the last phase use the keyword flag until the next
   `topic-label` run.

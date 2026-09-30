@@ -48,7 +48,7 @@ Hand these to the user, with the estimate, instead of running them:
   kept thin over importable modules; tunables go in `config/settings.py`,
   lists (accounts, search terms, events, tracked posts) in their `config/`
   module. A one-off data migration is run and deleted, never committed.
-- `data/raw/` holds ~83k replies from private individuals: keep rows out of
+- `data/raw/` holds ~99k replies from private individuals: keep rows out of
   git, issues and chat. Only the pipeline's own scoring calls send them out.
 
 ## Fast path
@@ -136,8 +136,12 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   (keyword-query public-sentiment proxy). MTG is `@mtgreenee`.
 - `settings.STANCE_SCORE_COL` (`score_opus`, Claude Opus 5 via `relabel`) is
   the stance of record; `summary`, `event-study` and the plots default to it.
-  `score_opus_distilled` (DeBERTa distilled from the Opus labels) is the reply
-  scorer of record. Other columns: `score_vader`, `score_transformer`
+  `score_opus_distilled` (DeBERTa distilled from the Opus labels, run at its
+  256-token training length) is the reply scorer of record for replies and
+  Trump's feed; `score_opus_distilled_v0` keeps the pre-2026-09-30 reply
+  scores from an overwritten fit and never joins a series. Never overwrite
+  a `data/models/stance_distilled_final*` dir: the data holds its scores.
+  Other columns: `score_vader`, `score_transformer`
   (RoBERTa valence, a quick look only), `score_llm` (Haiku). Anything
   published or compared across tiers uses `score_opus`. Never mix scorers in
   one series; a new scorer gets its own column or rescores the whole set.
@@ -154,7 +158,8 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   (`sentiment.py`, `event_study.py`): Haiku wraps its JSON despite the
   prompt. Keep stripping; don't prompt-engineer it away.
 - Reply population shares come from `reply-population` (Opus-corrected), not
-  raw `score_opus_distilled`, which runs ~8 points pro-war.
+  raw `score_opus_distilled`, which runs ~13 points pro-war (65% vs Opus's
+  52% on the labelled sample).
 - `analyze --llm` and `event-study` / `stance` are restart-safe and
   incremental: only posts or replies without a score are sent.
 

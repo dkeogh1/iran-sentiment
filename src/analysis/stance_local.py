@@ -230,6 +230,30 @@ def recipe_by_name(name: str) -> dict:
     return rc
 
 
+def model_max_len(model_dir: Path) -> int:
+    """The token length the model at model_dir was trained at: its recipe.txt
+    names a DISTILL_SWEEP recipe, else it was fit at DISTILL_MAX_LEN."""
+    marker = model_dir / "recipe.txt"
+    name = marker.read_text().strip() if marker.exists() else ""
+    rc = next((r for r in settings.DISTILL_SWEEP if r["name"] == name), None)
+    return rc["max_len"] if rc else settings.DISTILL_MAX_LEN
+
+
+def final_dir_free(final_dir: Path, recipe: str) -> bool:
+    """True when final_dir is empty and may take a fit of `recipe`; False when
+    it already holds that recipe (nothing to do). Raises when it holds any
+    other model: a production model's scores live in the data, so a final dir
+    is never overwritten. On 2026-09-19 the sweep's final fit replaced the
+    distill-opus fit in place and the reply scores stopped being reproducible."""
+    if not (final_dir / "config.json").exists():
+        return True
+    marker = final_dir / "recipe.txt"
+    held = marker.read_text().strip() if marker.exists() else "an unmarked model"
+    if held == recipe:
+        return False
+    raise FileExistsError(f"{final_dir} already holds {held}; move it aside to fit {recipe} there")
+
+
 def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
             epochs: int = settings.DISTILL_EPOCHS, holdout: float = settings.DISTILL_HOLDOUT,
             batch_size: int = settings.DISTILL_BATCH_SIZE, lr: float = settings.DISTILL_LR,
@@ -250,6 +274,8 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
     suffix = "" if label_col == "score_llm" else f"_{label_col}"
     if extra is not None and len(extra):
         suffix += "_mixed"
+    final_dir = settings.MODELS_DIR / f"stance_distilled_final{suffix}"
+    refit = fit_all and final_dir_free(final_dir, recipe or base_model)  # fail before training
     out_dir = out_dir or (settings.MODELS_DIR / f"stance_distilled{suffix}")
     out_dir.mkdir(parents=True, exist_ok=True)
     base = training_frame(df)
@@ -278,8 +304,9 @@ def distill(df: pd.DataFrame, *, base_model: str = settings.DISTILL_BASE_MODEL,
     if "score_transformer" in test:
         metrics["roberta_valence_vs_teacher"] = agreement(test[label_col].values, test["score_transformer"].values)
     test.to_parquet(out_dir / "holdout_predictions.parquet", index=False)
-    if fit_all:
-        final_dir = settings.MODELS_DIR / f"stance_distilled_final{suffix}"
+    if fit_all and not refit:
+        logger.info("distill: %s already holds %s; not refitting", final_dir, recipe or base_model)
+    if refit:
         finfo, _ = _fit_eval(base, None, base_model=base_model, epochs=epochs, batch_size=batch_size,
                              lr=lr, max_len=max_len, seed=seed, label_col=label_col,
                              work_dir=out_dir / "final", save_to=final_dir, **fit_kw)
@@ -385,8 +412,7 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
     final_dir = settings.MODELS_DIR / ("stance_distilled_final" if label_col == "score_llm"
                                         else f"stance_distilled_final_{label_col}")
     marker = final_dir / "recipe.txt"
-    if not (final_dir / "config.json").exists() or not marker.exists() \
-            or marker.read_text().strip() != best["name"]:
+    if final_dir_free(final_dir, best["name"]):
         info, _ = _fit_eval(base, None, base_model=rc["base_model"], epochs=rc["epochs"],
                             batch_size=rc.get("batch_size", batch_size), lr=rc["lr"],
                             max_len=rc["max_len"], seed=seed, label_col=label_col,
@@ -401,11 +427,13 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
 
 
 def score_with_distilled(texts: list[str], model_dir: Path | None = None,
-                         batch_size: int = 64, max_len: int = settings.DISTILL_MAX_LEN) -> np.ndarray:
+                         batch_size: int = 64, max_len: int | None = None) -> np.ndarray:
+    """Scores in [-1, 1]. max_len defaults to the model's training length."""
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
     model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    max_len = max_len or model_max_len(model_dir)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tok = AutoTokenizer.from_pretrained(model_dir)
     model = AutoModelForSequenceClassification.from_pretrained(model_dir).to(device).eval()
@@ -419,14 +447,16 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
 
 
 def score_replies(model_dir: Path | None = None, col: str = "score_distilled",
-                  max_len: int = settings.DISTILL_MAX_LEN) -> pd.DataFrame:
+                  max_len: int | None = None) -> pd.DataFrame:
     """Add `col` (scores from the model at model_dir) to reply_sentiment.parquet."""
+    model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    max_len = max_len or model_max_len(model_dir)
     out = settings.REPLY_SENTIMENT_OUTPUT
     df = pd.read_parquet(out)
     todo = df[col].isna() if col in df else pd.Series(True, index=df.index)
     if todo.any():
         logger.info("scoring %d replies with %s -> %s (max_len %d)", int(todo.sum()),
-                    model_dir or "stance_distilled", col, max_len)
+                    model_dir, col, max_len)
         df.loc[todo, col] = score_with_distilled(df.loc[todo, "text"].tolist(), model_dir,
                                                  max_len=max_len)
         df.to_parquet(out, index=False)
@@ -510,11 +540,14 @@ def local_llm_eval(df: pd.DataFrame, *, model_name: str = settings.LOCAL_LLM_MOD
 
 def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None,
                     col: str = "score_opus_distilled", batch_size: int = 64,
-                    max_len: int = settings.DISTILL_MAX_LEN) -> pd.DataFrame:
+                    max_len: int | None = None) -> pd.DataFrame:
     """Score every record in the given JSONL files with a distilled model and
     write id / user / tier / platform / created_at / text / <col> to `out`.
     Incremental: new ids are appended, and only rows without a `col` score
-    are scored, so a new column scores every row and existing scores stay."""
+    are scored, so a new column scores every row and existing scores stay.
+    max_len defaults to the model's training length."""
+    model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    max_len = max_len or model_max_len(model_dir)
     rows = []
     for path in inputs:
         with open(path) as f:

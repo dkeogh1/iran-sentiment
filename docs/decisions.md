@@ -4,6 +4,29 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-09-30: Rescore every reply with the model of record, at its training length
+
+- **Decision:** `score_opus_distilled` for all 98,668 replies and Trump's feed
+  is the current `stance_distilled_final_score_opus` (`deb-256-1e5-3`) at 256
+  tokens. The old reply scores stay as `score_opus_distilled_v0`, out of every
+  series. Scoring defaults to the model's training length from `recipe.txt`,
+  and `distill --fit-all` and the sweep refuse to write into a final dir that
+  holds another model.
+- **Why:** the 83,054 older replies had been scored with the 128-token
+  `distill-opus` fit, which the sweep's final fit then replaced in the same
+  directory (2026-09-19 05:10 UTC). The column matched no model on disk (0.915
+  correlation on untruncated replies, where current-model reruns reproduce
+  exactly), and the 15,614 new replies would have mixed two models in one
+  series. The two fits are equally good against Opus (0.72 vs 0.71 Pearson
+  on 959 labels); corrected reply shares moved by up to 5 points, inside their
+  intervals. Scoring at 128 tokens alone moves nothing that matters (Trump's
+  phase means by <= 0.01).
+- **Rejected:** keeping `v0` for the older replies (its model is gone, so new
+  replies cannot join the series); retraining a 128-token fit to match it (GPU
+  training is not bit-reproducible); switching to `score_mixed_distilled`
+  (better on the two unseen posts, 0.66 vs 0.60 Pearson, but the gap's CI
+  includes zero).
+
 ## 2026-09-25: Off-box backup to S3, append-only
 
 - **Decision:** `backup` syncs `data/` to a versioned bucket (homelab-infra

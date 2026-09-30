@@ -171,6 +171,7 @@ def test_score_post_file_incremental(tmp_path, monkeypatch):
     f.write_text("".join(_j.dumps({"id": str(i), "user": "t", "tier": "admin", "platform": "truthsocial",
                                    "created_at": "2026-05-01T00:00:00Z", "text": f"post {i}"}) + "\n" for i in range(5)))
     calls = []
+    monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)          # no recipe.txt -> DISTILL_MAX_LEN
     monkeypatch.setattr(sl, "score_with_distilled",
                         lambda texts, md, bs, ml: (calls.append((len(texts), ml)) or np.full(len(texts), ml / 1000)))
     out = tmp_path / "scored.parquet"
@@ -182,6 +183,25 @@ def test_score_post_file_incremental(tmp_path, monkeypatch):
     df3 = sl.score_post_file([f], out, col="score_256", max_len=256)
     assert calls[-1] == (6, 256)                                   # a new column scores every row
     assert (df3["score_opus_distilled"] == 0.128).all() and (df3["score_256"] == 0.256).all()
+
+
+def test_model_max_len_reads_recipe(tmp_path):
+    assert sl.model_max_len(tmp_path) == settings.DISTILL_MAX_LEN      # no recipe.txt
+    (tmp_path / "recipe.txt").write_text("deb-256-1e5-3\n")
+    assert sl.model_max_len(tmp_path) == 256
+    (tmp_path / "recipe.txt").write_text("roberta-large")               # a plain distill fit
+    assert sl.model_max_len(tmp_path) == settings.DISTILL_MAX_LEN
+
+
+def test_final_dir_never_overwritten(tmp_path):
+    d = tmp_path / "stance_distilled_final_score_opus"
+    assert sl.final_dir_free(d, "deb-128-1e5-3")                        # empty: fit away
+    d.mkdir()
+    (d / "config.json").write_text("{}")
+    (d / "recipe.txt").write_text("deb-128-1e5-3")
+    assert not sl.final_dir_free(d, "deb-128-1e5-3")                    # same model: nothing to do
+    with pytest.raises(FileExistsError):
+        sl.final_dir_free(d, "deb-256-1e5-3")                           # the 2026-09-19 overwrite
 
 
 def test_distill_extra_rows_join_pool_and_split(tmp_path, monkeypatch):
