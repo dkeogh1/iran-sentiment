@@ -52,7 +52,10 @@ Two layers at different depths. Nothing runs on a schedule.
 ## Open
 
 - dkweb branch `iran-war-stance` (draft post, 7 Observable Plot charts, the
-  stance colour tokens) is not merged.
+  stance colour tokens) is not merged and has never been pushed: it exists
+  only on dkbl1, with the Sep 30 chart update as a local commit. Its first
+  push creates a Cloudflare preview URL (the user's call); check the
+  reply-scatter labels there.
 - **Next X pull: Oct 25-30, 2026, no later than Nov 1.** On Sep 18
   @RealAlexJones's ~3,200-tweet timeline reached back only ~7 weeks, so his
   gap starts opening around Nov 1-6 (@WhiteHouse ~Nov 20, @LauraLoomer early
