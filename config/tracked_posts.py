@@ -122,6 +122,30 @@ TRACKED_POSTS: list[TrackedPost] = [
                     "replies.",
         post_id="117196950497702512",
     ),
+    # ── Added 2026-09-30 ────────────────────────────────────────────
+    # The two open reply candidates from docs/STATUS.md.
+    TrackedPost(
+        slug="these_fools",
+        label="'These fools, who think I haven't been tough enough'",
+        event_date=date(2026, 6, 18),
+        category="rhetoric",
+        description="Trump calls critics who say he hasn't been tough enough on "
+                    "Iran 'jealous, bad people, or stupid', pointing to a record "
+                    "stock market and falling oil. Directly about the MAGA split; "
+                    "the day the blockade phase starts. ~4,700 replies when "
+                    "shortlisted.",
+        post_id="116770180426363226",
+    ),
+    TrackedPost(
+        slug="trump_strait",
+        label="'Change the name Hormuz Strait to TRUMP STRAIT'",
+        event_date=date(2026, 9, 2),
+        category="rhetoric",
+        description="The day after the Hormuz strikes, Trump asks whether to rename "
+                    "the strait 'TRUMP STRAIT' now that it is 'under U.S.A. "
+                    "control'. ~11,300 replies when shortlisted.",
+        post_id="117202132375758936",
+    ),
     # Control post used by the NYT for comparison. Not about Iran — lets us
     # check whether base anger is Iran-specific or a baseline grumble.
     TrackedPost(

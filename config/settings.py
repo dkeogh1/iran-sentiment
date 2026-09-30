@@ -304,6 +304,7 @@ WEB_POST_LABELS = {
     "power_plant_day": "\u201cPower Plant Day\u201d", "civilisation_dies": "\u201cA whole civilisation will die\u201d",
     "ceasefire": "Two-week ceasefire", "hold_off_attack": "\u201cHold off\u201d on the attack",
     "deal_complete": "\u201cThe Deal is complete\u201d", "strikes_resume_sep": "Strikes near Hormuz",
+    "these_fools": "\u201cThese fools\u201d", "trump_strait": "\u201cTRUMP STRAIT\u201d",
 }
 WEB_EVENTS = [
     ("2026-02-28", "Strikes"), ("2026-04-08", "Ceasefire"), ("2026-06-17", "Islamabad MOU"),
