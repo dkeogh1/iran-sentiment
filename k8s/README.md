@@ -14,6 +14,7 @@ runs free on dkbl2's RTX 3080, plus a check that Haiku is a fit teacher:
 | `score-distilled-opus` | `score-distilled --model-dir .../stance_distilled_final_score_opus --col score_opus_distilled` | yes | population reply stance from the Opus-taught model |
 | `distill-opus-mixed`, `score-distilled-mixed` | `stance-distill ... --with-replies` / `score-distilled --col score_mixed_distilled` | yes | the Opus retrain with the 959 Opus-labelled replies mixed in (reply tiers held out 20%), then replies rescored |
 | `score-trump-feed` | `score-posts /data/raw/truthsocial/realDonaldTrump.jsonl ...` | yes | Trump's own 4,087 Truth Social posts scored with the Opus-taught model |
+| `score-distilled-opus-256`, `score-trump-feed-256` | `score-distilled` / `score-posts ... --col score_opus_distilled_256 --max-len 256` | yes | the Opus-taught model was trained at 256 tokens (`deb-256-1e5-3`) but scored at `DISTILL_MAX_LEN` 128, which cuts 19% of Trump's posts and 4% of replies: does scoring at its training length move anything? |
 | `sweep-opus` | `stance-sweep --label-col score_opus` | yes | the same sweep + CV + final fit on the Opus labels (~3 h) |
 | `sweep` | `stance-sweep` | yes | every recipe in `DISTILL_SWEEP` on the shared split, 5-fold CV on the best, final fit on all labels (~3 h, resumable) |
 

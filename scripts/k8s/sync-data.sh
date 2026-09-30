@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Move data between dkbl1's data/ (source of truth) and the PVC on dkbl2.
-#   sync-data.sh push    # sentiment_all / reply_sentiment / stance_sample / teacher_labels_replies_* parquet, raw/truthsocial/*.jsonl -> PVC
+#   sync-data.sh push    # sentiment_all / reply_sentiment / stance_sample / teacher_labels_replies_* / truthsocial_trump_stance parquet,
+#                        # raw/truthsocial/*.jsonl, models/stance_distilled_final* -> PVC
 #   sync-data.sh pull    # models/ (final dirs whole, other dirs their result files), teacher_check_*, local_llm_*,
 #                        # truthsocial_trump_stance.parquet, reply_sentiment.parquet <- PVC; then verify
 #   sync-data.sh verify  # checksum dry-run of the pull set; lists anything on dkbl1 that differs from the PVC
@@ -54,11 +55,16 @@ case "$MODE" in
   push)
     ssh "$SYNC_HOST" "mkdir -p '$PVC_DIR/processed' '$PVC_DIR/raw/truthsocial' '$PVC_DIR/models'"
     files=(data/processed/sentiment_all.parquet)
-    for f in data/processed/reply_sentiment.parquet data/processed/stance_sample.parquet data/processed/teacher_labels_replies_*.parquet; do
+    # The feed parquet goes up too: pull brings it back, so a feed Job must
+    # start from dkbl1's copy, not build a fresh one that overwrites it.
+    for f in data/processed/reply_sentiment.parquet data/processed/stance_sample.parquet data/processed/teacher_labels_replies_*.parquet \
+             data/processed/truthsocial_trump_stance.parquet; do
         [ -f "$f" ] && files+=("$f"); done
     "${RSYNC[@]}" "${files[@]}" "$SYNC_HOST:$PVC_DIR/processed/"
     "${RSYNC[@]}" data/raw/truthsocial/*.jsonl "$SYNC_HOST:$PVC_DIR/raw/truthsocial/"
-    ssh "$SYNC_HOST" "du -sh '$PVC_DIR/processed' '$PVC_DIR/raw/truthsocial'"
+    # Final model dirs (~1.7 GB each), so the score Jobs run on a fresh PVC.
+    "${RSYNC[@]}" data/models/stance_distilled_final* "$SYNC_HOST:$PVC_DIR/models/"
+    ssh "$SYNC_HOST" "du -sh '$PVC_DIR/processed' '$PVC_DIR/raw/truthsocial' '$PVC_DIR/models'"
     ;;
   pull)
     mkdir -p data/models data/processed

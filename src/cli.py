@@ -762,11 +762,13 @@ def stance_local_llm_cmd(model: str, n: int, thinking: bool, max_new_tokens: int
 @main.command("score-distilled")
 @click.option("--model-dir", default=None, help="Model directory (default MODELS_DIR/stance_distilled)")
 @click.option("--col", default="score_distilled", show_default=True, help="Output column")
-def score_distilled_cmd(model_dir: str | None, col: str):
+@click.option("--max-len", default=settings.DISTILL_MAX_LEN, show_default=True,
+              help="Token cap at inference; match the model's training max_len (its recipe.txt)")
+def score_distilled_cmd(model_dir: str | None, col: str, max_len: int):
     """Score every cached reply with a distilled model (population-level stance)."""
     from pathlib import Path as _P
     from src.analysis.stance_local import score_replies
-    df = score_replies(_P(model_dir) if model_dir else None, col=col)
+    df = score_replies(_P(model_dir) if model_dir else None, col=col, max_len=max_len)
     click.echo(df.groupby("tracked_slug")[col].agg(["mean", "count"]).round(3).to_string())
 
 
@@ -980,11 +982,14 @@ def topic_label_cmd(action: str, yes: bool, results_file: str | None):
 @click.option("--out", required=True, type=click.Path(), help="Output parquet")
 @click.option("--model-dir", default=None, help="Distilled model dir (default MODELS_DIR/stance_distilled)")
 @click.option("--col", default="score_opus_distilled", show_default=True)
-def score_posts_cmd(inputs, out: str, model_dir: str | None, col: str):
+@click.option("--max-len", default=settings.DISTILL_MAX_LEN, show_default=True,
+              help="Token cap at inference; match the model's training max_len (its recipe.txt)")
+def score_posts_cmd(inputs, out: str, model_dir: str | None, col: str, max_len: int):
     """Score raw JSONL post files (e.g. Trump's Truth Social feed) with a distilled model (GPU)."""
     from pathlib import Path as _P
     from src.analysis.stance_local import score_post_file
-    df = score_post_file([_P(i) for i in inputs], _P(out), _P(model_dir) if model_dir else None, col=col)
+    df = score_post_file([_P(i) for i in inputs], _P(out), _P(model_dir) if model_dir else None,
+                         col=col, max_len=max_len)
     click.echo(f"{len(df)} posts -> {out}; mean {col} = {df[col].mean():+.3f}")
 
 

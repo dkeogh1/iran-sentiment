@@ -171,13 +171,17 @@ def test_score_post_file_incremental(tmp_path, monkeypatch):
     f.write_text("".join(_j.dumps({"id": str(i), "user": "t", "tier": "admin", "platform": "truthsocial",
                                    "created_at": "2026-05-01T00:00:00Z", "text": f"post {i}"}) + "\n" for i in range(5)))
     calls = []
-    monkeypatch.setattr(sl, "score_with_distilled", lambda texts, md, bs: (calls.append(len(texts)) or np.zeros(len(texts))))
+    monkeypatch.setattr(sl, "score_with_distilled",
+                        lambda texts, md, bs, ml: (calls.append((len(texts), ml)) or np.full(len(texts), ml / 1000)))
     out = tmp_path / "scored.parquet"
     df = sl.score_post_file([f], out)
-    assert len(df) == 5 and calls == [5] and "score_opus_distilled" in df
+    assert len(df) == 5 and calls == [(5, 128)] and "score_opus_distilled" in df
     f.write_text(f.read_text() + _j.dumps({"id": "9", "user": "t", "text": "new"}) + "\n")
     df2 = sl.score_post_file([f], out)
-    assert len(df2) == 6 and calls == [5, 1]                       # only the new id scored
+    assert len(df2) == 6 and calls == [(5, 128), (1, 128)]         # only the new id scored
+    df3 = sl.score_post_file([f], out, col="score_256", max_len=256)
+    assert calls[-1] == (6, 256)                                   # a new column scores every row
+    assert (df3["score_opus_distilled"] == 0.128).all() and (df3["score_256"] == 0.256).all()
 
 
 def test_distill_extra_rows_join_pool_and_split(tmp_path, monkeypatch):

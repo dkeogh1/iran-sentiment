@@ -418,14 +418,17 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
     return np.clip(out, -1, 1)
 
 
-def score_replies(model_dir: Path | None = None, col: str = "score_distilled") -> pd.DataFrame:
+def score_replies(model_dir: Path | None = None, col: str = "score_distilled",
+                  max_len: int = settings.DISTILL_MAX_LEN) -> pd.DataFrame:
     """Add `col` (scores from the model at model_dir) to reply_sentiment.parquet."""
     out = settings.REPLY_SENTIMENT_OUTPUT
     df = pd.read_parquet(out)
     todo = df[col].isna() if col in df else pd.Series(True, index=df.index)
     if todo.any():
-        logger.info("scoring %d replies with %s -> %s", int(todo.sum()), model_dir or "stance_distilled", col)
-        df.loc[todo, col] = score_with_distilled(df.loc[todo, "text"].tolist(), model_dir)
+        logger.info("scoring %d replies with %s -> %s (max_len %d)", int(todo.sum()),
+                    model_dir or "stance_distilled", col, max_len)
+        df.loc[todo, col] = score_with_distilled(df.loc[todo, "text"].tolist(), model_dir,
+                                                 max_len=max_len)
         df.to_parquet(out, index=False)
     return df
 
@@ -506,10 +509,12 @@ def local_llm_eval(df: pd.DataFrame, *, model_name: str = settings.LOCAL_LLM_MOD
 # ── Scoring arbitrary post files (e.g. Trump's Truth Social feed) ──
 
 def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None,
-                    col: str = "score_opus_distilled", batch_size: int = 64) -> pd.DataFrame:
+                    col: str = "score_opus_distilled", batch_size: int = 64,
+                    max_len: int = settings.DISTILL_MAX_LEN) -> pd.DataFrame:
     """Score every record in the given JSONL files with a distilled model and
     write id / user / tier / platform / created_at / text / <col> to `out`.
-    Incremental: ids already in `out` are kept, not rescored."""
+    Incremental: new ids are appended, and only rows without a `col` score
+    are scored, so a new column scores every row and existing scores stay."""
     rows = []
     for path in inputs:
         with open(path) as f:
@@ -521,11 +526,14 @@ def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None
                 rows.append({k: r.get(k) for k in ("id", "user", "tier", "platform", "created_at", "text")})
     df = pd.DataFrame(rows).drop_duplicates("id")
     have = pd.read_parquet(out) if out.exists() else pd.DataFrame()
-    todo = df[~df["id"].astype(str).isin(set(have["id"].astype(str)))] if not have.empty else df
-    if not todo.empty:
-        logger.info("scoring %d posts from %d file(s) -> %s", len(todo), len(inputs), col)
-        todo = todo.assign(**{col: score_with_distilled(todo["text"].fillna("").tolist(), model_dir, batch_size)})
-    result = pd.concat([have, todo], ignore_index=True) if not have.empty else todo
+    new = df[~df["id"].astype(str).isin(set(have["id"].astype(str)))] if not have.empty else df
+    result = pd.concat([have, new], ignore_index=True) if not have.empty else new
+    todo = result[col].isna() if col in result else pd.Series(True, index=result.index)
+    if todo.any():
+        logger.info("scoring %d posts from %d file(s) -> %s (max_len %d)", int(todo.sum()),
+                    len(inputs), col, max_len)
+        result.loc[todo, col] = score_with_distilled(result.loc[todo, "text"].fillna("").tolist(),
+                                                     model_dir, batch_size, max_len)
     out.parent.mkdir(parents=True, exist_ok=True)
     result.to_parquet(out, index=False)
     return result
