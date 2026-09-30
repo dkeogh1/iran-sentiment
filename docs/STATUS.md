@@ -52,9 +52,19 @@ Two layers at different depths. Nothing runs on a schedule.
 
 - dkweb branch `iran-war-stance` (draft post, 7 Observable Plot charts, the
   stance colour tokens) is not merged.
-- Heavy X accounts were last refreshed 2026-09-18: refresh them within about
-  two months or the horizon opens new holes. Ask the user for the X credit
-  balance before the pull.
+- **Next X pull: Oct 25-30, 2026, no later than Nov 1.** On Sep 18
+  @RealAlexJones's ~3,200-tweet timeline reached back only ~7 weeks, so his
+  gap starts opening around Nov 1-6 (@WhiteHouse ~Nov 20, @LauraLoomer early
+  Dec). One pull then covers ~6 weeks for about what a pull now would cost,
+  because the heavy accounts hit their caps either way. Before it: size
+  `ACCOUNT_CAP_OVERRIDES` for the gap so the sampled accounts (the five heavy
+  ones plus @WhiteHouse and @VaticanNews) keep the May-Sep density of ~45-50
+  per two-week slice, `collect --estimate`, ask the user for the X credit
+  balance, run with `--no-search`. Rough cost at that density: ~2,100 reads
+  (~$10) plus ~$4 for the Opus relabel and topic labels; at today's 450/500
+  caps it would be ~$20-23 plus ~$7. After it: add timeline events
+  from Sep 16 on, move `ANALYSIS_END` and extend `PHASES` (which end Sep 18,
+  so Trump's feed after that is collected but outside every phase).
 - The mixed model beat the scorer of record on the two unseen posts (0.658
   vs 0.604 Pearson against Opus, gap CI [-0.01, +0.12]). Recheck when the
   next tracked posts get Opus labels.
