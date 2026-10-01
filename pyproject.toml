@@ -10,6 +10,7 @@ dependencies = [
     "torch>=2.2",                  # backend for transformers
     "vaderSentiment>=3.3",         # rule-based sentiment (fast baseline)
     "pandas>=2.2",
+    "pyarrow>=15",                 # parquet I/O for data/processed/
     "matplotlib>=3.9",
     "seaborn>=0.13",
     "plotly>=5.20",

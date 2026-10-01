@@ -55,6 +55,7 @@ Hand these to the user, with the estimate, instead of running them:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install -e '.[dev,truthsocial]'
 python -m pytest tests                # stub clients, no spend
 ruff check <paths> && ruff format <paths>
@@ -62,6 +63,10 @@ ruff check <paths> && ruff format <paths>
 
 - The system Python has no pip. If `python3 -m venv` fails, the user installs
   `python3.12-venv` with apt. Always work inside `.venv`.
+- `.venv` takes the CPU build of torch: dkbl1 has no GPU, and the default
+  PyPI torch on Linux is the CUDA build (~3 GB of `nvidia-*` and `triton`
+  wheels it can't use). Install it first and the `pip install -e` keeps it.
+  The GPU image brings its own CUDA torch (`Dockerfile`).
 - `.env` comes from the sops-encrypted `secrets.env` (the user runs
   `sops -d secrets.env > .env`; README *Setup*). Without the key, copy
   `.env.example`. `.env.example` lists every key the code reads.

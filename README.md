@@ -463,6 +463,7 @@ Requires Python 3.11+.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
+pip install torch --index-url https://download.pytorch.org/whl/cpu   # CPU build; skip on a CUDA box
 pip install -e '.[dev,truthsocial]'   # truthsocial brings curl_cffi; dev brings pytest + ruff
 ```
 
