@@ -54,7 +54,10 @@ _DEFAULT_TIMEOUT = 30.0
 def _ts_get(url: str, params: dict | None = None, timeout: float = _DEFAULT_TIMEOUT):
     """Single GET helper with browser TLS impersonation."""
     return cffi_requests.get(
-        url, params=params, impersonate=_IMPERSONATE, timeout=timeout,
+        url,
+        params=params,
+        impersonate=_IMPERSONATE,
+        timeout=timeout,
     )
 
 
@@ -94,8 +97,13 @@ def _ts_get_paced(url: str, params: dict | None = None):
         if resp.status_code != 429:
             return resp
         wait = _retry_after_seconds(resp)
-        logger.warning("429 from %s (attempt %d/%d) -- backing off %.0fs",
-                       url.rsplit("/", 2)[-1], attempt + 1, settings.TS_MAX_RETRIES, wait)
+        logger.warning(
+            "429 from %s (attempt %d/%d) -- backing off %.0fs",
+            url.rsplit("/", 2)[-1],
+            attempt + 1,
+            settings.TS_MAX_RETRIES,
+            wait,
+        )
         time.sleep(wait)
     return resp
 
@@ -107,9 +115,11 @@ def _account_cache_path(handle: str) -> Path:
 
 # ── Strategy 1: truthbrush ──────────────────────────────────────────
 
+
 def _has_truthbrush_creds() -> bool:
     from dotenv import load_dotenv
     import os
+
     load_dotenv(override=True)
     return bool(os.environ.get("TRUTHSOCIAL_USERNAME") and os.environ.get("TRUTHSOCIAL_PASSWORD"))
 
@@ -166,6 +176,7 @@ def collect_via_truthbrush(
 
 # ── Strategy 2: public Mastodon-compat API ──────────────────────────
 
+
 def collect_via_public_api(
     username: str,
     start_date: date,
@@ -197,8 +208,9 @@ def collect_via_public_api(
 
     resp = _ts_get_paced(f"{TS_API_BASE}/accounts/lookup", params={"acct": username})
     if resp.status_code != 200:
-        logger.warning("Could not look up @%s: HTTP %s %s",
-                       username, resp.status_code, resp.text[:200])
+        logger.warning(
+            "Could not look up @%s: HTTP %s %s", username, resp.status_code, resp.text[:200]
+        )
         return []
     account_id = resp.json()["id"]
 
@@ -211,8 +223,12 @@ def collect_via_public_api(
 
         resp = _ts_get_paced(f"{TS_API_BASE}/accounts/{account_id}/statuses", params=params)
         if resp.status_code != 200:
-            logger.warning("Statuses fetch failed for @%s: HTTP %s -- stopping with %d posts (INCOMPLETE)",
-                           username, resp.status_code, len(posts))
+            logger.warning(
+                "Statuses fetch failed for @%s: HTTP %s -- stopping with %d posts (INCOMPLETE)",
+                username,
+                resp.status_code,
+                len(posts),
+            )
             return posts
 
         batch = resp.json()
@@ -220,8 +236,10 @@ def collect_via_public_api(
             break
         batch = sorted(batch, key=lambda st: int(st["id"]), reverse=True)
         if all(st["id"] in seen for st in batch):
-            logger.error("@%s: page made no progress (server ignored max_id?) -- stopping (INCOMPLETE)",
-                         username)
+            logger.error(
+                "@%s: page made no progress (server ignored max_id?) -- stopping (INCOMPLETE)",
+                username,
+            )
             return posts
 
         page: list[dict] = []
@@ -237,18 +255,20 @@ def collect_via_public_api(
                 done = True
                 break
             if created.date() <= end_date:
-                page.append({
-                    "id": status["id"],
-                    "user": username,
-                    "text": _strip_html(status.get("content", "")),
-                    "created_at": status["created_at"],
-                    "metrics": {
-                        "reblogs": status.get("reblogs_count", 0),
-                        "favourites": status.get("favourites_count", 0),
-                        "replies": status.get("replies_count", 0),
-                    },
-                    "platform": "truthsocial",
-                })
+                page.append(
+                    {
+                        "id": status["id"],
+                        "user": username,
+                        "text": _strip_html(status.get("content", "")),
+                        "created_at": status["created_at"],
+                        "metrics": {
+                            "reblogs": status.get("reblogs_count", 0),
+                            "favourites": status.get("favourites_count", 0),
+                            "replies": status.get("replies_count", 0),
+                        },
+                        "platform": "truthsocial",
+                    }
+                )
                 if max_posts is not None and len(posts) + len(page) >= max_posts:
                     logger.info("@%s: hit max_posts cap (%d)", username, max_posts)
                     posts.extend(page)
@@ -259,8 +279,13 @@ def collect_via_public_api(
         posts.extend(page)
         if on_batch is not None and page:
             on_batch(page)
-        logger.info("@%s: page -> %d kept (total %d, back to %s)", username, len(page),
-                    len(posts), posts[-1]["created_at"][:10] if posts else "-")
+        logger.info(
+            "@%s: page -> %d kept (total %d, back to %s)",
+            username,
+            len(page),
+            len(posts),
+            posts[-1]["created_at"][:10] if posts else "-",
+        )
         if done:
             break
         cursor = batch[-1]["id"]
@@ -275,9 +300,11 @@ collect_via_public_api.last_complete = False
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+
 def _strip_html(html: str) -> str:
     """Naive HTML tag removal for Truth Social post content."""
     import re
+
     text = re.sub(r"<[^>]+>", " ", html)
     return re.sub(r"\s+", " ", text).strip()
 
@@ -298,6 +325,7 @@ def _load_jsonl(path: Path) -> list[dict]:
 
 
 # ── User timeline collection ───────────────────────────────────────
+
 
 def _latest_created_at(records: list[dict]) -> datetime | None:
     stamps = []
@@ -359,11 +387,13 @@ def collect_user(
             # latest cached day and dedupe the overlap by id below.
             start_date = max(start_date, latest.date())
             if latest.date() > end_date:
-                logger.info("@%s: cached through %s -- already past window end, skipping",
-                            handle, latest.isoformat())
+                logger.info(
+                    "@%s: cached through %s -- already past window end, skipping",
+                    handle,
+                    latest.isoformat(),
+                )
                 return existing
-            logger.info("@%s: incremental from %s (cached: %d)",
-                        handle, start_date, len(existing))
+            logger.info("@%s: incremental from %s (cached: %d)", handle, start_date, len(existing))
     elif cache.exists() and not force:
         logger.info("@%s: empty cache file -- treating as not collected", handle)
 
@@ -377,19 +407,24 @@ def collect_user(
             # one go. Contiguity is verified below before anything is
             # appended (the library returns the whole list at the end).
             posts = collect_via_truthbrush(
-                handle, start_date, end_date,
-                since_id=newest_id, created_after=latest,
+                handle,
+                start_date,
+                end_date,
+                since_id=newest_id,
+                created_after=latest,
             )
             reached_edge = bool(posts) and min(
-                datetime.fromisoformat(p["created_at"].replace("Z", "+00:00"))
-                for p in posts
+                datetime.fromisoformat(p["created_at"].replace("Z", "+00:00")) for p in posts
             ).date() <= latest.date() + timedelta(days=1)
             complete = reached_edge or not posts
             if posts and not reached_edge:
                 logger.error(
                     "@%s: fetched %d posts but the oldest (%s) does not touch the cache "
                     "edge (%s) -- NOT appending, rerun",
-                    handle, len(posts), min(p["created_at"] for p in posts), latest.isoformat(),
+                    handle,
+                    len(posts),
+                    min(p["created_at"] for p in posts),
+                    latest.isoformat(),
                 )
                 return existing
         else:
@@ -400,10 +435,16 @@ def collect_user(
             # from the partial's oldest id.
             partial_path = cache.with_suffix(".partial.jsonl")
             partial = _load_jsonl(partial_path) if partial_path.exists() else []
-            resume_from = min((r["id"] for r in partial if r.get("id")), key=int) if partial else None
+            resume_from = (
+                min((r["id"] for r in partial if r.get("id")), key=int) if partial else None
+            )
             if partial:
-                logger.info("@%s: resuming from partial (%d posts, oldest id %s)",
-                            handle, len(partial), resume_from)
+                logger.info(
+                    "@%s: resuming from partial (%d posts, oldest id %s)",
+                    handle,
+                    len(partial),
+                    resume_from,
+                )
             seen_ids = {r.get("id") for r in existing} | {r.get("id") for r in partial}
 
             def _flush(page: list[dict]) -> None:
@@ -417,20 +458,36 @@ def collect_user(
                             f.write(json.dumps(r) + "\n")
                     partial.extend(fresh)
 
-            collect_via_public_api(handle, start_date, end_date,
-                                   max_id=resume_from, stop_at_id=newest_id, on_batch=_flush)
+            collect_via_public_api(
+                handle,
+                start_date,
+                end_date,
+                max_id=resume_from,
+                stop_at_id=newest_id,
+                on_batch=_flush,
+            )
             complete = getattr(collect_via_public_api, "last_complete", True)
             if not complete:
-                logger.warning("@%s [%s]: INCOMPLETE -- %d posts held in %s; rerun to continue",
-                               handle, tier, len(partial), partial_path.name)
+                logger.warning(
+                    "@%s [%s]: INCOMPLETE -- %d posts held in %s; rerun to continue",
+                    handle,
+                    tier,
+                    len(partial),
+                    partial_path.name,
+                )
                 return existing
             if partial:
                 with open(cache, "a") as f:
                     for r in partial:
                         f.write(json.dumps(r) + "\n")
                 partial_path.unlink()
-                logger.info("@%s [%s]: +%d new posts (total: %d)", handle, tier,
-                            len(partial), len(existing) + len(partial))
+                logger.info(
+                    "@%s [%s]: +%d new posts (total: %d)",
+                    handle,
+                    tier,
+                    len(partial),
+                    len(existing) + len(partial),
+                )
             else:
                 logger.info("@%s [%s]: no new posts since last fetch", handle, tier)
             return sorted(partial + existing, key=lambda r: r["created_at"], reverse=True)
@@ -446,12 +503,21 @@ def collect_user(
             with open(cache, "a") as f:
                 for r in new:
                     f.write(json.dumps(r) + "\n")
-            logger.info("@%s [%s]: +%d new posts (total: %d)%s",
-                        handle, tier, len(new), len(existing) + len(new),
-                        "" if complete else " -- INCOMPLETE, rerun to continue")
+            logger.info(
+                "@%s [%s]: +%d new posts (total: %d)%s",
+                handle,
+                tier,
+                len(new),
+                len(existing) + len(new),
+                "" if complete else " -- INCOMPLETE, rerun to continue",
+            )
         else:
-            logger.info("@%s [%s]: no new posts since last fetch%s", handle, tier,
-                        "" if complete else " (fetch failed before any new page)")
+            logger.info(
+                "@%s [%s]: no new posts since last fetch%s",
+                handle,
+                tier,
+                "" if complete else " (fetch failed before any new page)",
+            )
         return sorted(new + existing, key=lambda r: r["created_at"], reverse=True)
 
     logger.info("@%s [%s]: %d posts", handle, tier, len(posts))
@@ -466,6 +532,7 @@ def collect_user(
 
 
 # ── Orchestration ──────────────────────────────────────────────────
+
 
 def collect_all(
     accounts: dict[str, list[str]],
@@ -512,6 +579,7 @@ def load_all_cached() -> list[dict]:
 
 
 # ── Reply collection ───────────────────────────────────────────────
+
 
 def _reply_record(status: dict, parent_id: str) -> dict:
     """
@@ -580,7 +648,9 @@ def _password_grant_body(username: str, password: str) -> dict:
 
 def _auth_post(path: str, body: dict):
     return cffi_requests.post(
-        f"{TS_OAUTH_BASE}{path}", json=body, impersonate="chrome136",
+        f"{TS_OAUTH_BASE}{path}",
+        json=body,
+        impersonate="chrome136",
         headers={"Authorization": "", **settings.TS_AUTH_HEADERS},
         timeout=_DEFAULT_TIMEOUT,
     )
@@ -600,13 +670,14 @@ def request_token(username: str, password: str) -> str:
         data = {}
     if resp.status_code == 403 and data.get("error") == "security_code_required":
         raise SecurityCodeRequired(
-            data.get("challenge_id", ""), data.get("supported_delivery_methods", []), data,
+            data.get("challenge_id", ""),
+            data.get("supported_delivery_methods", []),
+            data,
         )
     raise RuntimeError(f"token exchange failed: HTTP {resp.status_code} {resp.text[:300]}")
 
 
-def request_security_code_delivery(username: str, password: str,
-                                   challenge_id: str, method: str):
+def request_security_code_delivery(username: str, password: str, challenge_id: str, method: str):
     """
     Ask the server to send the security code via `method` (email | sms).
     Mirrors the web app's sign-in modal exactly: {username, challenge_id,
@@ -619,17 +690,23 @@ def request_security_code_delivery(username: str, password: str,
 
 def verify_security_code(username: str, password: str, challenge_id: str, code: str) -> str:
     """Exchange challenge_id + security_code for an access token (web-app flow)."""
-    body = {**_password_grant_body(username, password),
-            "challenge_id": challenge_id, "security_code": code}
+    body = {
+        **_password_grant_body(username, password),
+        "challenge_id": challenge_id,
+        "security_code": code,
+    }
     resp = _auth_post("/oauth/v2/verify_security_code", body)
     if resp.status_code != 200:
-        raise RuntimeError(f"verify_security_code failed: HTTP {resp.status_code} {resp.text[:300]}")
+        raise RuntimeError(
+            f"verify_security_code failed: HTTP {resp.status_code} {resp.text[:300]}"
+        )
     return resp.json()["access_token"]
 
 
 def save_token_to_env(token: str, env_path: Path | None = None) -> Path:
     """Persist TRUTHSOCIAL_TOKEN in .env so truthbrush reuses it (no re-login)."""
     from dotenv import set_key
+
     env_path = env_path or (settings.PROJECT_ROOT / ".env")
     set_key(str(env_path), "TRUTHSOCIAL_TOKEN", token, quote_mode="never")
     return env_path
@@ -655,6 +732,7 @@ def _get_truthbrush_api():
 
     from dotenv import load_dotenv
     import os
+
     load_dotenv(override=True)
 
     token = os.environ.get("TRUTHSOCIAL_TOKEN")
@@ -668,13 +746,16 @@ def _get_truthbrush_api():
     return Api()
 
 
-_TS_USER_AGENT = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 12_2_1) AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36")
+_TS_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 12_2_1) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36"
+)
 
 
 def _get_token() -> str:
     from dotenv import load_dotenv
     import os
+
     load_dotenv(settings.PROJECT_ROOT / ".env", override=True)
     token = os.environ.get("TRUTHSOCIAL_TOKEN")
     if not token:
@@ -687,13 +768,15 @@ def _ts_get_auth_paced(url: str, params: dict | None, token: str):
     headers = {"Authorization": f"Bearer {token}", "User-Agent": _TS_USER_AGENT}
     for attempt in range(settings.TS_MAX_RETRIES + 1):
         time.sleep(settings.TS_AUTH_PAGE_DELAY_S)
-        resp = cffi_requests.get(url, params=params, headers=headers,
-                                 impersonate="chrome136", timeout=_DEFAULT_TIMEOUT)
+        resp = cffi_requests.get(
+            url, params=params, headers=headers, impersonate="chrome136", timeout=_DEFAULT_TIMEOUT
+        )
         if resp.status_code != 429:
             return resp
         wait = _retry_after_seconds(resp)
-        logger.warning("429 (attempt %d/%d) -- backing off %.0fs", attempt + 1,
-                       settings.TS_MAX_RETRIES, wait)
+        logger.warning(
+            "429 (attempt %d/%d) -- backing off %.0fs", attempt + 1, settings.TS_MAX_RETRIES, wait
+        )
         time.sleep(wait)
     return resp
 
@@ -706,8 +789,9 @@ def _next_link(resp) -> str | None:
     return None
 
 
-def iter_descendants(post_id: str, *, only_direct: bool = True, token: str | None = None,
-                     sort: str = "oldest"):
+def iter_descendants(
+    post_id: str, *, only_direct: bool = True, token: str | None = None, sort: str = "oldest"
+):
     """
     Yield reply statuses to `post_id` from settings.TS_DESCENDANTS_PATH,
     following Link rel="next" until the server stops paging. With
@@ -721,7 +805,9 @@ def iter_descendants(post_id: str, *, only_direct: bool = True, token: str | Non
     while url:
         resp = _ts_get_auth_paced(url, params, token)
         if resp.status_code != 200:
-            raise RuntimeError(f"descendants page {page} -> HTTP {resp.status_code}: {resp.text[:200]}")
+            raise RuntimeError(
+                f"descendants page {page} -> HTTP {resp.status_code}: {resp.text[:200]}"
+            )
         batch = resp.json()
         if not batch:
             break
@@ -780,7 +866,10 @@ def collect_replies(
             reported = resp.json().get("replies_count", 0) or 0
             pct = (100 * len(replies) / reported) if reported else 0
             logger.info(
-                "Coverage: %d/%d replies (%.1f%%)", len(replies), reported, pct,
+                "Coverage: %d/%d replies (%.1f%%)",
+                len(replies),
+                reported,
+                pct,
             )
     except Exception:
         pass  # non-critical — don't block on this

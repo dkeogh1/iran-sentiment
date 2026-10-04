@@ -38,6 +38,7 @@ def get_client() -> tweepy.Client:
 
 # ── Helpers ─────────────────────────────────────────────────────────
 
+
 def _account_cache_path(handle: str) -> Path:
     return settings.X_RAW_DIR / f"{handle}.jsonl"
 
@@ -83,6 +84,7 @@ def _latest_created_at(records: list[dict]) -> datetime | None:
 
 
 # ── User timeline collection ───────────────────────────────────────
+
 
 def _naive_utc(dt: datetime) -> datetime:
     """Strip tz after converting to UTC (the API formatter appends 'Z')."""
@@ -247,16 +249,18 @@ def _fetch_window(
             for tweet in resp.data:
                 if len(out) >= cap:
                     break
-                out.append({
-                    "id": str(tweet.id),
-                    "user": handle,
-                    "tier": tier,
-                    "text": tweet.text,
-                    "created_at": tweet.created_at.isoformat(),
-                    "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
-                    "lang": tweet.lang,
-                    "platform": "x",
-                })
+                out.append(
+                    {
+                        "id": str(tweet.id),
+                        "user": handle,
+                        "tier": tier,
+                        "text": tweet.text,
+                        "created_at": tweet.created_at.isoformat(),
+                        "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
+                        "lang": tweet.lang,
+                        "platform": "x",
+                    }
+                )
 
         if resp.meta and resp.meta.get("next_token") and len(out) < cap:
             pagination_token = resp.meta["next_token"]
@@ -304,9 +308,14 @@ def collect_user(
         return existing
     incremental = plan["incremental"]
     if incremental:
-        logger.info("@%s: incremental from %s (cached: %d, %d slice(s), cap %d)",
-                    handle, plan["window"][0].isoformat(), len(existing),
-                    len(plan["slices"]), plan["cap"])
+        logger.info(
+            "@%s: incremental from %s (cached: %d, %d slice(s), cap %d)",
+            handle,
+            plan["window"][0].isoformat(),
+            len(existing),
+            len(plan["slices"]),
+            plan["cap"],
+        )
 
     try:
         user = client.get_user(username=handle)
@@ -324,17 +333,28 @@ def collect_user(
         got, capped = _fetch_window(client, user.data.id, handle, tier, s, e, cap)
         any_capped = any_capped or capped
         new_tweets.extend(got)
-        logger.info("@%s: slice %s..%s -> %d%s", handle, s.date(), e.date(),
-                    len(got), " (CAPPED)" if capped else "")
+        logger.info(
+            "@%s: slice %s..%s -> %d%s",
+            handle,
+            s.date(),
+            e.date(),
+            len(got),
+            " (CAPPED)" if capped else "",
+        )
 
     capped = " (CAPPED)" if any_capped else ""
 
     if incremental:
         if new_tweets:
             _append_jsonl(cache, new_tweets)
-            logger.info("@%s [%s]: +%d new tweets%s (total: %d)",
-                        handle, tier, len(new_tweets), capped,
-                        len(existing) + len(new_tweets))
+            logger.info(
+                "@%s [%s]: +%d new tweets%s (total: %d)",
+                handle,
+                tier,
+                len(new_tweets),
+                capped,
+                len(existing) + len(new_tweets),
+            )
         else:
             logger.info("@%s [%s]: no new tweets since last fetch", handle, tier)
         return existing + new_tweets
@@ -345,6 +365,7 @@ def collect_user(
 
 
 # ── Keyword search collection ──────────────────────────────────────
+
 
 def collect_search(
     client: tweepy.Client,
@@ -369,6 +390,7 @@ def collect_search(
         latest = _latest_created_at(existing)
         if latest is not None:
             from datetime import timedelta, timezone
+
             start_time = latest + timedelta(seconds=1)
             if start_time.tzinfo is not None:
                 start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
@@ -379,18 +401,25 @@ def collect_search(
             # backfill the gap without the paid full-archive endpoint.
             search_floor = (
                 datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
-                - timedelta(days=7) + timedelta(minutes=5)
+                - timedelta(days=7)
+                + timedelta(minutes=5)
             )
             if start_time < search_floor:
                 logger.warning(
                     "search '%s': cached latest %s is older than 7-day window; "
                     "clamping start_time to %s — gap of %s unfetched",
-                    query, latest.isoformat(), search_floor.isoformat(),
+                    query,
+                    latest.isoformat(),
+                    search_floor.isoformat(),
                     search_floor - start_time,
                 )
                 start_time = search_floor
-            logger.info("search '%s': incremental from %s (cached: %d)",
-                        query, start_time.isoformat(), len(existing))
+            logger.info(
+                "search '%s': incremental from %s (cached: %d)",
+                query,
+                start_time.isoformat(),
+                len(existing),
+            )
         else:
             incremental = False
 
@@ -416,17 +445,19 @@ def collect_search(
             for tweet in resp.data:
                 if len(new_tweets) >= max_total:
                     break
-                new_tweets.append({
-                    "id": str(tweet.id),
-                    "author_id": str(tweet.author_id),
-                    "user": f"search:{query}",
-                    "tier": "search",
-                    "text": tweet.text,
-                    "created_at": tweet.created_at.isoformat(),
-                    "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
-                    "lang": tweet.lang,
-                    "platform": "x",
-                })
+                new_tweets.append(
+                    {
+                        "id": str(tweet.id),
+                        "author_id": str(tweet.author_id),
+                        "user": f"search:{query}",
+                        "tier": "search",
+                        "text": tweet.text,
+                        "created_at": tweet.created_at.isoformat(),
+                        "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
+                        "lang": tweet.lang,
+                        "platform": "x",
+                    }
+                )
 
         if resp.meta and resp.meta.get("next_token") and len(new_tweets) < max_total:
             pagination_token = resp.meta["next_token"]
@@ -436,8 +467,12 @@ def collect_search(
     if incremental:
         if new_tweets:
             _append_jsonl(cache, new_tweets)
-            logger.info("search '%s': +%d new (total: %d)",
-                        query, len(new_tweets), len(existing) + len(new_tweets))
+            logger.info(
+                "search '%s': +%d new (total: %d)",
+                query,
+                len(new_tweets),
+                len(existing) + len(new_tweets),
+            )
         else:
             logger.info("search '%s': no new tweets since last fetch", query)
         return existing + new_tweets
@@ -448,6 +483,7 @@ def collect_search(
 
 
 # ── Orchestration ───────────────────────────────────────────────────
+
 
 def collect_all(
     accounts: dict[str, list[str]],
