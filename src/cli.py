@@ -675,7 +675,8 @@ def _fmt_estimate(est: dict) -> str:
     cache = ""
     if est.get("cached_prefix_calls"):
         cache = (f"; ≈ ${est['usd']:.2f} with the shared prefix cached on "
-                 f"{est['cached_prefix_calls']} calls")
+                 f"{est['cached_prefix_calls']} calls (optimistic: in the v2 pilot the cache "
+                 f"engaged for 1 parent post in 8)")
     return (f"{est['calls']} calls to {est.get('model', settings.TEACHER_CHECK_MODEL)}: "
             f"~{est['input_tokens']:,} input + ~{est['output_tokens']:,} output tokens "
             f"≈ ${est['usd_no_cache']:.2f} at direct-API prices{cache} "
@@ -712,14 +713,27 @@ def _refuse_over_cap(todo: int, cap: int, fix: str) -> None:
 @click.option("--estimate", is_flag=True, help="Count and price the calls; no API call")
 @click.option("--yes", is_flag=True,
               help="(trump) Run without the confirmation prompt; the x check never asks")
-def teacher_check_cmd(source: str, n: int | None, model: str, estimate: bool, yes: bool):
+@click.option("--batch", type=click.Choice(["submit", "status", "collect"]), default=None,
+              help="(trump) Through the Message Batches API at half price: submit the posts still "
+                   "to label, poll, then collect into the same labels and report")
+@click.option("--results-file", type=click.Path(exists=True), default=None,
+              help="(--batch collect) Read a downloaded results JSONL instead of streaming it")
+@click.option("--report", is_flag=True,
+              help="(trump) Rebuild the report from the cached labels; no API call")
+def teacher_check_cmd(source: str, n: int | None, model: str, estimate: bool, yes: bool,
+                      batch: str | None, results_file: str | None, report: bool):
     """Relabel a sample with a stronger Claude model and report disagreement:
     with the Haiku labels on X posts (per tier + worst cases), or with the
-    distilled scorer on Trump's own feed (by phase, war posts). API only."""
+    distilled scorer on Trump's own feed (by phase, war posts). API only.
+    The Trump check runs direct or, with --batch, at batch prices."""
     from src.analysis import stance_local as sl
     if source == "trump":
-        _trump_check(n or settings.TRUMP_TEACHER_CHECK_N, model, estimate, yes)
+        _check_batch_flags(batch, results_file, report, estimate=estimate)
+        _trump_check(n or settings.TRUMP_TEACHER_CHECK_N, model, estimate, yes, batch,
+                     results_file, report)
         return
+    if batch or results_file or report:
+        raise click.UsageError("--batch, --results-file and --report go with --source trump")
     from src.analysis.sentiment import llm_prompt
     n = n or settings.TEACHER_CHECK_N
     df = _load_scored_frame()
@@ -748,17 +762,96 @@ def _agreement_row(name: str, r: dict) -> str:
             f"{r['mean_teacher']:>+9.3f}{r['mean_model']:>+9.3f}{r['mean_diff']:>+9.3f}")
 
 
-def _trump_check(n: int, model: str, estimate: bool, yes: bool) -> None:
-    """teacher-check --source trump."""
+def _check_batch_flags(batch: str | None, results_file: str | None, report: bool, *,
+                       estimate: bool, limit: int | None = None) -> None:
+    """Reject flag mixes that would be silently ignored."""
+    if report and (batch or estimate or limit):
+        raise click.UsageError("--report runs on its own: it rebuilds the report from the cache")
+    if batch in ("status", "collect") and (estimate or limit):
+        raise click.UsageError(f"--estimate and --limit go with --batch submit, "
+                               f"not --batch {batch}")
+    if results_file and batch != "collect":
+        raise click.UsageError("--results-file goes with --batch collect")
+
+
+def _fmt_batch_estimate(est: dict) -> str:
+    """The token estimate's ceiling at batch prices. No cached-prefix figure:
+    the pilot showed it low, and caching in a batch is best-effort."""
+    return (f"at batch prices ({est['batch_discount']:g} x direct): "
+            f"≈ ${est['usd_batch_no_cache']:.2f} with no prefix cache (the ceiling); no API call")
+
+
+def _fmt_pilot_estimate(est: dict, batch: bool) -> str:
+    """The run priced at what the 2026-10-04 v2 pilot was really billed."""
+    p = settings.TEACHER_V2_PILOT
+    at = (f"≈ ${est['usd_pilot_batch']:.2f} at batch prices (≈ ${est['usd_pilot']:.2f} direct)"
+          if batch else f"≈ ${est['usd_pilot']:.2f} direct")
+    return (f"pilot-calibrated: {at}, at the rates the {p['calls']}-call v2 pilot was billed on "
+            f"2026-10-04 (${est['pilot_usd_per_call']:.4f} a call direct on prompts averaging "
+            f"{p['prompt_chars'] / p['calls']:,.0f} characters; here input scales with "
+            f"{est['prompt_chars']:,} prompt characters, output is "
+            f"{p['output_tokens'] / p['calls']:.0f} tokens a call)")
+
+
+def _refuse_open_batch(check: str, doing: str) -> None:
+    """Exit before the prompt while the check's last batch is not collected."""
     from src.analysis import stance_local as sl
-    est = sl.trump_check_estimate(n=n, model=model)
-    click.echo(f"Trump feed: {est['sample']} sampled posts with text, {est['cached']} cached, "
-               f"cap {est['cap']}; {_fmt_estimate(est)}")
-    _refuse_over_cap(est["todo"], est["cap"],
-                     "raise TRUMP_TEACHER_CHECK_MAX_CALLS deliberately or lower --n")
-    if estimate or not _confirm_paid(est["todo"], yes):
+    st = sl.open_batch(check)
+    if st:
+        click.secho(sl.open_batch_message(check, st, doing), fg="red")
+        sys.exit(1)
+
+
+def _batch_poll(check: str, action: str, results_file: str | None, show) -> None:
+    """--batch status / collect for a check; `show(report, state)` prints the
+    report a collect writes."""
+    from pathlib import Path as _P
+
+    from src.analysis import stance_local as sl
+    try:
+        if action == "status":
+            st, rep = sl.teacher_batch_status(check), None
+        else:
+            st, rep = sl.teacher_batch_collect(
+                check, results_file=_P(results_file) if results_file else None)
+    except FileNotFoundError as e:
+        click.secho(str(e), fg="yellow")
+        sys.exit(1)
+    except RuntimeError as e:      # a submit that never recorded its batch id
+        click.secho(str(e), fg="red")
+        sys.exit(1)
+    click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
+    if st.get("spend"):
+        s = st["spend"]
+        click.echo(f"billed: {s['input_tokens']:,} input, "
+                   f"{s['cache_creation_input_tokens']:,} cache-write, "
+                   f"{s['cache_read_input_tokens']:,} cache-read, {s['output_tokens']:,} output "
+                   f"tokens ≈ ${s['usd_batch']:.2f} at batch prices "
+                   f"(${s['usd_direct']:.2f} direct)")
+        if s.get("calls_without_usage"):
+            click.secho(f"{s['calls_without_usage']} results carried no usage: the bill above "
+                        "leaves them out", fg="yellow")
+    if st.get("short_read") and st["status"] != "collected":
+        sr = st["short_read"]
+        click.secho(f"short read ({sr['source']}): {sr['missing']} of {st['n_submitted']} "
+                    f"submitted ids have no result in it, {sr['ignored']['not_submitted']} "
+                    f"results were for ids not in this batch; {sr['labelled']} labels added. "
+                    "The batch stays open: --batch collect again from the stream or the whole "
+                    "results file.", fg="red")
+        sys.exit(1)
+    if rep is not None:
+        show(rep, st)
+
+
+def _echo_submitted(st: dict | None, cmd: str) -> None:
+    if st is None:
+        click.echo("nothing submitted: every row is labelled")
         return
-    rep = sl.trump_teacher_check(n=n, model=model)
+    click.echo(f"batch {st['batch_id']} {st['status']}  ({st['n_submitted']} requests); "
+               f"then: {cmd} --batch status / collect")
+
+
+def _print_trump_report(rep: dict, model: str) -> None:
     click.echo(f"\n{rep['col']} vs {model} on {rep['n']} Trump posts "
                f"(mean diff = model - teacher; war posts by topic={rep['topic_source']}):")
     click.echo(f"{'':24s}{'n':>5s}{'pearson':>9s}{'mae':>7s}{'flips':>7s}{'teacher':>9s}{'model':>9s}{'diff':>9s}")
@@ -768,6 +861,41 @@ def _trump_check(n: int, model: str, estimate: bool, yes: bool) -> None:
     click.echo(_agreement_row("war posts", rep["war_posts"]))
     for r in rep["war_by_phase"]:
         click.echo(_agreement_row(f"  {r['phase']}", r))
+
+
+def _trump_check(n: int, model: str, estimate: bool, yes: bool, batch: str | None = None,
+                 results_file: str | None = None, report: bool = False) -> None:
+    """teacher-check --source trump: direct, or through a batch."""
+    from src.analysis import stance_local as sl
+    if report:
+        _print_trump_report(sl.trump_teacher_report(model), model)
+        return
+    if batch in ("status", "collect"):
+        _batch_poll("trump", batch, results_file,
+                    lambda rep, st: _print_trump_report(rep, st["model"]))
+        return
+    est = sl.trump_check_estimate(n=n, model=model)
+    click.echo(f"Trump feed: {est['sample']} sampled posts with text, {est['cached']} cached, "
+               f"cap {est['cap']}; {_fmt_estimate(est)}")
+    if batch:
+        click.echo(_fmt_batch_estimate(est))
+    click.echo(_fmt_pilot_estimate(est, bool(batch)))
+    if sl.open_batch("trump"):
+        if estimate:
+            click.secho("a Trump batch is open: these calls include its requests", fg="yellow")
+        else:
+            _refuse_open_batch("trump", "a new batch" if batch else "a direct run")
+    _refuse_over_cap(est["todo"], est["cap"],
+                     "raise TRUMP_TEACHER_CHECK_MAX_CALLS deliberately or lower --n")
+    if estimate or not _confirm_paid(est["todo"], yes):
+        return
+    if batch == "submit":
+        params = {"n": n, "seed": settings.TEACHER_SAMPLE_SEED, "col": "score_opus_distilled"}
+        st = sl.teacher_batch_submit("trump", params=params, model=model)
+        _echo_submitted(st, "teacher-check --source trump")
+        return
+    rep = sl.trump_teacher_check(n=n, model=model)
+    _print_trump_report(rep, model)
 
 
 @main.command("stance-distill")
@@ -1093,27 +1221,62 @@ def score_posts_cmd(inputs, out: str, model_dir: str | None, col: str, max_len: 
 @click.option("--limit", type=click.IntRange(min=1), default=None,
               help="(--v2) Pilot: label only the first N replies still to do, dealt across posts")
 @click.option("--yes", is_flag=True, help="(--v2) Run without the confirmation prompt")
-def reply_teacher_check_cmd(model: str, col: str, v2: bool, estimate: bool, limit: int | None, yes: bool):
+@click.option("--batch", type=click.Choice(["submit", "status", "collect"]), default=None,
+              help="(--v2) Through the Message Batches API at half price: submit the replies still "
+                   "to label, poll, then collect into the same v2 labels and report")
+@click.option("--results-file", type=click.Path(exists=True), default=None,
+              help="(--batch collect) Read a downloaded results JSONL instead of streaming it")
+@click.option("--report", is_flag=True,
+              help="(--v2) Rebuild the report from the cached v2 labels; no API call")
+def reply_teacher_check_cmd(model: str, col: str, v2: bool, estimate: bool, limit: int | None,
+                            yes: bool, batch: str | None, results_file: str | None, report: bool):
     """Relabel the reply stance sample with the teacher and report how well
     the distilled reply scores reproduce it (domain-shift check). API only.
     v1 (default) is the broadcaster prompt on the stored first 100 characters;
-    --v2 sends the full reply with its parent post and compares with v1."""
+    --v2 sends the full reply with its parent post and compares with v1,
+    direct or, with --batch, at batch prices."""
     if not v2:
-        if estimate or limit or yes:
-            raise click.UsageError("--estimate, --limit and --yes go with --v2")
+        if estimate or limit or yes or batch or results_file or report:
+            raise click.UsageError("--estimate, --limit, --yes, --batch, --results-file and "
+                                   "--report go with --v2")
         _reply_teacher_v1(model, col)
         return
     from src.analysis import stance_local as sl
+    _check_batch_flags(batch, results_file, report, estimate=estimate, limit=limit)
+    if report:
+        _print_reply_v2_report(sl.reply_teacher_v2_report(model, col), col, model)
+        return
+    if batch in ("status", "collect"):
+        _batch_poll("reply_v2", batch, results_file,
+                    lambda rep, st: _print_reply_v2_report(rep, st["params"]["col"], st["model"]))
+        return
     est = sl.reply_teacher_v2_estimate(model=model, limit=limit)
     click.echo(f"reply sample: {est['sampled']} replies, {est['no_text']} without text (skipped), "
                f"{est['with_text']} with text, {est['cached']} cached in v2; cap {est['cap']}")
     click.echo(f"to do by post: {est['todo_by_post']}")
     click.echo(_fmt_estimate(est))
+    if batch:
+        click.echo(_fmt_batch_estimate(est))
+    click.echo(_fmt_pilot_estimate(est, bool(batch)))
+    if sl.open_batch("reply_v2"):
+        if estimate:
+            click.secho("a v2 batch is open: these calls include its requests", fg="yellow")
+        else:
+            _refuse_open_batch("reply_v2", "a new batch" if batch else "a direct run")
     _refuse_over_cap(est["todo"], est["cap"],
                      "raise REPLY_TEACHER_V2_MAX_CALLS deliberately or use --limit")
     if estimate or not _confirm_paid(est["todo"], yes):
         return
+    if batch == "submit":
+        params = {"seed": settings.TEACHER_SAMPLE_SEED, "col": col}
+        st = sl.teacher_batch_submit("reply_v2", params=params, model=model, limit=limit)
+        _echo_submitted(st, "reply-teacher-check --v2")
+        return
     rep = sl.reply_teacher_check_v2(model=model, col=col, limit=limit)
+    _print_reply_v2_report(rep, col, model)
+
+
+def _print_reply_v2_report(rep: dict, col: str, model: str) -> None:
     if not rep["n"]:
         click.secho("no v2 labels yet (every call failed?)", fg="yellow")
         return

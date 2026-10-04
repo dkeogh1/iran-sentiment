@@ -18,7 +18,9 @@ Teacher checks on the host (direct API, no GPU): reply_teacher_check (v1,
 broadcaster prompt) and reply_teacher_check_v2 (the full reply with the
 Trump post it answers), and trump_teacher_check (Opus on a sample of
 Trump's feed against the distilled scorer used there). Each has an
-estimate that makes no call.
+estimate that makes no call. The v2 and Trump checks also run through the
+Message Batches API at half price (teacher_batch_submit / _status /
+_collect): same requests, same label cache, same report.
 
 All heavy imports are local to the functions so the CPU-only CLI on dkbl1
 imports this module without torch/transformers being present.
@@ -32,6 +34,8 @@ import logging
 import math
 import os
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -108,8 +112,12 @@ def agreement_by_tier(df: pd.DataFrame, ref: str, new: str) -> pd.DataFrame:
 
 
 def _write_json(path: Path, obj: dict) -> None:
+    """Temp file, then rename: a run killed mid-write leaves the old file whole
+    (reports, and the batch state that holds a paid batch's id)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=2, default=float))
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(obj, indent=2, default=float))
+    os.replace(tmp, path)
 
 
 # ── 1. Teacher check (API, no GPU) ─────────────────────────────────
@@ -753,10 +761,48 @@ def estimate_direct_cost(prompts: list[str], cache_chars: list[int] | None = Non
         billed += pre * mult + _est_tokens(len(p) - c)
         cached_calls += 1
     return {"calls": len(prompts), "input_tokens": tin, "output_tokens": tout,
-            "cached_prefix_calls": cached_calls,
+            "prompt_chars": sum(len(p) for p in prompts), "cached_prefix_calls": cached_calls,
             "usd": (billed * PRICE_IN + tout * PRICE_OUT) / 1e6,
             "usd_no_cache": (tin * PRICE_IN + tout * PRICE_OUT) / 1e6,
             "price_in_per_mtok": PRICE_IN, "price_out_per_mtok": PRICE_OUT}
+
+
+def price_tokens(t: dict) -> float:
+    """Direct-API dollars for billed tokens keyed like Spend.FIELDS (missing
+    keys count 0): cache writes and reads at their multiples of the input
+    price, Opus 5 list prices from relabel."""
+    from src.analysis.relabel import PRICE_IN, PRICE_OUT
+    billed_in = (t.get("input_tokens", 0)
+                 + t.get("cache_creation_input_tokens", 0) * CACHE_WRITE_MULT
+                 + t.get("cache_read_input_tokens", 0) * CACHE_READ_MULT)
+    return (billed_in * PRICE_IN + t.get("output_tokens", 0) * PRICE_OUT) / 1e6
+
+
+def with_pilot_and_batch_prices(est: dict) -> dict:
+    """estimate_direct_cost's figures plus two more, still making no call:
+    the same token estimate at batch prices (relabel.BATCH_DISCOUNT), and a
+    pilot-calibrated figure at what settings.TEACHER_V2_PILOT was really
+    billed: input dollars per prompt character, output dollars per call, so
+    it follows the prompts' length rather than the characters-per-token
+    guess. Each direct and at batch prices."""
+    from src.analysis.relabel import BATCH_DISCOUNT
+
+    p = settings.TEACHER_V2_PILOT
+    tokens = {f: p[f] for f in Spend.FIELDS}
+    usd_in_per_char = price_tokens({**tokens, "output_tokens": 0}) / p["prompt_chars"]
+    usd_out_per_call = price_tokens({"output_tokens": p["output_tokens"]}) / p["calls"]
+    pilot = est["prompt_chars"] * usd_in_per_char + est["calls"] * usd_out_per_call
+    return {**est, "batch_discount": BATCH_DISCOUNT,
+            "usd_batch": est["usd"] * BATCH_DISCOUNT,
+            "usd_batch_no_cache": est["usd_no_cache"] * BATCH_DISCOUNT,
+            "pilot_usd_per_call": price_tokens(tokens) / p["calls"],
+            "usd_pilot": pilot, "usd_pilot_batch": pilot * BATCH_DISCOUNT}
+
+
+def _refuse_over_cap(n: int, cap: int) -> None:
+    if n > cap:
+        raise RuntimeError(f"{n} calls to make, over the cap of {cap} in config/settings.py: "
+                           "raise it deliberately, or run a pilot with --limit")
 
 
 class Spend:
@@ -780,11 +826,7 @@ class Spend:
                 self.tokens[f] += int(getattr(usage, f, 0) or 0)
 
     def usd(self) -> float:
-        from src.analysis.relabel import PRICE_IN, PRICE_OUT
-        t = self.tokens
-        billed_in = (t["input_tokens"] + t["cache_creation_input_tokens"] * CACHE_WRITE_MULT
-                     + t["cache_read_input_tokens"] * CACHE_READ_MULT)
-        return (billed_in * PRICE_IN + t["output_tokens"] * PRICE_OUT) / 1e6
+        return price_tokens(self.tokens)
 
     def summary(self) -> str:
         t = self.tokens
@@ -853,9 +895,7 @@ def run_labels(todo: pd.DataFrame, cached: pd.DataFrame, out: Path, scorer=None,
     (the API scorer does). Returns the whole cache."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    if len(todo) > cap:
-        raise RuntimeError(f"{len(todo)} calls to make, over the cap of {cap} in config/settings.py: "
-                           "raise it deliberately, or run a pilot with --limit")
+    _refuse_over_cap(len(todo), cap)
     if todo.empty:
         return cached
     scorer = scorer or _teacher_scorer(model, max_tokens, effort)
@@ -1067,14 +1107,16 @@ def reply_v2_todo(model: str = settings.TEACHER_CHECK_MODEL, limit: int | None =
 
 def reply_teacher_v2_estimate(model: str = settings.TEACHER_CHECK_MODEL, limit: int | None = None,
                               seed: int = settings.TEACHER_SAMPLE_SEED) -> dict:
-    """What `reply-teacher-check --v2` would send, priced. No API call."""
+    """What `reply-teacher-check --v2` would send, priced direct, at batch
+    prices and at the pilot's measured rates. No API call."""
     inputs, cached, todo = reply_v2_todo(model, limit, seed)
     eligible = inputs[inputs["has_text"]]
+    est = estimate_direct_cost(todo["prompt"].tolist(), todo["cache_chars"].tolist())
     return {"model": model, "sampled": len(inputs), "no_text": int((~inputs["has_text"]).sum()),
             "with_text": len(eligible), "cached": int(eligible["id"].isin(set(cached["id"])).sum()),
             "todo": len(todo), "cap": settings.REPLY_TEACHER_V2_MAX_CALLS,
             "todo_by_post": {str(k): int(v) for k, v in todo.groupby("tracked_slug").size().items()},
-            **estimate_direct_cost(todo["prompt"].tolist(), todo["cache_chars"].tolist())}
+            **with_pilot_and_batch_prices(est)}
 
 
 def reply_teacher_check_v2(*, model: str = settings.TEACHER_CHECK_MODEL,
@@ -1087,7 +1129,9 @@ def reply_teacher_check_v2(*, model: str = settings.TEACHER_CHECK_MODEL,
     model, effort and max_tokens as v1) into
     teacher_labels_replies_v2_<model>.parquet, then report. Incremental and
     capped (settings.REPLY_TEACHER_V2_MAX_CALLS); the v1 file is not touched.
-    `scorer` ((prompt, cache_chars) -> (score, label)) replaces the API in tests."""
+    `scorer` ((prompt, cache_chars) -> (score, label)) replaces the API in tests.
+    Refuses while a v2 batch is open: it would pay again for the batch's ids."""
+    refuse_open_batch("reply_v2", "a direct run")
     _, cached, todo = reply_v2_todo(model, limit, seed)
     logger.info("reply teacher v2: %d cached, %d to label with %s", len(cached), len(todo), model)
     run_labels(todo, cached, reply_labels_path(model, "v2"), scorer,
@@ -1178,11 +1222,13 @@ def trump_check_todo(n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = setti
 
 def trump_check_estimate(n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
                          seed: int = settings.TEACHER_SAMPLE_SEED, col: str = "score_opus_distilled") -> dict:
-    """What `teacher-check --source trump` would send, priced. No API call."""
+    """What `teacher-check --source trump` would send, priced direct, at batch
+    prices and at the v2 pilot's measured rates. No API call."""
     sample, cached, todo = trump_check_todo(n, model, seed, col)
     return {"model": model, "sample": len(sample),
             "cached": int(sample["id"].isin(set(cached["id"])).sum()), "todo": len(todo),
-            "cap": settings.TRUMP_TEACHER_CHECK_MAX_CALLS, **estimate_direct_cost(todo["prompt"].tolist())}
+            "cap": settings.TRUMP_TEACHER_CHECK_MAX_CALLS,
+            **with_pilot_and_batch_prices(estimate_direct_cost(todo["prompt"].tolist()))}
 
 
 def trump_teacher_check(*, n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
@@ -1193,7 +1239,8 @@ def trump_teacher_check(*, n: int = settings.TRUMP_TEACHER_CHECK_N, model: str =
     into teacher_check_trump_<model>.parquet (incremental, capped by
     settings.TRUMP_TEACHER_CHECK_MAX_CALLS), then report how well `col`
     reproduces it. `scorer` ((prompt, cache_chars) -> (score, label))
-    replaces the API in tests."""
+    replaces the API in tests. Refuses while a Trump batch is open."""
+    refuse_open_batch("trump", "a direct run")
     _, cached, todo = trump_check_todo(n, model, seed, col)
     logger.info("trump teacher check: %d cached, %d to label with %s", len(cached), len(todo), model)
     run_labels(todo, cached, trump_labels_path(model), scorer, cap=settings.TRUMP_TEACHER_CHECK_MAX_CALLS,
@@ -1228,3 +1275,408 @@ def trump_teacher_report(model: str = settings.TEACHER_CHECK_MODEL, col: str = "
               "war_posts": _vs_teacher(war, col), "war_by_phase": by_phase(war)}
     _write_json(settings.PROCESSED_DIR / f"teacher_check_trump_{model.replace('/', '_')}.json", report)
     return report
+
+
+# ── Message Batches transport for the v2 reply and Trump-feed checks ──
+
+# The direct runs' requests (prompt, cached-prefix blocks, model, max_tokens,
+# effort) through the Message Batches API at half price, results within ~1 h.
+# The 2026-10-04 v2 pilot found the prefix cache engaging for one parent post
+# of eight, which put the direct runs at about twice their approval.
+#   submit   one request per id still to label (custom_id = the id), within
+#            the check's cap; state -> teacher_batch_<check>.json
+#   status   poll the batch
+#   collect  judge each answer as run_labels would, add the good ones to the
+#            check's label cache, then write the check's report
+# Each check keeps its own state file, open from just before the create call
+# (status "submitting": a submit killed before it records the batch id still
+# blocks a resend) until a collect has read a result for every submitted id.
+# While it is open a new submit and the direct run refuse, so no id is paid
+# for twice. A short read (a results file cut short, or another batch's) adds
+# its good labels and leaves the batch open for a collect that reads it all.
+# Errored, expired, unparseable and out-of-range answers, and answers to a
+# prompt that has changed since the submit, are not cached: the next submit
+# sends those ids again. A new submit archives the last state as
+# teacher_batch_<check>_<batch id>.json, and a streamed collect keeps the raw
+# results in teacher_batch_<check>_<batch id>_results.jsonl, so answers that
+# are paid for but not kept as labels stay on disk.
+
+BATCH_CUSTOM_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")   # the Batches API's custom_id rule
+
+
+@dataclass(frozen=True)
+class BatchCheck:
+    """What the batch transport needs from a check: its prompt version, the
+    settings name of its cap (read at call time), its label cache, its to-do
+    rows ((model, params, limit) -> (cached labels, rows to label, each with
+    its prompt)) and its report ((model, params) -> report, written)."""
+    prompt_version: str
+    cap_setting: str
+    labels_path: Callable[[str], Path]
+    todo: Callable[[str, dict, int | None], tuple[pd.DataFrame, pd.DataFrame]]
+    report: Callable[[str, dict], dict]
+
+
+def _reply_v2_batch_todo(model: str, params: dict, limit: int | None):
+    _, cached, todo = reply_v2_todo(model, limit, params["seed"])
+    return cached, todo
+
+
+def _trump_batch_todo(model: str, params: dict, limit: int | None):
+    _, cached, todo = trump_check_todo(params["n"], model, params["seed"], params["col"])
+    return cached, todo if limit is None else todo.head(limit)
+
+
+BATCH_CHECKS = {
+    "reply_v2": BatchCheck(REPLY_TEACHER_V2_PROMPT_VERSION, "REPLY_TEACHER_V2_MAX_CALLS",
+                           lambda m: reply_labels_path(m, "v2"), _reply_v2_batch_todo,
+                           lambda m, p: reply_teacher_v2_report(m, p["col"])),
+    "trump": BatchCheck(TRUMP_PROMPT_VERSION, "TRUMP_TEACHER_CHECK_MAX_CALLS",
+                        lambda m: trump_labels_path(m), _trump_batch_todo,
+                        lambda m, p: trump_teacher_report(m, p["col"])),
+}
+
+
+def _batch_client():
+    """Anthropic client with the project's .env loaded (relabel's)."""
+    from src.analysis.relabel import _client
+    return _client()
+
+
+def batch_state_path(check: str) -> Path:
+    if check not in BATCH_CHECKS:
+        raise ValueError(f"no batch check {check!r}: one of {', '.join(BATCH_CHECKS)}")
+    return settings.PROCESSED_DIR / f"teacher_batch_{check}.json"
+
+
+def batch_archive_path(check: str, batch_id: str, suffix: str = ".json") -> Path:
+    """teacher_batch_<check>_<batch id>.json, a past batch's state, or with
+    suffix "_results.jsonl" its raw results."""
+    return batch_state_path(check).with_name(f"teacher_batch_{check}_{batch_id}{suffix}")
+
+
+def read_batch_state(check: str) -> dict | None:
+    path = batch_state_path(check)
+    return json.loads(path.read_text()) if path.exists() else None
+
+
+def open_batch(check: str) -> dict | None:
+    """The check's batch state from just before its create call until a
+    collect has read every submitted id's result, else None."""
+    st = read_batch_state(check)
+    return st if st and st.get("status") != "collected" else None
+
+
+def open_batch_message(check: str, st: dict, doing: str) -> str:
+    """Why `doing` has to wait for the open batch, and what to do."""
+    name = batch_state_path(check).name
+    if not st.get("batch_id"):
+        return (f"{check}: the submit at {st.get('submitted_at')} of {st.get('n_submitted')} "
+                f"requests stopped before it recorded a batch id, so {doing} could pay again for "
+                f"them. If the Console's Batches page lists a batch created then with that many "
+                f'requests, set "batch_id" to its id and "status" to "in_progress" in {name}, '
+                f"then --batch collect; if it lists none, delete {name}.")
+    short = st.get("short_read")
+    left = f" ({short['missing']} submitted ids without a result yet)" if short else ""
+    return (f"{check} batch {st['batch_id']} is {st['status']} and not collected{left}: "
+            f"{doing} would pay again for its ids. Collect it first ({name})")
+
+
+def refuse_open_batch(check: str, doing: str) -> None:
+    st = open_batch(check)
+    if st:
+        raise RuntimeError(open_batch_message(check, st, doing))
+
+
+def _submitted_state(check: str) -> dict:
+    """The check's state with its batch id, read before any client is made,
+    so 'no batch' needs no API key to be said."""
+    st = read_batch_state(check)
+    if not st:
+        raise FileNotFoundError(f"no {check} batch submitted ({batch_state_path(check).name})")
+    if not st.get("batch_id"):
+        raise RuntimeError(open_batch_message(check, st, "a new submit"))
+    return st
+
+
+def prompt_sha(prompt: str) -> str:
+    """A short fingerprint of a prompt: collect checks that the row's prompt
+    is still the one its answer was given to."""
+    return hashlib.sha256(prompt.encode()).hexdigest()[:16]
+
+
+def build_batch_requests(todo: pd.DataFrame, model: str, max_tokens: int, effort: str) -> list:
+    """One request per to-do row, custom_id = its id, with the user content
+    (prompt_content: the cached-prefix blocks when cache_chars is set),
+    model, max_tokens and effort that score_prompt sends for it directly."""
+    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+    from anthropic.types.messages.batch_create_params import Request
+
+    ids = todo["id"].astype(str)
+    bad = ~ids.map(lambda i: bool(BATCH_CUSTOM_ID.match(i))).astype(bool)
+    if bad.any():
+        raise ValueError(f"{int(bad.sum())} ids are not valid batch custom_ids "
+                         f"({BATCH_CUSTOM_ID.pattern})")
+    if ids.duplicated().any():
+        raise ValueError(f"{int(ids.duplicated().sum())} ids appear twice in the to-do rows")
+    cache_chars = todo["cache_chars"].tolist() if "cache_chars" in todo else [0] * len(todo)
+    reqs = []
+    for i, prompt, c in zip(ids, todo["prompt"], cache_chars):
+        params = MessageCreateParamsNonStreaming(
+            model=model, max_tokens=max_tokens,
+            messages=[{"role": "user", "content": prompt_content(prompt, int(c))}])
+        if effort:
+            params["output_config"] = {"effort": effort}
+        reqs.append(Request(custom_id=i, params=params))
+    return reqs
+
+
+def _api_refused(e: Exception) -> bool:
+    """The API answered the create call with a client error (4xx): no batch
+    was made. A timeout, a dropped connection or a 5xx leaves that unknown."""
+    import anthropic
+    return isinstance(e, anthropic.APIStatusError) and e.status_code < 500
+
+
+def teacher_batch_submit(check: str, *, params: dict, model: str = settings.TEACHER_CHECK_MODEL,
+                         max_tokens: int = settings.TEACHER_MAX_TOKENS,
+                         effort: str = settings.TEACHER_EFFORT, limit: int | None = None,
+                         client=None) -> dict | None:
+    """Submit the check's rows still to label (cached ids are never sent)
+    as one batch and record it. Refuses while the check's last batch is
+    open, and over the check's cap, before any call. `params` fixes what
+    collect recomputes the to-do rows and the report from (seed, col, and n
+    for the Trump sample). The state is written as "submitting" before the
+    create call and kept if the call dies without an answer, so a batch the
+    API made is never silently orphaned; the last collected state is
+    archived first. Returns the new state, or None when every row is
+    labelled and nothing was sent."""
+    spec = BATCH_CHECKS[check]
+    refuse_open_batch(check, "a new batch")
+    _, todo = spec.todo(model, params, limit)
+    _refuse_over_cap(len(todo), getattr(settings, spec.cap_setting))
+    if todo.empty:
+        logger.info("teacher batch %s: nothing to submit, every row is labelled", check)
+        return None
+    reqs = build_batch_requests(todo, model, max_tokens, effort)
+    client = client or _batch_client()
+    path, prev = batch_state_path(check), read_batch_state(check)
+    if prev and prev.get("batch_id"):
+        _write_json(batch_archive_path(check, prev["batch_id"]), prev)
+    ids = todo["id"].astype(str).tolist()
+    st = {"check": check, "batch_id": None, "status": "submitting",
+          "submitted_at": pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"),
+          "model": model, "max_tokens": max_tokens, "effort": effort,
+          "prompt_version": spec.prompt_version, "params": params, "limit": limit,
+          "labels_file": spec.labels_path(model).name, "n_submitted": len(reqs), "ids": ids,
+          "prompt_sha256": dict(zip(ids, todo["prompt"].map(prompt_sha)))}
+    _write_json(path, st)
+    try:
+        batch = client.messages.batches.create(requests=reqs)
+    except Exception as e:
+        if _api_refused(e):
+            if prev:
+                _write_json(path, prev)
+            else:
+                path.unlink(missing_ok=True)
+        else:
+            logger.error("teacher batch %s: the create call failed without an answer (%s); %s",
+                         check, type(e).__name__, open_batch_message(check, st, "a new submit"))
+        raise
+    st.update(batch_id=batch.id, status=batch.processing_status)
+    _write_json(path, st)
+    logger.info("teacher batch %s: submitted %s with %d requests", check, batch.id, len(reqs))
+    return st
+
+
+def teacher_batch_status(check: str, client=None) -> dict:
+    """Poll the check's batch into its state file (no call once collected)."""
+    st = _submitted_state(check)
+    if st["status"] == "collected":
+        return st
+    b = (client or _batch_client()).messages.batches.retrieve(st["batch_id"])
+    st["status"] = b.processing_status
+    st["counts"] = {k: int(getattr(b.request_counts, k)) for k in
+                    ("processing", "succeeded", "errored", "canceled", "expired")}
+    _write_json(batch_state_path(check), st)
+    return st
+
+
+def parse_batch_result(result) -> tuple[str, str, float | None, str | None]:
+    """(id, outcome, score, label) for one batch result, judged as run_labels
+    judges a direct answer: a finite score in [-1, 1], with the model's label
+    when it is one of TEACHER_LABELS, else the score's sign. outcome is the
+    API's (succeeded, errored, canceled, expired), or unparseable / out_of_range
+    for an answer that is not kept."""
+    from src.analysis.sentiment import parse_llm_json
+
+    rid, outcome = str(result.custom_id), result.result.type
+    if outcome != "succeeded":
+        return rid, outcome, None, None
+    text = next((b.text for b in result.result.message.content
+                 if getattr(b, "type", "") == "text"), "")
+    data = parse_llm_json(text)
+    sc = data.get("score") if isinstance(data, dict) else None
+    if not isinstance(sc, (int, float)):
+        return rid, "unparseable", None, None
+    if not valid_score(sc):
+        return rid, "out_of_range", None, None
+    return rid, outcome, float(sc), _label(sc, data.get("label"))
+
+
+def _result_record(result) -> dict:
+    """One streamed result as a results-JSONL line, keeping what this module
+    reads (the text blocks and the usage), so read_batch_results reads it back."""
+    res = result.result
+    out = {"custom_id": str(result.custom_id), "result": {"type": res.type}}
+    if res.type == "succeeded":
+        msg = res.message
+        usage = getattr(msg, "usage", None)
+        out["result"]["message"] = {
+            "content": [{"type": "text", "text": b.text} for b in msg.content
+                        if getattr(b, "type", "") == "text"],
+            "usage": ({f: int(getattr(usage, f, 0) or 0) for f in Spend.FIELDS}
+                      if usage is not None else None)}
+    return out
+
+
+def write_batch_results(results: list, path: Path) -> None:
+    """The results as a results JSONL (temp file, then rename)."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text("".join(json.dumps(_result_record(r)) + "\n" for r in results))
+    os.replace(tmp, path)
+
+
+def read_batch_results(path: Path) -> list:
+    """Results from a results JSONL (downloaded with `curl -C -` on the
+    batch's results_url when the SDK stream breaks, or kept by a streamed
+    collect), shaped like the SDK objects, usage included so the spend is
+    counted. A line that does not parse (a download cut mid-line) is skipped
+    with a warning: its id counts as missing, which keeps the batch open."""
+    from types import SimpleNamespace as NS
+
+    out, bad = [], 0
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            r = json.loads(line)
+            cid, res = r["custom_id"], r["result"]
+            kind = res["type"]
+        except (json.JSONDecodeError, KeyError, TypeError):
+            bad += 1
+            continue
+        msg = res.get("message") or {}
+        content = [NS(type=b.get("type"), text=b.get("text", "")) for b in msg.get("content", [])]
+        usage = NS(**msg["usage"]) if msg.get("usage") else None
+        out.append(NS(custom_id=cid, result=NS(type=kind, message=NS(content=content, usage=usage))))
+    if bad:
+        logger.warning("%s: %d lines that do not parse were skipped", path.name, bad)
+    return out
+
+
+def teacher_batch_collect(check: str, *, client=None,
+                          results_file: Path | None = None) -> tuple[dict, dict | None]:
+    """Once the check's batch has ended, add its good answers to the check's
+    label cache (the direct run's file, columns and prompt version) and,
+    when the read held a result for every submitted id, mark the batch
+    collected and write the check's report from the whole cache. A short
+    read adds its good labels, records what is missing under "short_read"
+    and leaves the batch open (report None): collect again from the stream
+    or the whole file. Results for ids not submitted, already cached, no
+    longer to label, or whose prompt changed since the submit are ignored
+    and logged. A collected batch only gets its report rebuilt, with no
+    call. Returns (state, report), report None while the batch is open.
+    `results_file` reads a results JSONL instead of the stream; a streamed
+    read is kept as one (batch_archive_path)."""
+    from src.analysis.relabel import BATCH_DISCOUNT
+
+    spec = BATCH_CHECKS[check]
+    st = _submitted_state(check)
+    if st["status"] == "collected":
+        logger.info("teacher batch %s: %s already collected; rebuilding the report",
+                    check, st["batch_id"])
+        return st, spec.report(st["model"], st["params"])
+    client = client or _batch_client()
+    st = teacher_batch_status(check, client)
+    if st["status"] != "ended":
+        logger.info("teacher batch %s: %s still %s (%s)",
+                    check, st["batch_id"], st["status"], st.get("counts"))
+        return st, None
+    if st["prompt_version"] != spec.prompt_version:
+        raise ValueError(f"batch {st['batch_id']} was built with prompt {st['prompt_version']}, "
+                         f"not {spec.prompt_version}: its labels do not belong in this cache")
+    model, out = st["model"], spec.labels_path(st["model"])
+    cached, todo = spec.todo(model, st["params"], None)
+    now_sha = dict(zip(todo["id"].astype(str), todo["prompt"].map(prompt_sha)))
+    sent_sha = st.get("prompt_sha256", {})
+    keep = todo.drop(columns=[c for c in ("prompt", "cache_chars") if c in todo])
+    rows_by_id = {str(r["id"]): r for r in keep.to_dict("records")}   # in to-do order
+    submitted, have = set(st["ids"]), set(cached["id"].astype(str))
+    if results_file is not None:
+        results = read_batch_results(Path(results_file))
+    else:
+        results = list(client.messages.batches.results(st["batch_id"]))
+        write_batch_results(results, batch_archive_path(check, st["batch_id"], "_results.jsonl"))
+    spend, no_usage = Spend(), 0
+    answered: set[str] = set()
+    new: dict[str, dict] = {}
+    failed: dict[str, int] = {}
+    ignored = {"not_submitted": 0, "already_cached": 0, "repeated": 0, "no_longer_to_label": 0,
+               "prompt_changed": 0}
+    for r in results:
+        rid, outcome, sc, lab = parse_batch_result(r)
+        if rid not in submitted:
+            ignored["not_submitted"] += 1       # another batch's result: not billed to this one
+            continue
+        if rid in answered:
+            ignored["repeated"] += 1
+            continue
+        answered.add(rid)
+        if r.result.type == "succeeded":        # billed, kept or not
+            usage = getattr(r.result.message, "usage", None)
+            if usage is None:
+                no_usage += 1
+            else:
+                spend.add(usage)
+        if rid in have:
+            ignored["already_cached"] += 1      # e.g. an earlier short read
+        elif rid not in rows_by_id:
+            ignored["no_longer_to_label"] += 1  # left the sample since the submit
+        elif rid in sent_sha and sent_sha[rid] != now_sha[rid]:
+            ignored["prompt_changed"] += 1      # its text changed since the submit
+        elif sc is None:
+            failed[outcome] = failed.get(outcome, 0) + 1
+        else:
+            new[rid] = {**rows_by_id[rid], "score_teacher": sc, "label_teacher": lab}
+    if any(ignored.values()):
+        logger.info("teacher batch %s: ignored results %s",
+                    check, {k: v for k, v in ignored.items() if v})
+    if new:
+        cols = list(keep.columns) + ["score_teacher", "label_teacher"]   # run_labels' columns
+        add = pd.DataFrame([new[i] for i in rows_by_id if i in new], columns=cols)
+        write_parquet_atomic(pd.concat([cached, add], ignore_index=True) if len(cached) else add,
+                             out)
+    read = {"labelled": len(new), "failed": sum(failed.values()), "failed_by_outcome": failed,
+            "ignored": ignored}
+    missing = len(submitted - answered)
+    if missing:
+        st["short_read"] = {**read, "missing": missing, "results_read": len(results),
+                            "source": str(results_file) if results_file is not None else "stream"}
+        _write_json(batch_state_path(check), st)
+        logger.warning("teacher batch %s: %d of %d submitted ids have no result in this read "
+                       "(a results file cut short, or another batch's?); %d labels added -> %s. "
+                       "The batch stays open: collect again from the stream or the whole file",
+                       check, missing, len(submitted), len(new), out)
+        return st, None
+    usd = spend.usd()
+    st.pop("short_read", None)
+    st.update(status="collected", collected=read,
+              spend={**spend.tokens, "calls": spend.calls, "calls_without_usage": no_usage,
+                     "usd_direct": usd, "usd_batch": usd * BATCH_DISCOUNT})
+    _write_json(batch_state_path(check), st)
+    unknown = f"; usage missing for {no_usage} calls (not counted)" if no_usage else ""
+    logger.info("teacher batch %s: %d labels added, %d failed (the next submit sends them "
+                "again) -> %s; %s at direct prices, ≈ $%.2f at batch prices%s", check, len(new),
+                sum(failed.values()), out, spend.summary(), st["spend"]["usd_batch"], unknown)
+    return st, spec.report(model, st["params"])

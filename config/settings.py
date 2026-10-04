@@ -213,6 +213,19 @@ TEACHER_EST_CHARS_PER_TOKEN = 2.0
 # as it is. A run refuses to start with more calls to make than the cap
 # (1,157 sampled replies had text on 2026-10-04).
 REPLY_TEACHER_V2_MAX_CALLS = 1300
+# Measured 2026-10-04: what the 16-call `reply-teacher-check --v2 --limit 16`
+# pilot was billed (its Spend log line) on Opus 5, and the characters of the
+# 16 prompts it sent: ≈ $0.069 at direct-API prices, $0.0043 a call. The
+# prefix cache engaged for one parent post of eight (the rest fell under the
+# cache minimum), so the estimate that caches every shared prefix was too
+# low; the prompts ran 2.8 characters a token, so the characters / 2 guess
+# is high. `--estimate` also prices a run at these rates (input per prompt
+# character, output per call), direct and at batch prices.
+TEACHER_V2_PILOT = {
+    "calls": 16, "prompt_chars": 26_446,
+    "input_tokens": 5_359, "cache_creation_input_tokens": 2_067,
+    "cache_read_input_tokens": 2_067, "output_tokens": 1_119,
+}
 # Which reply labels `reply-population` (and so export-web) weights: "v1"
 # or "v2". Flip only once the v2 run is complete.
 REPLY_TEACHER_LABELS_VERSION = "v1"
