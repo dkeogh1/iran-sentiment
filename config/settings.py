@@ -200,6 +200,29 @@ TEACHER_CHECK_N = 500
 # keeps the thinking short for a one-line classification.
 TEACHER_MAX_TOKENS = 1024
 TEACHER_EFFORT = "low"
+# Dry-run estimates (`--estimate`) count no tokens through the API: a prompt's
+# input tokens are its characters over this. relabel measured 217 input
+# tokens per X post on Opus 5 (2026-09-18), whose llm_prompt averages 460
+# characters: 2.1. Rounded down so the estimate errs high; output tokens
+# use relabel.EST_OUT_TOKENS (86, thinking included).
+TEACHER_EST_CHARS_PER_TOKEN = 2.0
+# Reply relabel v2 (`reply-teacher-check --v2`, 2026-10-04). The v1 reply
+# labels (teacher_labels_replies_<model>.parquet) were made from the first
+# 100 characters of 423 replies, with the broadcaster prompt and no sight of
+# the Trump post replied to; v2 sends the full reply and the post. v1 stays
+# as it is. A run refuses to start with more calls to make than the cap
+# (1,157 sampled replies had text on 2026-10-04).
+REPLY_TEACHER_V2_MAX_CALLS = 1300
+# Which reply labels `reply-population` (and so export-web) weights: "v1"
+# or "v2". Flip only once the v2 run is complete.
+REPLY_TEACHER_LABELS_VERSION = "v1"
+# Trump-feed check (`teacher-check --source trump`): Opus labels on a fixed
+# random sample of Trump's Truth Social posts with text, against the
+# distilled scorer used on his feed. Its 0.88 correlation with Opus was
+# measured on held-out X posts, not on the feed.
+TRUMP_TEACHER_CHECK_N = 400
+TRUMP_TEACHER_CHECK_MAX_CALLS = 500
+TEACHER_SAMPLE_SEED = 42           # --limit pilot order and the Trump sample
 # Distillation: fine-tune an encoder to regress score_llm.
 DISTILL_BASE_MODEL = "roberta-large"
 DISTILL_EPOCHS = 3

@@ -671,17 +671,67 @@ def _load_scored_frame():
     return pd.read_parquet(settings.SENTIMENT_OUTPUT)
 
 
+def _fmt_estimate(est: dict) -> str:
+    cache = ""
+    if est.get("cached_prefix_calls"):
+        cache = (f"; ≈ ${est['usd']:.2f} with the shared prefix cached on "
+                 f"{est['cached_prefix_calls']} calls")
+    return (f"{est['calls']} calls to {est.get('model', settings.TEACHER_CHECK_MODEL)}: "
+            f"~{est['input_tokens']:,} input + ~{est['output_tokens']:,} output tokens "
+            f"≈ ${est['usd_no_cache']:.2f} at direct-API prices{cache} "
+            f"(${est['price_in_per_mtok']:g} / ${est['price_out_per_mtok']:g} per MTok; input "
+            f"tokens = characters / {settings.TEACHER_EST_CHARS_PER_TOKEN:g}; no API call)")
+
+
+def _confirm_paid(n_calls: int, yes: bool) -> bool:
+    """True to go ahead: nothing to pay for, --yes, or the user says so."""
+    if n_calls == 0 or yes:
+        return True
+    if click.confirm("Run?", default=False):
+        return True
+    click.echo("Aborted.")
+    return False
+
+
+def _refuse_over_cap(todo: int, cap: int, fix: str) -> None:
+    """Exit before the prompt when run_labels would refuse the run anyway, so
+    a 'yes' is not answered with a traceback."""
+    if todo > cap:
+        click.secho(f"{todo} calls is over the cap ({cap}): {fix}", fg="red")
+        sys.exit(1)
+
+
 @main.command("teacher-check")
-@click.option("--n", default=settings.TEACHER_CHECK_N, show_default=True,
-              help="Posts to relabel (spread evenly across tiers)")
+@click.option("--source", type=click.Choice(["x", "trump"]), default="x", show_default=True,
+              help="x: Haiku vs the teacher on X posts; trump: the distilled scorer vs the "
+                   "teacher on Trump's Truth Social feed")
+@click.option("--n", type=int, default=None,
+              help=f"Posts to label (default {settings.TEACHER_CHECK_N} for x, spread across "
+                   f"tiers; {settings.TRUMP_TEACHER_CHECK_N} for trump)")
 @click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
-def teacher_check_cmd(n: int, model: str):
-    """Relabel a stratified sample with a stronger Claude model and report
-    disagreement with the Haiku labels (per tier + worst cases). API only."""
-    from src.analysis.stance_local import teacher_check, teacher_report
+@click.option("--estimate", is_flag=True, help="Count and price the calls; no API call")
+@click.option("--yes", is_flag=True,
+              help="(trump) Run without the confirmation prompt; the x check never asks")
+def teacher_check_cmd(source: str, n: int | None, model: str, estimate: bool, yes: bool):
+    """Relabel a sample with a stronger Claude model and report disagreement:
+    with the Haiku labels on X posts (per tier + worst cases), or with the
+    distilled scorer on Trump's own feed (by phase, war posts). API only."""
+    from src.analysis import stance_local as sl
+    if source == "trump":
+        _trump_check(n or settings.TRUMP_TEACHER_CHECK_N, model, estimate, yes)
+        return
+    from src.analysis.sentiment import llm_prompt
+    n = n or settings.TEACHER_CHECK_N
     df = _load_scored_frame()
-    joined = teacher_check(df, n=n, model=model)
-    rep = teacher_report(joined, model)
+    sample, cached, todo = sl.teacher_check_todo(df, n=n, model=model)
+    est = sl.estimate_direct_cost([llm_prompt(t, u) for t, u in zip(todo["text"], todo["user"])])
+    click.echo(f"{len(sample)} sampled, {len(cached)} cached; {_fmt_estimate({**est, 'model': model})}")
+    # No prompt: the k8s teacher-check Job runs this with no stdin, and
+    # starting that Job is the approval (AGENTS.md, paid runs).
+    if estimate:
+        return
+    joined = sl.teacher_check(df, n=n, model=model)
+    rep = sl.teacher_report(joined, model)
     click.echo(f"\nHaiku vs {model} on {len(joined)} posts (ref = Haiku score_llm):")
     click.echo(f"{'tier':22s}{'n':>6s}{'pearson':>9s}{'mae':>7s}{'sign agr':>10s}{'flips':>7s}")
     for r in rep["by_tier"]:
@@ -691,6 +741,33 @@ def teacher_check_cmd(n: int, model: str):
     for w in rep["worst"][:10]:
         click.echo(f"  [{w['tier']}] @{w['user']} haiku={w['score_llm']:+.2f} "
                    f"{model.split('-')[1]}={w['score_teacher']:+.2f} | {w['text']}")
+
+
+def _agreement_row(name: str, r: dict) -> str:
+    return (f"{name:24s}{r['n']:>5d}{r['pearson']:>9.3f}{r['mae']:>7.3f}{r['sign_flip_rate']:>7.1%}"
+            f"{r['mean_teacher']:>+9.3f}{r['mean_model']:>+9.3f}{r['mean_diff']:>+9.3f}")
+
+
+def _trump_check(n: int, model: str, estimate: bool, yes: bool) -> None:
+    """teacher-check --source trump."""
+    from src.analysis import stance_local as sl
+    est = sl.trump_check_estimate(n=n, model=model)
+    click.echo(f"Trump feed: {est['sample']} sampled posts with text, {est['cached']} cached, "
+               f"cap {est['cap']}; {_fmt_estimate(est)}")
+    _refuse_over_cap(est["todo"], est["cap"],
+                     "raise TRUMP_TEACHER_CHECK_MAX_CALLS deliberately or lower --n")
+    if estimate or not _confirm_paid(est["todo"], yes):
+        return
+    rep = sl.trump_teacher_check(n=n, model=model)
+    click.echo(f"\n{rep['col']} vs {model} on {rep['n']} Trump posts "
+               f"(mean diff = model - teacher; war posts by topic={rep['topic_source']}):")
+    click.echo(f"{'':24s}{'n':>5s}{'pearson':>9s}{'mae':>7s}{'flips':>7s}{'teacher':>9s}{'model':>9s}{'diff':>9s}")
+    click.echo(_agreement_row("all posts", rep["all"]))
+    for r in rep["by_phase"]:
+        click.echo(_agreement_row(f"  {r['phase']}", r))
+    click.echo(_agreement_row("war posts", rep["war_posts"]))
+    for r in rep["war_by_phase"]:
+        click.echo(_agreement_row(f"  {r['phase']}", r))
 
 
 @main.command("stance-distill")
@@ -892,13 +969,19 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
 @main.command("reply-population")
 @click.option("--col", default="score_opus_distilled", show_default=True)
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
-def reply_population_cmd(col: str, n_boot: int):
+@click.option("--labels", "labels_version", type=click.Choice(["v1", "v2"]),
+              default=settings.REPLY_TEACHER_LABELS_VERSION, show_default=True,
+              help="Reply teacher labels to weight (settings.REPLY_TEACHER_LABELS_VERSION)")
+def reply_population_cmd(col: str, n_boot: int, labels_version: str):
     """Opus stance of each tracked post's whole reply audience, estimated from
     the Opus-labelled reply sample: direct (weighted sample) and model-assisted
-    (distilled census + weighted correction), with bootstrap CIs. No API."""
+    (distilled census + weighted correction), with bootstrap CIs. No API.
+    The CSV name carries the label version past v1."""
     from src.analysis.inference import reply_population
-    rp = reply_population(col=col, n_boot=n_boot)
-    rp.to_csv(settings.PROCESSED_DIR / f"reply_population_{col}.csv", index=False)
+    rp = reply_population(col=col, n_boot=n_boot, labels_version=labels_version)
+    suffix = "" if labels_version == "v1" else f"_{labels_version}"
+    rp.to_csv(settings.PROCESSED_DIR / f"reply_population_{col}{suffix}.csv", index=False)
+    click.echo(f"Opus labels: {labels_version}")
     click.echo(f"\n{'post':20s}{'replies':>8s}{'lab':>5s}  {'model mean':>10s}  {'Opus-corrected mean':24s}"
                f"{'model pro':>10s}  {'corrected pro':24s}{'model anti':>11s}  {'corrected anti'}")
     for _, r in rp.iterrows():
@@ -1003,9 +1086,58 @@ def score_posts_cmd(inputs, out: str, model_dir: str | None, col: str, max_len: 
 @click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
 @click.option("--col", default="score_opus_distilled", show_default=True,
               help="Reply column to test against the teacher")
-def reply_teacher_check_cmd(model: str, col: str):
-    """Relabel the 992-reply stance sample with the teacher and report how well
-    the distilled reply scores reproduce it (domain-shift check). API only, ~$2."""
+@click.option("--v2", "v2", is_flag=True,
+              help="Label with the full reply and the Trump post it answers into the v2 file "
+                   "(the v1 labels are left as they are)")
+@click.option("--estimate", is_flag=True, help="(--v2) Count and price the calls; no API call")
+@click.option("--limit", type=click.IntRange(min=1), default=None,
+              help="(--v2) Pilot: label only the first N replies still to do, dealt across posts")
+@click.option("--yes", is_flag=True, help="(--v2) Run without the confirmation prompt")
+def reply_teacher_check_cmd(model: str, col: str, v2: bool, estimate: bool, limit: int | None, yes: bool):
+    """Relabel the reply stance sample with the teacher and report how well
+    the distilled reply scores reproduce it (domain-shift check). API only.
+    v1 (default) is the broadcaster prompt on the stored first 100 characters;
+    --v2 sends the full reply with its parent post and compares with v1."""
+    if not v2:
+        if estimate or limit or yes:
+            raise click.UsageError("--estimate, --limit and --yes go with --v2")
+        _reply_teacher_v1(model, col)
+        return
+    from src.analysis import stance_local as sl
+    est = sl.reply_teacher_v2_estimate(model=model, limit=limit)
+    click.echo(f"reply sample: {est['sampled']} replies, {est['no_text']} without text (skipped), "
+               f"{est['with_text']} with text, {est['cached']} cached in v2; cap {est['cap']}")
+    click.echo(f"to do by post: {est['todo_by_post']}")
+    click.echo(_fmt_estimate(est))
+    _refuse_over_cap(est["todo"], est["cap"],
+                     "raise REPLY_TEACHER_V2_MAX_CALLS deliberately or use --limit")
+    if estimate or not _confirm_paid(est["todo"], yes):
+        return
+    rep = sl.reply_teacher_check_v2(model=model, col=col, limit=limit)
+    if not rep["n"]:
+        click.secho("no v2 labels yet (every call failed?)", fg="yellow")
+        return
+    d, v = rep["distilled_vs_teacher"], rep["roberta_valence_vs_teacher"]
+    click.echo(f"\n{col} vs {model} v2 labels on {rep['n']} replies: pearson {d['pearson']:.3f}, "
+               f"sign agr {d['sign_agreement']:.1%}, flips {d['sign_flip_rate']:.1%}")
+    click.echo(f"RoBERTa valence vs v2 (same rows): pearson {v['pearson']:.3f}, "
+               f"sign agr {v['sign_agreement']:.1%}, flips {v['sign_flip_rate']:.1%}")
+    if "v1_vs_v2" in rep:
+        a = rep["v1_vs_v2"]
+        click.echo(f"v1 vs v2 labels on {a['n']} replies: pearson {a['pearson']:.3f}, "
+                   f"sign agr {a['sign_agreement']:.1%}, flips {a['sign_flip_rate']:.1%}")
+        for r in rep["v1_vs_v2_by_input"]:
+            click.echo(f"  v1 saw the {r['v1_input']}: n {r['n']}, pearson {r['pearson']:.3f}, "
+                       f"flips {r['sign_flip_rate']:.1%}")
+        click.echo(f"\n{'post':22s}{'n':>5s}{'v1 mean':>9s}{'v2 mean':>9s}{'v1 pro':>8s}{'v2 pro':>8s}"
+                   f"{'v1 anti':>9s}{'v2 anti':>9s}")
+        for r in rep["v1_vs_v2_by_post"]:
+            click.echo(f"{r['post']:22s}{r['n']:>5d}{r['v1_mean']:>+9.3f}{r['v2_mean']:>+9.3f}"
+                       f"{r['v1_pro']:>8.0%}{r['v2_pro']:>8.0%}{r['v1_anti']:>9.0%}{r['v2_anti']:>9.0%}")
+
+
+def _reply_teacher_v1(model: str, col: str) -> None:
+    """reply-teacher-check without --v2: the 2026-09 run, unchanged."""
     from src.analysis.stance_local import reply_teacher_check
     rep = reply_teacher_check(model=model, col=col)
     d, v = rep["distilled_vs_teacher"], rep["roberta_valence_vs_teacher"]

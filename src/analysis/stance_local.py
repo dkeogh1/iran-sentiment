@@ -14,14 +14,23 @@ Stance-model experiments that run on the GPU node (k8s Jobs, see k8s/README.md):
   score_replies   score every cached reply with the distilled model so the
                   reply analysis has population-level stance, not a sample.
 
+Teacher checks on the host (direct API, no GPU): reply_teacher_check (v1,
+broadcaster prompt) and reply_teacher_check_v2 (the full reply with the
+Trump post it answers), and trump_teacher_check (Opus on a sample of
+Trump's feed against the distilled scorer used there). Each has an
+estimate that makes no call.
+
 All heavy imports are local to the functions so the CPU-only CLI on dkbl1
 imports this module without torch/transformers being present.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import math
+import os
 import re
 from pathlib import Path
 
@@ -105,6 +114,23 @@ def _write_json(path: Path, obj: dict) -> None:
 
 # ── 1. Teacher check (API, no GPU) ─────────────────────────────────
 
+def teacher_check_todo(df: pd.DataFrame, *, n: int = settings.TEACHER_CHECK_N,
+                       model: str = settings.TEACHER_CHECK_MODEL, seed: int = settings.DISTILL_SEED,
+                       out_dir: Path | None = None) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """(sample, cached labels, posts still to label) for teacher_check, so
+    --estimate can price the run without making it."""
+    out_dir = out_dir or settings.PROCESSED_DIR
+    out = out_dir / f"teacher_check_{model.replace('/', '_')}.parquet"
+    base = training_frame(df)
+    sample = stratified_sample(base, n, seed)
+    cached = pd.read_parquet(out) if out.exists() else pd.DataFrame()
+    if not cached.empty:
+        cached = cached[cached["score_teacher"].notna()]  # failed calls are retried
+    have = set(cached["id"].astype(str)) if not cached.empty else set()
+    todo = sample[~sample["id"].astype(str).isin(have)]
+    return sample, cached, todo
+
+
 def teacher_check(df: pd.DataFrame, *, n: int = settings.TEACHER_CHECK_N,
                   model: str = settings.TEACHER_CHECK_MODEL,
                   seed: int = settings.DISTILL_SEED, concurrency: int = settings.LLM_CONCURRENCY,
@@ -119,15 +145,9 @@ def teacher_check(df: pd.DataFrame, *, n: int = settings.TEACHER_CHECK_N,
 
     out_dir = out_dir or settings.PROCESSED_DIR
     out = out_dir / f"teacher_check_{model.replace('/', '_')}.parquet"
-    base = training_frame(df)
-    sample = stratified_sample(base, n, seed)
-    cached = pd.read_parquet(out) if out.exists() else pd.DataFrame()
-    if not cached.empty:
-        cached = cached[cached["score_teacher"].notna()]  # failed calls are retried
-    have = set(cached["id"].astype(str)) if not cached.empty else set()
-    todo = sample[~sample["id"].astype(str).isin(have)]
+    sample, cached, todo = teacher_check_todo(df, n=n, model=model, seed=seed, out_dir=out_dir)
     logger.info("teacher check: %d sampled, %d cached, %d to score with %s",
-                len(sample), len(have), len(todo), model)
+                len(sample), len(cached), len(todo), model)
 
     results = []
     with ThreadPoolExecutor(max_workers=concurrency) as ex:
@@ -667,3 +687,544 @@ def reply_label_frame(model: str = settings.TEACHER_CHECK_MODEL, label_col: str 
     return pd.DataFrame({"id": j["id"], "text": j["text"], "user": j["user"],
                          "tier": "reply_" + j["tracked_slug"].astype(str), label_col: j["score_teacher"]})
 
+
+
+# ── Teacher-label runs on the host: cache, cap, estimate ───────────
+
+TEACHER_LABELS = ("negative", "neutral", "positive")
+
+
+def valid_score(sc) -> bool:
+    """A finite number in [-1, 1]; a bool is not one (True would parse as 1)."""
+    return (isinstance(sc, (int, float)) and not isinstance(sc, bool)
+            and math.isfinite(sc) and -1.0 <= sc <= 1.0)
+
+
+def _label(sc: float, lab) -> str:
+    """The model's label when it gave one of ours, else the score's sign."""
+    if lab in TEACHER_LABELS:
+        return lab
+    return "positive" if sc > NEUTRAL_BAND else "negative" if sc < -NEUTRAL_BAND else "neutral"
+
+
+def write_parquet_atomic(df: pd.DataFrame, path: Path) -> None:
+    """Temp file, then rename: a run killed mid-write leaves the old cache whole."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+
+
+# Prompt caching on the Claude API: a 5-minute cache write costs 1.25x the
+# input price, a read 0.1x; Opus 5 caches prefixes of 512 tokens or more.
+CACHE_WRITE_MULT, CACHE_READ_MULT = 1.25, 0.1
+CACHE_MIN_TOKENS = 512
+
+
+def _est_tokens(chars: int) -> int:
+    return math.ceil(chars / settings.TEACHER_EST_CHARS_PER_TOKEN)
+
+
+def estimate_direct_cost(prompts: list[str], cache_chars: list[int] | None = None,
+                         concurrency: int = settings.LLM_CONCURRENCY) -> dict:
+    """Dollars for one direct-API call per prompt, making none: input tokens
+    from the prompt's characters (settings.TEACHER_EST_CHARS_PER_TOKEN),
+    output tokens per call and $/MTok from relabel (Opus 5 list prices,
+    without relabel's batch discount). usd counts a prompt's first
+    cache_chars characters as a cached prefix when it reaches
+    CACHE_MIN_TOKENS, in the order given: a call reads it once a call sharing
+    it started `concurrency` places earlier (done by then), else writes it.
+    usd_no_cache is the ceiling."""
+    from src.analysis.relabel import EST_OUT_TOKENS, PRICE_IN, PRICE_OUT
+
+    cache_chars = cache_chars if cache_chars is not None else [0] * len(prompts)
+    tin = sum(_est_tokens(len(p)) for p in prompts)
+    tout = EST_OUT_TOKENS * len(prompts)
+    first: dict[str, int] = {}         # prefix -> place of the first call that sent it
+    billed = 0.0                       # input tokens at the full input price
+    cached_calls = 0
+    for i, (p, c) in enumerate(zip(prompts, cache_chars)):
+        pre = _est_tokens(c) if c else 0
+        if pre < CACHE_MIN_TOKENS:
+            billed += _est_tokens(len(p))
+            continue
+        start = first.setdefault(p[:c], i)
+        mult = CACHE_READ_MULT if i - start >= concurrency else CACHE_WRITE_MULT
+        billed += pre * mult + _est_tokens(len(p) - c)
+        cached_calls += 1
+    return {"calls": len(prompts), "input_tokens": tin, "output_tokens": tout,
+            "cached_prefix_calls": cached_calls,
+            "usd": (billed * PRICE_IN + tout * PRICE_OUT) / 1e6,
+            "usd_no_cache": (tin * PRICE_IN + tout * PRICE_OUT) / 1e6,
+            "price_in_per_mtok": PRICE_IN, "price_out_per_mtok": PRICE_OUT}
+
+
+class Spend:
+    """Tokens the API billed across a run's calls (added from worker
+    threads), priced like estimate_direct_cost, so a pilot shows what a call
+    really costs and whether the prefix cache engaged."""
+
+    FIELDS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
+              "output_tokens")
+
+    def __init__(self):
+        import threading
+        self._lock = threading.Lock()
+        self.calls = 0
+        self.tokens = dict.fromkeys(self.FIELDS, 0)
+
+    def add(self, usage) -> None:
+        with self._lock:
+            self.calls += 1
+            for f in self.FIELDS:
+                self.tokens[f] += int(getattr(usage, f, 0) or 0)
+
+    def usd(self) -> float:
+        from src.analysis.relabel import PRICE_IN, PRICE_OUT
+        t = self.tokens
+        billed_in = (t["input_tokens"] + t["cache_creation_input_tokens"] * CACHE_WRITE_MULT
+                     + t["cache_read_input_tokens"] * CACHE_READ_MULT)
+        return (billed_in * PRICE_IN + t["output_tokens"] * PRICE_OUT) / 1e6
+
+    def summary(self) -> str:
+        t = self.tokens
+        return (f"{self.calls} calls billed: {t['input_tokens']:,} input, "
+                f"{t['cache_creation_input_tokens']:,} cache-write, "
+                f"{t['cache_read_input_tokens']:,} cache-read, {t['output_tokens']:,} output tokens "
+                f"≈ ${self.usd():.2f}")
+
+
+def _teacher_scorer(model: str, max_tokens: int, effort: str):
+    """(prompt, cache_chars) -> (score, label) through the API, the first
+    cache_chars characters sent as a cached block; `call.spend` tallies the
+    tokens billed. Without a key every call would come back empty and the
+    run would look like a run of failures, so it stops here instead."""
+    from dotenv import load_dotenv
+
+    from src.analysis.sentiment import score_prompt
+    load_dotenv(settings.PROJECT_ROOT / ".env", override=True)  # host runs need the key
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise RuntimeError("ANTHROPIC_API_KEY is not set (.env)")
+    spend = Spend()
+
+    def call(prompt: str, cache_chars: int = 0):
+        return score_prompt(prompt_content(prompt, cache_chars), model, max_tokens, effort,
+                            on_usage=spend.add)
+    call.spend = spend
+    return call
+
+
+def prompt_content(prompt: str, cache_chars: int = 0):
+    """The user message content: the plain prompt, or two text blocks with a
+    cache breakpoint after the shared prefix. The model reads the same text."""
+    if not cache_chars:
+        return prompt
+    return [{"type": "text", "text": prompt[:cache_chars], "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": prompt[cache_chars:]}]
+
+
+def read_label_cache(path: Path, prompt_version: str | None = None) -> pd.DataFrame:
+    """A label cache (empty frame if none yet). Refuses a cache written with
+    another prompt: a new prompt gets a new file, never a mixed one."""
+    if not path.exists():
+        return pd.DataFrame(columns=["id", "score_teacher", "label_teacher"])
+    cached = pd.read_parquet(path)
+    cached["id"] = cached["id"].astype(str)
+    if prompt_version and "prompt_version" in cached:
+        other = sorted(set(cached["prompt_version"].dropna()) - {prompt_version})
+        if other:
+            raise ValueError(f"{path.name} holds labels from prompt {', '.join(other)}, "
+                             f"not {prompt_version}: give the new prompt its own file")
+    return cached
+
+
+def run_labels(todo: pd.DataFrame, cached: pd.DataFrame, out: Path, scorer=None, *, cap: int,
+               model: str = settings.TEACHER_CHECK_MODEL, max_tokens: int = settings.TEACHER_MAX_TOKENS,
+               effort: str = settings.TEACHER_EFFORT, concurrency: int = settings.LLM_CONCURRENCY,
+               save_every: int = settings.LLM_SAVE_EVERY_N) -> pd.DataFrame:
+    """Send todo["prompt"] (with todo["cache_chars"] when present) to `scorer`
+    (default: `model` through the API) and add the good labels to the cache
+    at `out`: todo's columns less the prompt, plus score_teacher /
+    label_teacher. Refuses before any call when todo holds more than `cap`
+    rows. Saves every `save_every` completions and on the way out (Ctrl-C
+    included, queued calls cancelled), so a killed run keeps what it paid
+    for. Failed, unparseable or out-of-range answers are not saved: the next
+    run retries them. Logs the tokens billed when the scorer tallies them
+    (the API scorer does). Returns the whole cache."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    if len(todo) > cap:
+        raise RuntimeError(f"{len(todo)} calls to make, over the cap of {cap} in config/settings.py: "
+                           "raise it deliberately, or run a pilot with --limit")
+    if todo.empty:
+        return cached
+    scorer = scorer or _teacher_scorer(model, max_tokens, effort)
+    sent = ["prompt", "cache_chars"]
+    records = todo.drop(columns=[c for c in sent if c in todo]).to_dict("records")
+    cols = [c for c in todo.columns if c not in sent] + ["score_teacher", "label_teacher"]
+    cache_chars = todo["cache_chars"].tolist() if "cache_chars" in todo else [0] * len(todo)
+    rows: list[dict] = []
+    failed = 0
+
+    def save() -> pd.DataFrame:
+        new = pd.DataFrame(rows, columns=cols)
+        frame = pd.concat([cached, new], ignore_index=True) if len(cached) else new
+        if len(frame):
+            write_parquet_atomic(frame, out)
+        return frame
+
+    ex = ThreadPoolExecutor(max_workers=concurrency)
+    try:
+        futs = {ex.submit(scorer, p, int(c)): i
+                for i, (p, c) in enumerate(zip(todo["prompt"], cache_chars))}
+        for k, f in enumerate(as_completed(futs), 1):
+            rec = records[futs[f]]
+            try:
+                sc, lab = f.result()
+            except Exception as e:  # noqa: BLE001 -- one bad call must not sink the run
+                logger.warning("teacher call failed for %s: %s", rec["id"], str(e)[:120])
+                sc, lab = None, None
+            if valid_score(sc):
+                rows.append({**rec, "score_teacher": float(sc), "label_teacher": _label(sc, lab)})
+            else:
+                failed += 1
+                if sc is not None:
+                    logger.warning("teacher score out of range for %s: %r", rec["id"], sc)
+            if k % save_every == 0:
+                save()
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+        frame = save()
+        if getattr(scorer, "spend", None) is not None:
+            logger.info("teacher spend: %s", scorer.spend.summary())
+    logger.info("teacher labels: %d new, %d failed (retried next run) -> %s", len(rows), failed, out)
+    return frame
+
+
+def stratified_order(df: pd.DataFrame, by: str, seed: int) -> pd.DataFrame:
+    """Rows in a seeded random order that deals one row from each group in
+    turn, so the first N rows of a pilot cover every group."""
+    rng = np.random.default_rng(seed)
+    d = df.iloc[rng.permutation(len(df))]
+    rank = d.groupby(by, sort=False).cumcount()
+    return d.assign(_round=rank.values).sort_values("_round", kind="stable").drop(columns="_round")
+
+
+def _vs_teacher(g: pd.DataFrame, col: str) -> dict:
+    """agreement() of `col` against the teacher, plus both means and the
+    mean difference (model minus teacher) on the rows that have both."""
+    ok = g[["score_teacher", col]].dropna()
+    return {**agreement(g["score_teacher"].values, g[col].values),
+            "mean_teacher": float(ok["score_teacher"].mean()) if len(ok) else float("nan"),
+            "mean_model": float(ok[col].mean()) if len(ok) else float("nan"),
+            "mean_diff": float((ok[col] - ok["score_teacher"]).mean()) if len(ok) else float("nan")}
+
+
+def _shares(y: pd.Series) -> dict:
+    """Mean and pro / anti shares (beyond +-NEUTRAL_BAND) of a label column."""
+    return {"mean": float(y.mean()), "pro": float((y > NEUTRAL_BAND).mean()),
+            "anti": float((y < -NEUTRAL_BAND).mean())}
+
+
+# ── Reply relabel v2: the full reply, with the post it answers ─────
+
+# v1 (reply_teacher_check) sent Opus the broadcaster prompt with the
+# reply's first 100 characters (stance_sample keeps only text[:100]) and
+# never showed it the post replied to: replies that only cheer under the
+# ceasefire, hold-off and deal posts came back pro-war about 75% of the
+# time. v2 sends the post and the full reply, asks for the author's
+# position on the war rather than sentiment, and leaves out the author's
+# handle (private individuals; a handle invites a prior about the author).
+# The JSON is the broadcaster prompt's, so parse_llm_json reads it.
+# The reply comes last: everything before it is the same for every reply to
+# a post (~90% of the characters), so it is sent as a cached prefix.
+REPLY_TEACHER_V2_PROMPT_VERSION = "reply-v2-2026-10-04"
+REPLY_TEACHER_V2_PREFIX = (
+    "Below is a post President Trump made on Truth Social, followed by a reply to it "
+    "from another user.\n\n"
+    'Trump\'s post: """{parent}"""\n\n'
+    "What is the reply author's position on the war, meaning U.S. military action "
+    "against Iran? Score it from -1.0 (against: wants peace, de-escalation, a deal, "
+    "or holding off) to +1.0 (for: wants strikes, escalation, or regime change). "
+    "Score 0 when the reply takes no position on the war or its position can't be "
+    "told.\n\n"
+    "Judge the position, not the tone: anger can be for the war, and warmth can be "
+    "against it. A reply that only agrees with or praises the post takes the post's "
+    "position on the war, read in context: praising a decision to strike leans for; "
+    "praising a ceasefire, a deal or holding off leans against. Praise of Trump with "
+    "no bearing on the war is 0.\n\n"
+    "Respond with ONLY valid JSON: "
+    '{{"score": <float from -1.0 (against the war) to 1.0 (for the war)>, '
+    '"label": "<negative|neutral|positive>", '
+    '"reasoning": "<one sentence>"}}\n\n'
+)
+REPLY_TEACHER_V2_SUFFIX = 'Reply: """{reply}"""'
+REPLY_LABEL_VERSIONS = ("v1", "v2")
+
+
+def reply_teacher_v2_prompt(parent: str, reply: str) -> tuple[str, int]:
+    """(prompt, length of its cacheable prefix: everything before the reply)."""
+    prefix = REPLY_TEACHER_V2_PREFIX.format(parent=parent)
+    return prefix + REPLY_TEACHER_V2_SUFFIX.format(reply=reply), len(prefix)
+
+
+def reply_labels_path(model: str = settings.TEACHER_CHECK_MODEL, version: str = "v1") -> Path:
+    """The reply teacher labels: v1 teacher_labels_replies_<model>.parquet,
+    v2 teacher_labels_replies_v2_<model>.parquet."""
+    if version not in REPLY_LABEL_VERSIONS:
+        raise ValueError(f"reply label version {version!r} is not one of {REPLY_LABEL_VERSIONS}")
+    tag = model.replace("/", "_")
+    infix = "" if version == "v1" else f"{version}_"
+    return settings.PROCESSED_DIR / f"teacher_labels_replies_{infix}{tag}.parquet"
+
+
+def tracked_post_texts(slugs, cache_path: Path | None = None) -> dict[str, tuple[str, str]]:
+    """{slug: (post id, text)} for the Trump posts behind tracked slugs,
+    resolved with config/tracked_posts.py against the cached feed. Raises,
+    naming them, for slugs whose post or text can't be found: a reply judged
+    against the wrong post would be a paid wrong label."""
+    from config.tracked_posts import TRACKED_POSTS, resolve_post_ids
+
+    cache_path = cache_path or settings.TRUTH_SOCIAL_RAW_DIR / "realDonaldTrump.jsonl"
+    if not cache_path.exists():
+        raise FileNotFoundError(f"{cache_path} is missing: run collect-truth")
+    slugs = sorted(set(slugs))
+    wanted = [tp for tp in TRACKED_POSTS if tp.slug in slugs]
+    ids = {k: str(v) for k, v in resolve_post_ids(wanted, cache_path).items() if v} if wanted else {}
+    texts: dict[str, str] = {}
+    with open(cache_path) as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if str(r.get("id")) in ids.values():
+                texts[str(r["id"])] = r.get("text")
+    missing = [s for s in slugs if s not in ids or not has_text(texts.get(ids[s]))]
+    if missing:
+        raise LookupError(f"no Trump post text for tracked post(s) {', '.join(missing)} in "
+                          f"{cache_path.name}: pin post_id in config/tracked_posts.py or re-collect")
+    return {s: (ids[s], texts[ids[s]]) for s in slugs}
+
+
+def reply_v2_inputs() -> pd.DataFrame:
+    """Every reply in the stance sample with its full text from
+    reply_sentiment.parquet (the sample keeps text[:100]), a has_text flag
+    on that full text, and for those with text the parent post's text and
+    the v2 prompt (with cache_chars, its cacheable prefix length).
+    input_chars is the reply's length as sent."""
+    from src.analysis.event_study import STANCE_OUTPUT
+
+    smp = pd.read_parquet(STANCE_OUTPUT, columns=["id", "tracked_slug"])
+    smp["id"] = smp["id"].astype(str)
+    smp = smp.drop_duplicates("id")
+    reps = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    reps["id"] = reps["id"].astype(str)
+    keep = ["id", "text"] + (["parent_id"] if "parent_id" in reps else [])
+    reps = reps.loc[reps["id"].isin(set(smp["id"])), keep]
+    reps = reps.drop_duplicates()                    # a few ids were collected twice, identically
+    clash = reps["id"].duplicated(keep=False)
+    if clash.any():
+        raise ValueError(f"{reps.loc[clash, 'id'].nunique()} sampled reply ids have more than one "
+                         f"row with different contents in {settings.REPLY_SENTIMENT_OUTPUT.name}")
+    j = smp.merge(reps, on="id", how="left", indicator=True)
+    lost = j["_merge"] != "both"
+    if lost.any():
+        raise LookupError(f"{int(lost.sum())} sampled replies are not in "
+                          f"{settings.REPLY_SENTIMENT_OUTPUT.name}: their full text is unknown")
+    j = j.drop(columns="_merge")
+    j["has_text"] = j["text"].map(has_text).astype(bool)
+    posts = tracked_post_texts(j.loc[j["has_text"], "tracked_slug"].unique())
+    if "parent_id" in j:
+        pid = j["tracked_slug"].map({s: p for s, (p, _) in posts.items()})
+        off = j["has_text"] & j["parent_id"].notna() & (j["parent_id"].astype(str) != pid)
+        if off.any():
+            raise ValueError("replies whose parent_id is not the tracked post resolved for their "
+                             f"slug: {', '.join(sorted(j.loc[off, 'tracked_slug'].unique()))}")
+    j["parent_text"] = j["tracked_slug"].map({s: t for s, (_, t) in posts.items()})
+    built = [reply_teacher_v2_prompt(p, r) if ok else (None, 0)
+             for p, r, ok in zip(j["parent_text"], j["text"], j["has_text"])]
+    j["prompt"] = [b[0] for b in built]
+    j["cache_chars"] = [b[1] for b in built]
+    j["input_chars"] = j["text"].fillna("").str.len()
+    j["prompt_version"] = REPLY_TEACHER_V2_PROMPT_VERSION
+    return j
+
+
+def reply_v2_todo(model: str = settings.TEACHER_CHECK_MODEL, limit: int | None = None,
+                  seed: int = settings.TEACHER_SAMPLE_SEED) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """(inputs, cached v2 labels, rows still to label). The to-do rows come
+    in stratified_order across posts; `limit` keeps the first N (a pilot)."""
+    inputs = reply_v2_inputs()
+    cached = read_label_cache(reply_labels_path(model, "v2"), REPLY_TEACHER_V2_PROMPT_VERSION)
+    todo = inputs[inputs["has_text"] & ~inputs["id"].isin(set(cached["id"]))]
+    todo = stratified_order(todo, "tracked_slug", seed)
+    if limit is not None:
+        todo = todo.head(limit)
+    return inputs, cached, todo[["id", "tracked_slug", "prompt", "cache_chars", "input_chars",
+                                 "prompt_version"]]
+
+
+def reply_teacher_v2_estimate(model: str = settings.TEACHER_CHECK_MODEL, limit: int | None = None,
+                              seed: int = settings.TEACHER_SAMPLE_SEED) -> dict:
+    """What `reply-teacher-check --v2` would send, priced. No API call."""
+    inputs, cached, todo = reply_v2_todo(model, limit, seed)
+    eligible = inputs[inputs["has_text"]]
+    return {"model": model, "sampled": len(inputs), "no_text": int((~inputs["has_text"]).sum()),
+            "with_text": len(eligible), "cached": int(eligible["id"].isin(set(cached["id"])).sum()),
+            "todo": len(todo), "cap": settings.REPLY_TEACHER_V2_MAX_CALLS,
+            "todo_by_post": {str(k): int(v) for k, v in todo.groupby("tracked_slug").size().items()},
+            **estimate_direct_cost(todo["prompt"].tolist(), todo["cache_chars"].tolist())}
+
+
+def reply_teacher_check_v2(*, model: str = settings.TEACHER_CHECK_MODEL,
+                           max_tokens: int = settings.TEACHER_MAX_TOKENS,
+                           effort: str = settings.TEACHER_EFFORT,
+                           concurrency: int = settings.LLM_CONCURRENCY,
+                           col: str = "score_opus_distilled", limit: int | None = None,
+                           seed: int = settings.TEACHER_SAMPLE_SEED, scorer=None) -> dict:
+    """Label the stance sample's replies with text using the v2 prompt (same
+    model, effort and max_tokens as v1) into
+    teacher_labels_replies_v2_<model>.parquet, then report. Incremental and
+    capped (settings.REPLY_TEACHER_V2_MAX_CALLS); the v1 file is not touched.
+    `scorer` ((prompt, cache_chars) -> (score, label)) replaces the API in tests."""
+    _, cached, todo = reply_v2_todo(model, limit, seed)
+    logger.info("reply teacher v2: %d cached, %d to label with %s", len(cached), len(todo), model)
+    run_labels(todo, cached, reply_labels_path(model, "v2"), scorer,
+               cap=settings.REPLY_TEACHER_V2_MAX_CALLS, model=model, max_tokens=max_tokens,
+               effort=effort, concurrency=concurrency)
+    return reply_teacher_v2_report(model, col)
+
+
+def reply_teacher_v2_report(model: str = settings.TEACHER_CHECK_MODEL,
+                            col: str = "score_opus_distilled") -> dict:
+    """v1's agreement metrics for the v2 labels, plus v1 against v2 on the
+    ids both label: overall, by whether v1 saw the whole reply (100
+    characters or fewer), and per post the mean and pro / anti shares under
+    each. Written to reply_teacher_check_v2_<model>.json."""
+    out = settings.PROCESSED_DIR / f"reply_teacher_check_v2_{model.replace('/', '_')}.json"
+    v2 = read_label_cache(reply_labels_path(model, "v2"))
+    if v2.empty:
+        report = {"model": model, "prompt_version": REPLY_TEACHER_V2_PROMPT_VERSION, "n": 0}
+        _write_json(out, report)
+        return report
+    replies = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    replies["id"] = replies["id"].astype(str)
+    replies = replies.drop_duplicates("id")[["id", col, "score_transformer"]]
+    j = v2.merge(replies, on="id", how="left")
+    j["tier"] = j["tracked_slug"]          # per-post breakdown reuses the per-tier helper
+    report = {"model": model, "prompt_version": REPLY_TEACHER_V2_PROMPT_VERSION, "n": len(j),
+              "distilled_vs_teacher": agreement(j["score_teacher"].values, j[col].values),
+              "roberta_valence_vs_teacher": agreement(j["score_teacher"].values,
+                                                      j["score_transformer"].values),
+              "by_post": agreement_by_tier(j, "score_teacher", col).reset_index().to_dict("records")}
+    v1_path = reply_labels_path(model, "v1")
+    if v1_path.exists():
+        v1 = read_label_cache(v1_path).dropna(subset=["score_teacher"]).drop_duplicates("id")
+        both = j.merge(v1[["id", "score_teacher"]].rename(columns={"score_teacher": "v1"}), on="id")
+        both = both.rename(columns={"score_teacher": "v2"})
+        report["v1_vs_v2"] = agreement(both["v1"].values, both["v2"].values)
+        report["v1_vs_v2_by_input"] = [
+            {"v1_input": name, **agreement(g["v1"].values, g["v2"].values)}
+            for name, g in (("whole reply (<=100 chars)", both[both["input_chars"] <= 100]),
+                            ("first 100 chars only", both[both["input_chars"] > 100]))]
+        rows = []
+        for post, g in [*both.groupby("tracked_slug"), ("ALL", both)]:
+            s1, s2 = _shares(g["v1"]), _shares(g["v2"])
+            rows.append({"post": post, "n": len(g), **{f"v1_{k}": v for k, v in s1.items()},
+                         **{f"v2_{k}": v for k, v in s2.items()}})
+        report["v1_vs_v2_by_post"] = rows
+    _write_json(out, report)
+    return report
+
+
+# ── Trump-feed check: Opus on his own posts vs the distilled scorer ──
+
+TRUMP_PROMPT_VERSION = "llm_prompt"   # the broadcaster prompt the distilled model learnt
+
+
+def trump_labels_path(model: str = settings.TEACHER_CHECK_MODEL) -> Path:
+    return settings.PROCESSED_DIR / f"teacher_check_trump_{model.replace('/', '_')}.parquet"
+
+
+def trump_sample(n: int = settings.TRUMP_TEACHER_CHECK_N, seed: int = settings.TEACHER_SAMPLE_SEED,
+                 col: str = "score_opus_distilled") -> pd.DataFrame:
+    """n of Trump's feed posts with text and a `col` score: those with the
+    smallest seeded hash of their id. A fixed random sample that a growing
+    feed moves only where a new post hashes in, so a rerun relabels little."""
+    df = pd.read_parquet(settings.TRUMP_FEED_STANCE)
+    df["id"] = df["id"].astype(str)
+    d = df[df["text"].map(has_text).astype(bool) & df[col].notna()].drop_duplicates("id")
+    key = d["id"].map(lambda i: hashlib.sha256(f"{seed}:{i}".encode()).hexdigest())
+    return d.assign(_key=key).sort_values("_key").head(n).drop(columns="_key").reset_index(drop=True)
+
+
+def trump_check_todo(n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
+                     seed: int = settings.TEACHER_SAMPLE_SEED,
+                     col: str = "score_opus_distilled") -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """(sample, cached labels, posts still to label), each to-do post with the
+    broadcaster prompt relabel sends (llm_prompt with the feed's handle)."""
+    from src.analysis.sentiment import llm_prompt
+
+    sample = trump_sample(n, seed, col)
+    cached = read_label_cache(trump_labels_path(model), TRUMP_PROMPT_VERSION)
+    todo = sample[~sample["id"].isin(set(cached["id"]))]
+    todo = pd.DataFrame({"id": todo["id"],
+                         "prompt": [llm_prompt(t, u) for t, u in zip(todo["text"], todo["user"])],
+                         "input_chars": todo["text"].str.len(),
+                         "prompt_version": TRUMP_PROMPT_VERSION})
+    return sample, cached, todo
+
+
+def trump_check_estimate(n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
+                         seed: int = settings.TEACHER_SAMPLE_SEED, col: str = "score_opus_distilled") -> dict:
+    """What `teacher-check --source trump` would send, priced. No API call."""
+    sample, cached, todo = trump_check_todo(n, model, seed, col)
+    return {"model": model, "sample": len(sample),
+            "cached": int(sample["id"].isin(set(cached["id"])).sum()), "todo": len(todo),
+            "cap": settings.TRUMP_TEACHER_CHECK_MAX_CALLS, **estimate_direct_cost(todo["prompt"].tolist())}
+
+
+def trump_teacher_check(*, n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
+                        max_tokens: int = settings.TEACHER_MAX_TOKENS, effort: str = settings.TEACHER_EFFORT,
+                        concurrency: int = settings.LLM_CONCURRENCY, seed: int = settings.TEACHER_SAMPLE_SEED,
+                        col: str = "score_opus_distilled", scorer=None) -> dict:
+    """Opus-label the trump_sample with the X teacher's prompt and settings
+    into teacher_check_trump_<model>.parquet (incremental, capped by
+    settings.TRUMP_TEACHER_CHECK_MAX_CALLS), then report how well `col`
+    reproduces it. `scorer` ((prompt, cache_chars) -> (score, label))
+    replaces the API in tests."""
+    _, cached, todo = trump_check_todo(n, model, seed, col)
+    logger.info("trump teacher check: %d cached, %d to label with %s", len(cached), len(todo), model)
+    run_labels(todo, cached, trump_labels_path(model), scorer, cap=settings.TRUMP_TEACHER_CHECK_MAX_CALLS,
+               model=model, max_tokens=max_tokens, effort=effort, concurrency=concurrency)
+    return trump_teacher_report(model, col)
+
+
+def trump_teacher_report(model: str = settings.TEACHER_CHECK_MODEL, col: str = "score_opus_distilled",
+                         topic_source: str | None = None) -> dict:
+    """`col` against the Opus labels on Trump's posts: Pearson, MAE, sign
+    flips, mean difference (model minus Opus), overall and by phase, then the
+    same on war posts only (inference.war_flag). Written to
+    teacher_check_trump_<model>.json."""
+    from src.analysis.inference import PHASE_ORDER, assign_phase, war_flag
+
+    topic_source = topic_source or settings.TOPIC_SOURCE
+    labels = read_label_cache(trump_labels_path(model)).drop_duplicates("id")
+    feed = pd.read_parquet(settings.TRUMP_FEED_STANCE)
+    feed["id"] = feed["id"].astype(str)
+    j = feed.drop_duplicates("id").merge(labels[["id", "score_teacher"]], on="id")
+    j["phase"] = assign_phase(j["created_at"]).fillna("outside phases")
+    j["war"] = war_flag(j, topic_source).values if len(j) else []
+
+    def by_phase(d: pd.DataFrame) -> list[dict]:
+        return [{"phase": p, **_vs_teacher(g, col)} for p, g in d.groupby("phase", sort=False)]
+
+    order = {p: i for i, p in enumerate([*PHASE_ORDER, "outside phases"])}
+    j = j.sort_values("phase", key=lambda s: s.map(order), kind="stable")
+    war = j[j["war"]]
+    report = {"model": model, "col": col, "topic_source": topic_source, "n": len(j),
+              "all": _vs_teacher(j, col), "by_phase": by_phase(j),
+              "war_posts": _vs_teacher(war, col), "war_by_phase": by_phase(war)}
+    _write_json(settings.PROCESSED_DIR / f"teacher_check_trump_{model.replace('/', '_')}.json", report)
+    return report

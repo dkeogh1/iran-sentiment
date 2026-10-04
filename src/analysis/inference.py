@@ -313,11 +313,13 @@ def reply_draws(replies: pd.DataFrame, n_per_bucket: int = 50,
 
 
 def reply_population(col: str = "score_opus_distilled", model: str = settings.TEACHER_CHECK_MODEL,
-                     n_boot: int = settings.BOOTSTRAP_N, seed: int = settings.BOOTSTRAP_SEED) -> pd.DataFrame:
+                     n_boot: int = settings.BOOTSTRAP_N, seed: int = settings.BOOTSTRAP_SEED,
+                     labels_version: str | None = None) -> pd.DataFrame:
     """Per tracked post: the distilled model's population numbers, the Opus
     stance estimated directly from the labelled sample, and the model-assisted
     estimate (population model value + the sample's weighted Opus-minus-model
-    correction).
+    correction). The Opus labels are the reply teacher's `labels_version`
+    (default settings.REPLY_TEACHER_LABELS_VERSION; stance_local.reply_labels_path).
 
     The estimand is the replies with text: the population is each post's
     replies with has_text and a `col` score, one row per id (n_no_text counts
@@ -340,7 +342,9 @@ def reply_population(col: str = "score_opus_distilled", model: str = settings.TE
     n_no_text = (~text).groupby(replies["tracked_slug"]).sum()
     pop = replies[text & replies[col].notna() & replies["score_transformer"].notna()].copy()
     pop["bucket"] = stance_bucket(pop["score_transformer"]).astype(int)
-    labels = pd.read_parquet(settings.PROCESSED_DIR / f"teacher_labels_replies_{model.replace('/', '_')}.parquet")
+    from src.analysis.stance_local import reply_labels_path
+    version = labels_version or settings.REPLY_TEACHER_LABELS_VERSION
+    labels = pd.read_parquet(reply_labels_path(model, version))
     labels["id"] = labels["id"].astype(str)
     labels = labels[labels["score_teacher"].notna()].drop_duplicates("id")
     lab = (pop.drop(columns="bucket").merge(draws[["id", "bucket"]], on="id")
@@ -359,7 +363,7 @@ def reply_population(col: str = "score_opus_distilled", model: str = settings.TE
         total = float(n_pop.sum())
         coverage = float(n_pop[n_pop.index.isin(list(strata))].sum()) / total if total else 0.0
         model_pop = {k: float(v.mean()) for k, v in stats(p[col].values).items()}
-        row = {"post": slug, "n_replies": len(p),
+        row = {"post": slug, "labels": version, "n_replies": len(p),
                "n_no_text": int(n_no_text.sum() if slug == "ALL" else n_no_text.get(slug, 0)),
                "n_labelled": int(smp["id"].nunique()), "coverage": coverage}
         for k, v in model_pop.items():

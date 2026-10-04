@@ -165,6 +165,30 @@ def test_reply_population_uncovered_post_is_nan_not_zero_width(reply_files, capl
     assert "q/supportive" in caplog.text
 
 
+def test_reply_population_reads_the_label_version_set(reply_files, monkeypatch):
+    # v1 says -1 / +1 by bucket; the v2 file (its own name, extra columns)
+    # says +0.5 everywhere. The setting picks the file; v1 stays the default.
+    from src.analysis.event_study import bucket_draws
+    from src.analysis.stance_local import reply_labels_path
+    reps = _replies({"p": [-0.9] * 30 + [0.9] * 30})
+    drawn = bucket_draws(reps, n_per_bucket=5, score_col="score_transformer")
+    reply_files(reps, _opus(drawn))
+    drawn.assign(score_teacher=0.5, label_teacher="positive", prompt_version="v2",
+                 input_chars=10)[["id", "tracked_slug", "score_teacher", "label_teacher",
+                                  "prompt_version", "input_chars"]].to_parquet(
+        reply_labels_path(version="v2"), index=False)
+    v1 = inf.reply_population(n_boot=10).set_index("post").loc["p"]
+    assert v1["opus_mean"] == pytest.approx(0.0) and v1["labels"] == "v1"
+    monkeypatch.setattr(settings, "REPLY_TEACHER_LABELS_VERSION", "v2")
+    v2 = inf.reply_population(n_boot=10).set_index("post").loc["p"]
+    assert v2["opus_mean"] == pytest.approx(0.5) and v2["assisted_pro"] == pytest.approx(1.0)
+    assert v2["labels"] == "v2" and v2["n_labelled"] == 10
+    assert inf.reply_population(n_boot=10, labels_version="v1").set_index("post").loc["p", "opus_mean"] \
+        == pytest.approx(0.0)
+    with pytest.raises(ValueError, match="v3"):
+        inf.reply_population(n_boot=10, labels_version="v3")
+
+
 def test_reply_population_dedupes_and_drops_replies_without_text(reply_files):
     from src.analysis.event_study import bucket_draws
     reps = _replies({"p": [-0.9] * 10 + [0.9] * 10})

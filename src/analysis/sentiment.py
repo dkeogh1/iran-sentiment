@@ -367,6 +367,16 @@ def score_llm(text: str, user: str = "", context: str = "Iran war",
     max_tokens, so the teacher check passes a larger budget and a low
     effort; the Haiku default keeps the original 200-token cap.
     """
+    return score_prompt(llm_prompt(text, user, context), model, max_tokens, effort)
+
+
+def score_prompt(prompt: str | list, model: str | None = None, max_tokens: int | None = None,
+                 effort: str | None = None, on_usage=None) -> tuple[float | None, str | None]:
+    """score_llm for a prompt built elsewhere (the reply teacher's v2 prompt
+    carries the parent post): same call, same JSON parse. `prompt` is the
+    user message content, a string or content blocks (a cached prefix).
+    `on_usage` gets each response's token usage, unparseable ones included
+    (they are billed too), so a run can tally what it spent."""
     try:
         import anthropic
     except ImportError:
@@ -383,9 +393,11 @@ def score_llm(text: str, user: str = "", context: str = "Iran war",
     resp = client.messages.create(
         model=model or settings.LLM_MODEL,
         max_tokens=max_tokens or 200,
-        messages=[{"role": "user", "content": llm_prompt(text, user, context)}],
+        messages=[{"role": "user", "content": prompt}],
         **kwargs,
     )
+    if on_usage is not None:
+        on_usage(getattr(resp, "usage", None))
 
     # Models with thinking on (Opus 5 by default) return a thinking block
     # before the text block; take the first text block, not content[0].
@@ -397,7 +409,7 @@ def score_llm(text: str, user: str = "", context: str = "Iran war",
 
     score = data.get("score")
     if not isinstance(score, (int, float)):
-        logger.warning("LLM response missing valid score: %s", resp.content[0].text)
+        logger.warning("LLM response missing valid score: %s", text_out[:200])
         return (None, None)
 
     # Graceful fallback: Claude sometimes returns {score, reasoning}
