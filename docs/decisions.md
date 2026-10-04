@@ -4,6 +4,100 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-10-04: Retweets and ReTruths count as the account's messaging
+
+- **Decision:** an X retweet or a Truth Social ReTruth counts as a post by
+  the account that shared it, scored and counted like its own posts. The
+  Truth Social collector now stores a ReTruth's text as `RT @acct: ...` with
+  `reblog_of`; before, it kept only the ReTruth's own content, which is empty.
+  Stored retweet text is cut at about 140 characters (no expansions, below),
+  and 349 retweet/original pairs are both in the data (@POTUS of
+  @WhiteHouse, @SecRubio and @StateDept), so that content counts twice
+  inside a tier.
+- **Why:** what an account chooses to amplify is part of its messaging, and
+  for the administration it is most of it: 5,683 of the 17,837 X account
+  posts are retweets (32%; 70% of admin), as are 39 of admin's 46 September
+  war posts.
+- **Rejected:** dropping retweets, at collection (`exclude=retweets`) or in
+  the analysis: that measures authorship, not messaging, and would empty
+  @POTUS.
+
+## 2026-10-04: @POTUS stays in the admin tier
+
+- **Decision:** @POTUS stays an admin account.
+- **Why:** it is the presidency's official account, and under the retweet
+  decision what it amplifies is administration messaging. It is not Trump's
+  own voice: all 789 cached posts are retweets, 783 of them of @WhiteHouse.
+  His own words are the Truth Social feed, reported on its own.
+- **Rejected:** dropping it as a copy of @WhiteHouse; calling it Trump's own
+  X account.
+
+## 2026-10-04: Posts and replies with no text leave every denominator
+
+- **Decision:** a post or reply with fewer than 3 characters once links and
+  a leading `RT @x: ` are removed (`src/text_rules.py`,
+  `settings.MIN_TEXT_CHARS`) has no text. It is never scored and leaves every
+  share and mean: `inference.prepare` drops it, `relabel` skips it, and the
+  `reply-population` estimand is now the replies with text. Same cut as the
+  reply sampler's `media_only`.
+- **Why:** an image, a video or a bare link gives the scorers nothing to
+  judge, and counting it as an off-topic post moves the war share with how
+  often an account posts pictures. Trump's 1,622 textless posts (of 4,360)
+  put his war share at 26/8/8/8% by phase; without them it is 33/14/12/13%.
+  The old reply method put about 70% of image-only replies on the pro-war
+  side. On X, 490 posts leave, nearly all bare links; X war-post stance did
+  not change. Replies: 92,306 of the 98,663 unique replies (98,668 rows)
+  have text, and the audience across all eight
+  posts moved from 46.3% pro-war / 35.0% anti-war to 47.2% / 37.3%.
+- **Rejected:** counting them as off-topic (the old behaviour); a placeholder
+  score (next entry); imputing them from the reply's valence bucket.
+
+## 2026-10-04: The distilled scorer no longer scores empty text
+
+- **Decision:** `score_with_distilled` returns NaN for rows without text and
+  never sends them to the model. The `"."` stand-in for empty text is gone.
+- **Why:** the stand-in scored a constant +0.111, inside the pro-war band
+  (above +0.05), for all 1,622 textless Trump posts and the image-only
+  replies. Rows scored before keep that value in the parquets; `phases`,
+  `reply-population` and `export-web` drop them by the no-text rule.
+- **Rejected:** any constant score for no text.
+
+## 2026-10-04: X requests ask for `note_tweet` and `referenced_tweets`, no expansions
+
+- **Decision:** timeline and search requests add `note_tweet` (the full text
+  of a post over 280 characters) and `referenced_tweets` (stored as `ref`:
+  retweeted, quoted, replied_to) to `tweet_fields`, and ask for no
+  expansions.
+- **Why:** `text` stops at 280 characters, so about 2,000 cached posts were
+  stored and labelled cut there (about 14% of war posts; 32% of the
+  religious tier's, 25% of pro-war MAGA's). New pulls get the whole post;
+  the cached ones are not backfilled ([STATUS.md](STATUS.md)). X bills per
+  resource returned, and how it bills posts returned as expansions is not
+  documented, so `expansions=referenced_tweets.id` could add billed reads.
+  Without it a retweet's text stays cut at about 140 characters. Measured
+  on the 349 retweet/original pairs in the data, that costs little: the
+  mean retweet-minus-original Opus score is -0.016 (mean absolute
+  difference 0.075).
+- **Rejected:** expansions for the full retweet text until their billing is
+  known; `exclude=retweets` (first entry).
+
+## 2026-10-04: The reply sample's random draws are frozen
+
+- **Decision:** the random bucket draws behind the Opus-labelled reply
+  sample (reply id, post, valence bucket at draw time) live in
+  `data/processed/reply_sample_draws.parquet`. `stance` records a new
+  post's draws as it samples; `reply-population` reads them instead of
+  redrawing. It also dedupes reply ids, and a post with replies in a bucket
+  that has no labelled draw comes out NaN, with a `coverage` column; before,
+  it was renormalised over the covered buckets, and a post with no labels
+  at all got a zero-width interval.
+- **Why:** `reply-population` re-ran the draw on the current reply frame
+  every time. It still matched the labelled draws, but a reply collection
+  that changed a post's frame could have moved the draws off the paid
+  labels. A duplicated reply id had inflated the join (1,137 rows for 1,136
+  labelled draws).
+- **Rejected:** redrawing on every run.
+
 ## 2026-09-30: Rescore every reply with the model of record, at its training length
 
 - **Decision:** `score_opus_distilled` for all 98,668 replies and Trump's feed
@@ -18,7 +112,7 @@ behind the stance-model entries are in README *Stance-model experiments* and
   correlation on untruncated replies, where current-model reruns reproduce
   exactly), and the 15,614 new replies would have mixed two models in one
   series. The two fits are equally good against Opus (0.72 vs 0.71 Pearson
-  on 959 labels); corrected reply shares moved by up to 5 points, inside their
+  on 958 labels); corrected reply shares moved by up to 5 points, inside their
   intervals. Scoring at 128 tokens alone moves nothing that matters (Trump's
   phase means by <= 0.01).
 - **Rejected:** keeping `v0` for the older replies (its model is gone, so new
@@ -65,7 +159,7 @@ behind the stance-model entries are in README *Stance-model experiments* and
   winner, CV 0.869 vs Opus) is the reply scorer of record, and reply
   population shares are corrected against the Opus-labelled sample
   (`reply-population`).
-- **Why:** on 959 Opus-labelled replies the model reaches only 0.71 Pearson and
+- **Why:** on 958 Opus-labelled replies the model reaches only 0.71 Pearson and
   64% sign agreement and leans ~8 points pro-war. Retraining with those
   replies mixed in (`score_mixed_distilled`) was no better on replies and
   slightly worse on posts.

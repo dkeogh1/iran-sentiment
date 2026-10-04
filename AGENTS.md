@@ -2,7 +2,7 @@
 
 Stance analysis of US political messaging on the 2026 Iran war: X broadcaster
 accounts in political tiers, plus Trump's Truth Social feed and the replies to
-six of his posts, scored by Claude models. `README.md` is the public write-up;
+eight of his posts, scored by Claude models. `README.md` is the public write-up;
 where the data stands is in [docs/STATUS.md](docs/STATUS.md).
 
 This repo is **public** on GitHub: no IP addresses, account IDs, bucket names,
@@ -140,7 +140,11 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   maga_antiwar, opposition, media, religious_authority, plus `search`
   (keyword-query public-sentiment proxy). MTG is `@mtgreenee`.
 - `settings.STANCE_SCORE_COL` (`score_opus`, Claude Opus 5 via `relabel`) is
-  the stance of record; `summary`, `event-study` and the plots default to it.
+  the stance of record; `summary`, `phases` and `event-study`'s broadcaster
+  half default to it, and `visualize` draws every `PLOT_SCORE_COLS` column.
+  `event-study` on replies falls back to RoBERTa (`score_transformer`), and
+  its critical / supportive shares stay `label_transformer` even with
+  `--score`.
   `score_opus_distilled` (DeBERTa distilled from the Opus labels, run at its
   256-token training length) is the reply scorer of record for replies and
   Trump's feed; `score_opus_distilled_v0` keeps the pre-2026-09-30 reply
@@ -162,9 +166,13 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 - The LLM parsers strip ```` ```json ```` fences before `json.loads`
   (`sentiment.py`, `event_study.py`): Haiku wraps its JSON despite the
   prompt. Keep stripping; don't prompt-engineer it away.
+- Retweets and ReTruths count as the account's messaging (stored as
+  `RT @acct: ...`). Posts and replies with no text (`src/text_rules.py`:
+  under 3 characters once links and a leading `RT @x: ` are removed) leave
+  every denominator and are never scored.
 - Reply population shares come from `reply-population` (Opus-corrected), not
-  raw `score_opus_distilled`, which runs ~13 points pro-war (65% vs Opus's
-  52% on the labelled sample).
+  raw `score_opus_distilled`, which runs ~9 points pro-war (63% vs Opus's
+  55% on the 1,157 labelled replies with text).
 - `analyze --llm` and `event-study` / `stance` are restart-safe and
   incremental: only posts or replies without a score are sent.
 
@@ -178,6 +186,10 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   `GAP_FILL_SLICE_DAYS` windows with the cap shared across slices: the timeline
   endpoint is newest-first, so one capped fetch over a long gap would keep the
   newest N and drop the rest.
+- Requests ask for `note_tweet` (full text over 280 characters) and
+  `referenced_tweets`, never expansions: X bills per resource returned
+  ([docs/decisions.md](docs/decisions.md)). `collect --force` replaces an
+  account's cache with what the capped run fetched.
 - X's user timeline returns only an account's latest ~3,200 tweets. Refresh
   heavy accounts at least every ~2 months or the gap is lost for good.
 - Keyword search (`/search/recent`) reaches back only ~7 days.

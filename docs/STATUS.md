@@ -1,31 +1,65 @@
 # Status
 
-As of 2026-09-30. Update the date and the lines that change after each refresh.
+As of 2026-10-04. Update the date and the lines that change after each refresh.
 
 ## Data
 
 Two layers at different depths. Nothing runs on a schedule.
 
-- **X broadcasters**: 19,605 posts from 17 accounts, Feb 1 -> Sep 18, 2026.
-  The May 10 -> Sep 18 refresh read 5,631 tweets for ~$28, with the five
-  heaviest accounts (Loomer, Levin, Jones, Ravid, StateDept) sampled at 450.
-  `score_opus` on 19,452 of 19,457 labelled posts after one resubmit (the 5
-  left are context-free quote-tweets); Haiku topic labels on 21,885 posts
-  (X and Trump's feed, complete as of 2026-09-30 except 458 link shares).
+- **X broadcasters**: 17,837 posts from 17 accounts plus 1,768 keyword-search
+  rows (19,605 in all), Feb 1 -> Sep 18, 2026, though nine accounts start
+  later (below). The May 10 -> Sep 18 refresh read 5,631 tweets for ~$28,
+  with the five heaviest accounts (Loomer, Levin, Jones, Ravid, StateDept)
+  sampled at 450. 490 posts have no text (nearly all bare links) and leave
+  every series (`src/text_rules.py`). `score_opus` on 19,110 of the 19,115 posts
+  with text after one resubmit (the 5 left are context-free quote-tweets);
+  Haiku topic labels on 21,885 posts (X and Trump's feed, complete as of
+  2026-09-30 except 458 link shares).
+- **Retweets** count as the account's messaging (`docs/decisions.md`):
+  5,683 of the 17,837 account posts (32%; 70% of admin; @POTUS 789 of 789,
+  783 of them @WhiteHouse's), stored cut at about 140 characters.
+- **Posts over 280 characters**: about 2,000 were stored cut at 280, since
+  `note_tweet` was not requested before 2026-10-04: about 14% of war posts,
+  32% of the religious tier's and 25% of pro-war MAGA's. Their Opus and
+  topic labels saw only the cut text.
+- **Late starts**: only 8 accounts begin on Feb 1-2. @VaticanNews starts
+  Feb 21, then @POTUS Feb 27, @Pontifex Mar 3, @StateDept Mar 4, @VP Mar 17,
+  @BarakRavid Mar 30, @RealAlexJones Apr 1, @LauraLoomer Apr 6 and
+  @WhiteHouse Apr 9; their raw caches start there too (cause unverified).
+  The strike phase, the base of every phase contrast, lacks them before
+  those dates, and the late-March jump in the blog's weekly anti-war MAGA
+  line is @RealAlexJones entering the data.
 - **Holes from the ~3,200-tweet timeline horizon** (unrecoverable): from
   May 10 up to Jun 20 for @marklevinshow, Jul 4 for @LauraLoomer, Jul 17 for
-  @WhiteHouse and Jul 31 for @RealAlexJones. The other 13 accounts are
-  continuous.
+  @WhiteHouse and Jul 31 for @RealAlexJones. The other 13 accounts have no
+  horizon hole, but the Sep 18 run returned no posts for whole 14-day
+  slices of @POTUS (May 4-18), @VP (May 22-Jun 5), @RealCandaceO
+  (Jul 18-Aug 1) and @TuckerCarlson (Aug 1-15), and, after her horizon
+  hole, for two slices of @LauraLoomer (Jul 19-Aug 16): silence or a
+  failed fetch, unverified.
+- **Capped slices**: a capped 14-day slice keeps its newest posts, a median
+  of 0.7-2.9 days of the 14 for the five sampled accounts and @WhiteHouse.
+  Capped on Sep 18, besides the five: @POTUS, @PeteHegseth, @VP and
+  @VaticanNews in 9 slices, @RealCandaceO 7, @WhiteHouse 6, @mtgreenee and
+  @Pontifex 1.
 - **Keyword searches**: frozen at May 12, with a gap from about Apr 20 to
   May 5 (7-day recent search only).
 - **Truth Social**: Trump's feed current through 2026-09-30 (anonymous
   refresh), 4,360 posts from Apr 4 (contiguous), scored with
-  `score_opus_distilled`. 98,668 replies to 8 tracked posts
-  (`data/raw/truthsocial/replies_*.jsonl`; `these_fools` 4,441 and
-  `trump_strait` 11,173 added 2026-09-30, 94.7% and 99.1% coverage), scored
-  with RoBERTa, `score_opus_distilled` and `score_mixed_distilled`, plus a
-  1,292-row Haiku stance sample (1 error to retry) and 1,225 Opus-labelled
-  replies. `score_opus_distilled` was rescored 2026-09-30 at its 256-token
+  `score_opus_distilled`. 1,622 have no text and leave every share and
+  mean: ReTruths whose text the collector dropped before 2026-10-04, and
+  image or video posts (the cache can't tell which);
+  `truthsocial_trump_stance.parquet` still holds their old constant +0.111.
+  98,668 replies to 8 tracked posts, 98,663 unique (`data/raw/truthsocial/replies_*.jsonl`;
+  `these_fools` 4,441 and `trump_strait` 11,173 added 2026-09-30, 94.7% and
+  99.1% coverage), 92,306 of them with text (the `reply-population`
+  estimand), scored with RoBERTa, `score_opus_distilled` and
+  `score_mixed_distilled`, plus a 1,292-row Haiku stance sample (1 error to
+  retry) and 1,225 Opus-labelled replies. 1,071 of those are random draws with text, which
+  `reply-population` weights; the 1,200 draws are frozen in
+  `data/processed/reply_sample_draws.parquet`. 423 of the 1,225 labels were
+  made from text cut to 100 characters, and none saw the parent post.
+  `score_opus_distilled` was rescored 2026-09-30 at its 256-token
   training length; `score_opus_distilled_v0` keeps the old reply scores
   (`docs/decisions.md`).
 - **Timeline**: 84 events through 2026-09-15 in `config/timeline.py`;
@@ -39,7 +73,8 @@ Two layers at different depths. Nothing runs on a schedule.
   dkbl1 and in the S3 backup.
 - S3 backup first synced 2026-09-25: raw 72 MB and processed 50 MB in
   Standard, models 8.8 GB in Glacier IR, verified object for object. Last
-  synced 2026-09-30 after the reply refresh and the GPU pull.
+  synced 2026-09-30 after the reply refresh and the GPU pull; run `backup`
+  for `data/processed/reply_sample_draws.parquet` (new 2026-10-04).
 - Host backup (restic, homelab-infra): the SanDisk drive is unplugged and no
   host backup has run since 2026-04-23. The host backup script no longer
   needs Timeshift, so the drive can go back in; until then S3 is the only
@@ -56,29 +91,70 @@ Two layers at different depths. Nothing runs on a schedule.
   behind Cloudflare Access until launch. Branch builds did run; the Sep 30
   "no preview" note predated the build finishing. The reply-scatter labels
   for the two new posts still need a visual check on the deployed page or
-  `npm run preview` on 127.0.0.1 over an SSH tunnel.
+  `npm run preview` on 127.0.0.1 over an SSH tunnel. The 2026-10-04
+  `export-web` (no-text rule) changed four of its JSONs, not yet committed
+  in dkweb.
 - **Next X pull: Oct 25-30, 2026, no later than Nov 1.** On Sep 18
   @RealAlexJones's ~3,200-tweet timeline reached back only ~7 weeks, so his
   gap starts opening around Nov 1-6 (@WhiteHouse ~Nov 20, @LauraLoomer early
   Dec). One pull then covers ~6 weeks for about what a pull now would cost,
-  because the heavy accounts hit their caps either way. Before it: size
-  `ACCOUNT_CAP_OVERRIDES` for the gap so the sampled accounts (the five heavy
-  ones plus @WhiteHouse and @VaticanNews) keep the May-Sep density of ~45-50
-  per two-week slice, `collect --estimate`, ask the user for the X credit
-  balance, run with `--no-search`. Rough cost at that density: ~2,100 reads
-  (~$10) plus ~$4 for the Opus relabel and topic labels; at today's 450/500
-  caps it would be ~$20-23 plus ~$7. After it: add timeline events
-  from Sep 16 on, move `ANALYSIS_END` and extend `PHASES` (which end Sep 18,
-  so Trump's feed after that is collected but outside every phase).
+  because the heavy accounts hit their caps either way. Requests now ask for
+  `note_tweet`, so long posts arrive whole. Before it: reconsider the
+  per-slice cap split. It gives each 14-day slice an equal share and keeps
+  that slice's newest posts, so for the heavy accounts it keeps only about
+  the newest 1-3 days of each fortnight (*Capped slices*, above), and unused
+  cap from quiet slices never reaches busy ones; holding the May-Sep density
+  repeats that. Then size `ACCOUNT_CAP_OVERRIDES` for the gap so the
+  accounts that hit slice caps (the five heavy ones plus @POTUS,
+  @PeteHegseth, @VP, @VaticanNews, @RealCandaceO and @WhiteHouse) keep the
+  May-Sep density of ~45-50 per two-week slice, `collect --estimate`, ask
+  the user for the X credit balance, run with `--no-search`. Rough cost at
+  that density: ~2,100 reads (~$10) plus ~$4 for the Opus relabel and topic
+  labels; at today's 450/500 caps it would be ~$20-23 plus ~$7. After it:
+  add timeline events from Sep 16 on, move `ANALYSIS_END` and extend
+  `PHASES` (which end Sep 18, so Trump's feed after that is collected but
+  outside every phase).
+- **Paid, the user's call: relabel all 1,225 Opus reply labels with the full
+  reply text and the parent post.** 423 were made from text cut to 100
+  characters, and none saw the Trump post being answered: under the
+  ceasefire, hold-off and deal posts, replies that only express agreement
+  are labelled pro-war about three times in four (a rough keyword count,
+  105 replies; none read or relabelled). The audience shares and the
+  reply scorer checks all rest on these labels. Needs the teacher prompt to
+  carry the parent first. Estimate: about $4-5 on the direct API that
+  `reply-teacher-check` uses (~$2 a run so far; the full text and the parent
+  roughly double each prompt), about half that by Batch.
+- **Paid: backfill the full text of the cached X posts cut at 280
+  characters** (~2,000 posts) by id lookup with `note_tweet`, then relabel
+  them with Opus and redo their topic labels. Estimate: ~$10 in X reads at
+  $0.005 each (the lookup endpoint's price is unverified; every post near
+  280 characters is ~3,300, ~$16), plus ~$3 for the Opus relabel and ~$0.30
+  for topic labels at the `relabel` / `topic-label` estimate rates. Needs a
+  lookup path in the collector, and the two items below settled first.
+- X `collect --force` still replaces an account's cache with what the forced
+  run fetched, capped. Decide on merging by id before any forced backfill.
+- Restored scores and labels are keyed by id (`analyze`, `relabel`,
+  `topic-label`), so a re-fetch that changes a post's text keeps its old
+  scores. Needs a text-hash check before any re-fetch (only a Trump-feed row
+  that goes from no text to text is rescored today).
+- **Free, but uses Truth Social: recover past ReTruth text** for the 1,622
+  textless Trump posts. The collector now keeps a ReTruth's text, but only
+  for posts it fetches; the cached ones need a status lookup the collector
+  doesn't have yet. Some of the 1,622 are image or video posts with no text
+  to recover. `score-posts` (the `score-trump-feed` Job) rescores rows that
+  gain text.
 - The mixed model beat the scorer of record on the two unseen posts (0.658
   vs 0.604 Pearson against Opus, gap CI [-0.01, +0.12]). Recheck when the
-  next tracked posts get Opus labels.
+  next tracked posts get Opus labels, and after the reply relabel above.
 - 458 posts are link shares Haiku will not judge (a bare URL, or "Amen" /
   "Right on" over a link: it answers that it cannot open URLs and hits
-  `max_tokens`); 183 are Trump's, 172 Levin's. `war_flag` falls back to the
-  keyword pattern for them by design, but `topic-label` resubmits them on
-  every run (~$0.07). Worth recording them as unjudgeable.
+  `max_tokens`). 139 are bare links with no text and now leave every
+  series; for the other 319 (183 Trump's, 112 Levin's) `war_flag` falls
+  back to the keyword pattern by design. `topic-label` now skips the 139
+  without text but still resubmits the other 319 on every run (~$0.05).
+  Worth recording them as unjudgeable.
 - 5 duplicate reply ids in the April reply files (3 `civilisation_dies`,
-  2 `power_plant_day`); too few to move a number.
+  2 `power_plant_day`); `reply-population` and `export-web` drop the
+  copies.
 - In `config/tracked_posts.py` but not collected: `armada` (Jan 28, before
   the window) and `epstein_hoax` (2025, a control).
