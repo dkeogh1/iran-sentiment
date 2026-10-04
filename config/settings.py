@@ -139,6 +139,25 @@ ACCOUNT_CAP_OVERRIDES: dict[str, int] = {
 # balance; raise it deliberately, per run.
 X_RUN_BUDGET_USD = 45.00   # raised 2026-09-18 after a top-up for the May->Sep refresh
 
+# Long-post backfill (`x-backfill-text`, src/collectors/x_backfill.py). Until
+# 2026-10-04 requests did not ask for note_tweet, so a post over 280
+# characters was cached cut there; the last such collect wrote the cache on
+# 2026-09-18 at 01:48 UTC, so a post created later was fetched whole.
+X_CUT_TEXT_BEFORE = datetime.fromisoformat("2026-09-18T01:48:00+00:00")
+# A cached original is a candidate when its cut length (x_backfill.cut_length)
+# is at most 280 and at least X_BACKFILL_MIN_CHARS, or at least
+# X_BACKFILL_OPEN_MIN_CHARS when it ends mid-sentence. Measured 2026-10-04 on
+# the 12,154 cached originals: 27 per character from 240 to 265, then 2,911
+# from 270 to 280 (~300 expected without a cut, so ~90% are cut) and 182 from
+# 266 to 269 (110 expected), 70 of them ending mid-sentence (24 expected).
+X_BACKFILL_MIN_CHARS = 270
+X_BACKFILL_OPEN_MIN_CHARS = 266
+# A run refuses to start with more reads to make than this (and, like
+# `collect`, when they would cost more than X_RUN_BUDGET_USD). Approved on
+# 2026-10-04: about $10-16, every post near 280 characters.
+X_BACKFILL_MAX_READS = 3300
+X_LOOKUP_BATCH = 100       # GET /2/tweets takes up to 100 ids per request
+
 
 # ── Truth Social pacing ────────────────────────────────────────────
 # The anonymous public API 429s after a handful of quick pages (seen

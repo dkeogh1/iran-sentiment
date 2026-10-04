@@ -18,10 +18,13 @@ Two layers at different depths. Nothing runs on a schedule.
 - **Retweets** count as the account's messaging (`docs/decisions.md`):
   5,683 of the 17,837 account posts (32%; 70% of admin; @POTUS 789 of 789,
   783 of them @WhiteHouse's), stored cut at about 140 characters.
-- **Posts over 280 characters**: about 2,000 were stored cut at 280, since
-  `note_tweet` was not requested before 2026-10-04: about 14% of war posts,
-  32% of the religious tier's and 25% of pro-war MAGA's. Their Opus and
-  topic labels saw only the cut text.
+- **Posts over 280 characters**: 2,981 cached originals look stored cut at
+  280 (`x-backfill-text`'s rule; ~89% of them truly cut, from the length
+  density below the pile-up), since `note_tweet` was not requested before
+  2026-10-04: 884 of the 4,044 war posts in the phases (22%, topic
+  `either`), 37% of the religious tier's, 30% of pro-war MAGA's, 29% of
+  anti-war MAGA's, 18% of media's, 8% of admin's. Their Opus and topic
+  labels saw only the cut text.
 - **Late starts**: only 8 accounts begin on Feb 1-2. @VaticanNews starts
   Feb 21, then @POTUS Feb 27, @Pontifex Mar 3, @StateDept Mar 4, @VP Mar 17,
   @BarakRavid Mar 30, @RealAlexJones Apr 1, @LauraLoomer Apr 6 and
@@ -124,19 +127,22 @@ Two layers at different depths. Nothing runs on a schedule.
   carry the parent first. Estimate: about $4-5 on the direct API that
   `reply-teacher-check` uses (~$2 a run so far; the full text and the parent
   roughly double each prompt), about half that by Batch.
-- **Paid: backfill the full text of the cached X posts cut at 280
-  characters** (~2,000 posts) by id lookup with `note_tweet`, then relabel
-  them with Opus and redo their topic labels. Estimate: ~$10 in X reads at
-  $0.005 each (the lookup endpoint's price is unverified; every post near
-  280 characters is ~3,300, ~$16), plus ~$3 for the Opus relabel and ~$0.30
-  for topic labels at the `relabel` / `topic-label` estimate rates. Needs a
-  lookup path in the collector, and the two items below settled first.
+- **Paid: run `x-backfill-text`** (built 2026-10-04, not run): it re-reads
+  the 2,981 posts above by id with `note_tweet` (≈ $14.91 at $0.005 a read;
+  the lookup's price is unverified, so pilot `--limit 100` and check the X
+  console), journals every batch, rewrites the raw text, and moves the cut
+  text's Opus and topic labels to `*_superseded.parquet`. Then `analyze`
+  rescores only those posts, and `relabel` and `topic-label` label only
+  them (plus the 5 and 319 they already resubmit). The relabel costs more
+  than `relabel estimate`'s average-post rate: `x-backfill-text` prints the
+  full-length figure after the reads (~$5-7 if the whole posts run 600-1,000
+  characters), plus ~$0.45-0.7 in topic labels.
 - X `collect --force` still replaces an account's cache with what the forced
   run fetched, capped. Decide on merging by id before any forced backfill.
-- Restored scores and labels are keyed by id (`analyze`, `relabel`,
-  `topic-label`), so a re-fetch that changes a post's text keeps its old
-  scores. Needs a text-hash check before any re-fetch (only a Trump-feed row
-  that goes from no text to text is rescored today).
+- `analyze` restores a prior score only onto the same text (2026-10-04),
+  but the paid labels are still keyed by id: `x-backfill-text` moves the
+  labels of the posts it changes, while any other re-fetch that changes a
+  post's text (`collect --force`) keeps the old Opus and topic labels.
 - **Free, but uses Truth Social: recover past ReTruth text** for the 1,622
   textless Trump posts. The collector now keeps a ReTruth's text, but only
   for posts it fetches; the cached ones need a status lookup the collector

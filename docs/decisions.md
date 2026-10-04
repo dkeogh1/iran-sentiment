@@ -4,6 +4,35 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-10-04: Long X posts are re-read by id; labels from the cut are archived
+
+- **Decision:** `x-backfill-text` re-reads by id (`GET /2/tweets` with
+  `note_tweet`, 100 ids a request) the cached originals likely stored cut at
+  280 characters, and puts the full text in the raw cache. Candidates: the
+  text's length with entities unescaped, a reply's leading mentions and the
+  trailing links left out and other links at 23, is 270-280, or 266-269
+  ending mid-sentence; posts created after the last collect without
+  `note_tweet` (2026-09-18) never are. Every batch is journalled
+  (`data/processed/x_backfill_journal.jsonl`) before anything else is
+  touched, so no read is bought twice. A changed post's Opus and topic
+  labels move to `*_superseded.parquet` (appended, never deleted) and its
+  `sentiment_all` row loses its scores; `analyze` restores a prior score only
+  onto the same text. The refresh order then redoes exactly those posts.
+- **Why:** in the 12,154 cached originals the length runs at ~27 posts per
+  character from 240 to 265, then 2,911 sit at 270-280 and none above (the cut
+  is in code points: X's own weighting, emoji and CJK as 2, puts ~70 over
+  280). At the lower density about 300 of the 2,911 would be whole posts, so
+  ~90% are cut; at 266-269 only the mid-sentence endings beat the density
+  (70 against ~24). 2,981 candidates in all, ~$14.91 to read; about 23 cut
+  posts that end a sentence at 266-269 are missed. The direct teacher check
+  holds 96 of them, so `teacher-retest` pairs its labels with the archived
+  batch labels made from the same cut text.
+- **Rejected:** `collect --force` over the old windows (re-buys every post,
+  capped, and replaces the cache); keeping the old labels by id (a re-fetch
+  must not keep scores made from other text); deleting the superseded labels
+  (paid data); a candidate rule on ending alone (cut posts end a sentence
+  about one time in eight).
+
 ## 2026-10-04: Retweets and ReTruths count as the account's messaging
 
 - **Decision:** an X retweet or a Truth Social ReTruth counts as a post by

@@ -107,10 +107,22 @@ def _save_roberta_checkpoint(posts: list[dict]) -> None:
     df.to_parquet(settings.ROBERTA_CHECKPOINT, index=False)
 
 
+_NO_TEXT = object()  # a stored frame without a text column
+
+
+def _same_text(stored, post: dict) -> bool:
+    """A stored score is restored only onto the text it was made from, so a
+    re-fetch that changes a post's text (x-backfill-text) rescores it.
+    Frames without a text column can't tell, and restore as before."""
+    if stored is _NO_TEXT:
+        return True
+    return (stored if isinstance(stored, str) else "") == (post.get("text") or "")
+
+
 def _restore_roberta_checkpoint(posts: list[dict]) -> int:
     """
     Populate score_transformer/label_transformer on `posts` from the
-    checkpoint, matched by post id. Returns the number of posts restored.
+    checkpoint, matched by post id and text. Returns the number restored.
     """
     if not settings.ROBERTA_CHECKPOINT.exists():
         return 0
@@ -118,15 +130,15 @@ def _restore_roberta_checkpoint(posts: list[dict]) -> int:
     if "score_transformer" not in ckpt.columns:
         return 0
     lookup = {
-        row["id"]: (row["score_transformer"], row["label_transformer"])
+        row["id"]: (row["score_transformer"], row["label_transformer"], row.get("text", _NO_TEXT))
         for _, row in ckpt.iterrows()
         if pd.notna(row.get("score_transformer"))
     }
     restored = 0
     for post in posts:
         hit = lookup.get(post.get("id"))
-        if hit:
-            post["score_transformer"], post["label_transformer"] = hit
+        if hit and _same_text(hit[2], post):
+            post["score_transformer"], post["label_transformer"] = hit[:2]
             restored += 1
     return restored
 
@@ -139,7 +151,8 @@ def _restore_prior_scores(posts: list[dict]) -> tuple[int, int]:
     need scoring.
 
     Returns (vader_restored, transformer_restored). Posts that already
-    have a score field are not overwritten.
+    have a score field are not overwritten, and a post whose text is not
+    the text the prior run scored (_same_text) gets nothing back.
     """
     if not settings.SENTIMENT_OUTPUT.exists():
         return (0, 0)
@@ -150,6 +163,7 @@ def _restore_prior_scores(posts: list[dict]) -> tuple[int, int]:
         return (0, 0)
 
     has_llm = "score_llm" in prior.columns
+    texts = dict(zip(prior["id"], prior["text"])) if "text" in prior.columns else {}
 
     lookup: dict[str, dict] = {}
     for _, row in prior.iterrows():
@@ -169,10 +183,13 @@ def _restore_prior_scores(posts: list[dict]) -> tuple[int, int]:
         if entry:
             lookup[pid] = entry
 
-    v_count = t_count = 0
+    v_count = t_count = changed = 0
     for post in posts:
         hit = lookup.get(post.get("id"))
         if not hit:
+            continue
+        if not _same_text(texts.get(post.get("id"), _NO_TEXT), post):
+            changed += 1
             continue
         if "score_vader" in hit and "score_vader" not in post:
             post["score_vader"] = hit["score_vader"]
@@ -185,6 +202,8 @@ def _restore_prior_scores(posts: list[dict]) -> tuple[int, int]:
         if "score_llm" in hit and post.get("score_llm") is None:
             post["score_llm"] = hit["score_llm"]
             post["label_llm"] = hit["label_llm"]
+    if changed:
+        logger.info("Prior run: %d posts' text has changed since -- rescoring them", changed)
     return (v_count, t_count)
 
 
@@ -549,15 +568,15 @@ def analyze(
             ckpt = pd.read_parquet(settings.VADER_CHECKPOINT)
             # Merge VADER scores back into the post dicts by id
             vader_lookup = {
-                row["id"]: (row["score_vader"], row["label_vader"])
+                row["id"]: (row["score_vader"], row["label_vader"], row.get("text", _NO_TEXT))
                 for _, row in ckpt.iterrows()
                 if "score_vader" in row.index
             }
             restored = 0
             for post in posts:
                 hit = vader_lookup.get(post.get("id"))
-                if hit:
-                    post["score_vader"], post["label_vader"] = hit
+                if hit and _same_text(hit[2], post):
+                    post["score_vader"], post["label_vader"] = hit[:2]
                     restored += 1
             if restored == len(posts):
                 logger.info("Restored VADER scores for all %d posts from checkpoint", restored)

@@ -403,6 +403,7 @@ def teacher_retest(model: str = settings.TEACHER_CHECK_MODEL) -> tuple[pd.DataFr
     tier plus the per-label noise SD implied by the differences."""
     from src.analysis.relabel import labels_path
     from src.analysis.stance_local import agreement_by_tier
+    from src.collectors.x_backfill import superseded_path
 
     tag = model.replace("/", "_")
     direct = pd.read_parquet(settings.PROCESSED_DIR / f"teacher_check_{tag}.parquet")
@@ -410,6 +411,13 @@ def teacher_retest(model: str = settings.TEACHER_CHECK_MODEL) -> tuple[pd.DataFr
     posts = pd.read_parquet(settings.SENTIMENT_OUTPUT, columns=["id", "tier"])
     for f in (direct, batch, posts):
         f["id"] = f["id"].astype(str)
+    # Both labels of a pair must come from the same text: a post whose text was
+    # backfilled since (x-backfill-text) pairs with the batch label made from
+    # the cut, now in the superseded archive (its first entry), not its relabel.
+    if superseded_path(labels_path(model)).exists():
+        old = pd.read_parquet(superseded_path(labels_path(model)))
+        old = old.assign(id=old["id"].astype(str)).drop_duplicates("id")
+        batch = pd.concat([old, batch[~batch["id"].isin(old["id"])]], ignore_index=True)
     j = (direct.rename(columns={"score_teacher": "direct"})[["id", "direct"]]
          .merge(batch.rename(columns={"score_teacher": "batch"})[["id", "batch"]], on="id")
          .merge(posts, on="id").dropna(subset=["direct", "batch"]))

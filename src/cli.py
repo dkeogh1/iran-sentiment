@@ -114,6 +114,84 @@ def collect(force: bool, no_search: bool, estimate: bool, yes: bool):
         click.echo(f"  {name}: {count}")
 
 
+# ── x-backfill-text ─────────────────────────────────────────────────
+
+@main.command("x-backfill-text")
+@click.option("--estimate", is_flag=True, help="Count and price the reads, then exit (no API call)")
+@click.option("--limit", type=click.IntRange(min=1), default=None,
+              help="Pilot: read only the first N posts still to check")
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt")
+def x_backfill_text_cmd(estimate: bool, limit: int | None, yes: bool):
+    """Re-read the cached X posts stored cut at 280 characters (collected
+    before note_tweet was requested) by id, and put their full text in the
+    raw cache. Their Opus and topic labels move to *_superseded.parquet and
+    their sentiment_all scores are cleared, so the refresh order (analyze,
+    relabel, topic-label) redoes exactly them. Paid: one X read per post
+    returned. A killed run resumes from the journal; a run with nothing left
+    to read only applies it (free)."""
+    from src.collectors import x_backfill as xb
+
+    p = xb.plan(limit)
+    t = xb.tier_table(p)
+    click.echo(f"\n{len(p['candidates'])} cached originals likely cut at 280 characters, "
+               f"{p['checked']} already checked (journal {xb.journal_path().name})")
+    click.echo(f"\n{'tier / account':26s}{'likely cut':>11s}{'war posts':>10s}{'to read':>9s}")
+    for tier, g in t.groupby("tier"):
+        click.echo(f"{tier:26s}{g['candidates'].sum():>11d}{g['war'].sum():>10d}{g['to_read'].sum():>9d}")
+        for r in g.itertuples():
+            click.echo(f"  @{r.user:23s}{r.candidates:>11d}{r.war:>10d}{r.to_read:>9d}")
+    click.echo(f"{'all':26s}{t['candidates'].sum():>11d}{t['war'].sum():>10d}{t['to_read'].sum():>9d}")
+    click.echo(f"\nThis run: {p['reads']} reads ≈ ${p['max_cost_usd']:.2f} at "
+               f"${settings.X_READ_COST_USD} per post (cap X_BACKFILL_MAX_READS = "
+               f"{settings.X_BACKFILL_MAX_READS}, budget X_RUN_BUDGET_USD = "
+               f"${settings.X_RUN_BUDGET_USD:.2f}); war posts by topic={settings.TOPIC_SOURCE}")
+    if estimate:
+        return
+    if p["reads"] > settings.X_BACKFILL_MAX_READS:
+        click.secho(f"Refusing: {p['reads']} reads is over X_BACKFILL_MAX_READS; use --limit "
+                    f"or raise the cap deliberately in config/settings.py.", fg="red")
+        raise SystemExit(1)
+    if p["max_cost_usd"] > settings.X_RUN_BUDGET_USD:
+        click.secho(f"Refusing: ${p['max_cost_usd']:.2f} exceeds X_RUN_BUDGET_USD "
+                    f"${settings.X_RUN_BUDGET_USD:.2f}.", fg="red")
+        raise SystemExit(1)
+
+    failed = None
+    if p["reads"]:
+        if not yes and not click.confirm("Proceed?", default=False):
+            click.echo("Aborted.")
+            return
+        import requests
+        import tweepy
+
+        from src.collectors.x_collector import get_client
+        try:
+            s = xb.lookup(get_client(), p["todo"])
+            click.echo(f"\nRead {s['returned']} posts in {s['requests']} requests "
+                       f"(≈ ${s['returned'] * settings.X_READ_COST_USD:.2f}): {s['long']} long, "
+                       f"{s['missing']} not returned")
+        except (tweepy.errors.TweepyException, requests.exceptions.RequestException) as e:
+            failed = e  # what was journalled before the error still gets applied
+            click.secho(f"\nLookup stopped: {e}. Rerun to resume from the journal.", fg="red")
+
+    a = xb.apply()
+    click.echo(f"\nJournal: {a['checked']} checked, {a['long']} long, {a['missing']} not returned. "
+               f"Applied {a['changed']} new full texts ({a['already_applied']} were already in), "
+               f"{a['files_rewritten']} raw files rewritten, {a['sentiment_rows_cleared']} "
+               f"sentiment_all rows cleared; labels moved to *_superseded: {a['labels_moved']}")
+    if a["drifted"]:
+        click.secho(f"{len(a['drifted'])} cached posts changed since they were checked; left alone.",
+                    fg="yellow")
+    n, usd = xb.relabel_cost()
+    if n:
+        click.echo(f"Opus relabel owed on {n} backfilled posts ≈ ${usd:.2f} by Batch at their "
+                   f"full length (`relabel estimate` prices average posts). Next: analyze, "
+                   f"relabel estimate|submit|status|collect|merge, topic-label "
+                   f"estimate|submit|status|collect, phases, export-web, backup.")
+    if failed:
+        raise SystemExit(1)
+
+
 # ── ts-login ────────────────────────────────────────────────────────
 
 @main.command("ts-login")

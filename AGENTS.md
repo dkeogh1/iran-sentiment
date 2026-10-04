@@ -15,7 +15,8 @@ Hand these to the user, with the estimate, instead of running them:
 - **Paid runs.** Estimate first, then ask.
   - `collect` and `run-all` (X API, $0.005 per tweet read): run
     `python -m src.cli collect --estimate` (cache only, no API calls) and ask
-    for the current X credit balance.
+    for the current X credit balance. Same for `x-backfill-text` (one read
+    per cached post cut at 280 characters; `--estimate`).
   - `relabel submit|resubmit` and `topic-label submit` (Anthropic Batch API):
     `relabel estimate` / `topic-label estimate` print the cost.
   - `analyze --llm`, `stance`, `teacher-check`, `reply-teacher-check` (direct
@@ -82,6 +83,7 @@ Everything goes through one Click CLI, `python -m src.cli <command>`:
 python -m src.cli test       # verify X API credentials (free)
 python -m src.cli status     # show what's cached, what's missing
 python -m src.cli collect    # incremental fetch -- appends only new tweets since last run
+python -m src.cli x-backfill-text --estimate  # cached posts cut at 280 chars: reads to re-get them whole
 python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm for Haiku stance)
 python -m src.cli visualize  # regenerate all figures
 python -m src.cli summary    # stats tables (default --score is the stance of record)
@@ -106,7 +108,7 @@ timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
 config/  settings.py (paths, caps, batch sizes, models, colours), accounts.py (tiers),
          timeline.py (events), tracked_posts.py (Trump posts for reply analysis)
 src/     cli.py (every command), backup.py
-  collectors/     x_collector.py, truthsocial_collector.py
+  collectors/     x_collector.py, x_backfill.py (posts cut at 280), truthsocial_collector.py
   analysis/       sentiment.py (VADER, RoBERTa, LLM stance), event_study.py (replies),
                   relabel.py, topic_label.py (Batch API), inference.py (CIs, shift-share),
                   stance_local.py (GPU experiments)
@@ -174,7 +176,9 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   raw `score_opus_distilled`, which runs ~9 points pro-war (63% vs Opus's
   55% on the 1,157 labelled replies with text).
 - `analyze --llm` and `event-study` / `stance` are restart-safe and
-  incremental: only posts or replies without a score are sent.
+  incremental: only posts or replies without a score are sent. `analyze`
+  restores a prior score only onto the same text, so a post whose text
+  changed is rescored.
 
 ### X collection and budget
 
