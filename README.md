@@ -36,12 +36,28 @@ miscalibrations visible.
 
 ### Tier divergence
 
-![Tier comparison](docs/figures/tier_comparison_score_opus.png)
+![War-post stance by tier, weekly](docs/figures/tier_war_weekly_score_opus.png)
 
-The figure is the all-post view: a rolling mean of the Opus score of
-every post by tier, generated Sep 18 (its legend counts are from then).
-It shows the MAGA camps about 0.5 apart; on war posts alone they are 1.1
-apart.
+Weekly Opus stance of each tier's war posts, by the method of the table
+below (posts with no text left out; a post is about the war when the
+Haiku topic label or the keyword pattern says so), smoothed over a
+centred three-week window weighted by posts. A week whose window holds
+fewer than 15 war posts is left out, so a gap is thin data; a dot is a
+kept week with neither neighbour kept. The opposition tier (one account,
+61 war posts) draws no line. Each panel sets one tier against the others
+in grey; light rules mark the four phases. Generated Oct 4 (`visualize`
+writes it as `tier_war_weekly_score_opus.png`).
+
+Pro-war MAGA stays between +0.38 and +0.63 and anti-war MAGA between
+-0.80 and -0.32: the camps never meet. They are about 1.4 apart in early
+March and closest in September, under 0.9 apart, when anti-war MAGA's
+war posts, most of them @RealAlexJones's, eased to about -0.35.
+Anti-war MAGA's late-March step towards zero is @RealAlexJones entering
+the data on Apr 1 (the centred window shows it from the week of Mar 23),
+not a change of stance. Pro-war MAGA's gaps are the collection hole of
+late May and early June and the fortnightly sampling of its prolific
+accounts, which also leaves its two August weeks as lone dots (see
+*Limitations*).
 
 | Tier | Opus, war posts | war share | Opus, all posts | Haiku, all | RoBERTa, all | n |
 |------|-----------:|--:|-----------:|-------------:|--------:|--:|
@@ -201,28 +217,45 @@ pattern as the administration's accounts on X.
 
 ### Per-account detail
 
-![Account heatmap](docs/figures/account_heatmap_score_opus.png)
+![War-post stance by account and phase](docs/figures/account_war_phases_score_opus.png)
 
-The heatmap is the all-post view too (weekly Opus means over every post,
-generated Sep 18), so off-topic posts carry the stance Opus projects from
-their author. Its colours run from red (anti-war) to green (pro-war);
-the blog post uses red for pro-war.
+The heatmap is the war-post view by account: the mean Opus stance of
+each account's war posts in each phase and over the whole war, the
+numbers `phases --by user` writes, with posts with no text left out and
+a cell left blank under 5 war posts. Accounts run from most pro-war to
+most anti-war over the whole war; red is pro-war and blue anti-war, the
+blog post's colours. Generated Oct 4 (`visualize` writes it as
+`account_war_phases_score_opus.png`).
 
-- Over all posts, @mtgreenee (-0.320) and @Pontifex (-0.310) are the
-  most anti-war accounts, with @RealCandaceO (-0.246) and
-  @TuckerCarlson (-0.244) next. That is the heatmap's ranking, not the
-  war-post one above, where @SenSanders leads.
+- No account other than @BarakRavid, who stays at zero (-0.08 to
+  +0.00), changes side in any phase.
+- The anti-war end barely moves: @SenSanders, @mtgreenee,
+  @RealCandaceO and @Pontifex stay between -0.68 and -0.91 in every
+  phase they have. @RealAlexJones is the one that moves (-0.61 in the
+  collapse, -0.29 from Aug 18) and is the least anti-war of the
+  anti-war MAGA accounts in every phase. @TuckerCarlson posts rarely
+  (221 posts with text, 62 about the war, in seven months) but is
+  anti-war in every phase (-0.51 to -0.74).
+- On the pro-war side most of the administration's accounts soften
+  after the strike phase: @POTUS +0.57 to +0.33 and +0.32, @StateDept +0.45 to
+  +0.19 by Aug-Sep, @PeteHegseth +0.63 to about +0.5. @marklevinshow
+  eases to +0.33 from Aug 18 (16 war posts) while @LauraLoomer is at
+  +0.51.
+- Over all posts (not shown), @mtgreenee (-0.320) and @Pontifex (-0.310)
+  are the most anti-war accounts, with @RealCandaceO (-0.246) and
+  @TuckerCarlson (-0.244) next; on war posts @SenSanders leads.
 - Over all posts @SenSanders lands at -0.202 under Opus against -0.391
   under Haiku: much of his output is procedural (war powers votes,
   hearings) and Opus reads it as neutral where Haiku read it as
   opposition.
-- @TuckerCarlson posts rarely (221 tweets in seven months) but is
-  consistently anti-war from the strikes onward.
-- Blank weeks in the heatmap for Levin, Loomer, Alex Jones and the
-  White House between May and July are a collection limit, not
-  silence: see *Limitations*. The empty early weeks of the nine
-  accounts whose data starts between Feb 21 and Apr 9 are gaps in the
-  cached data, cause unverified (see *Data collection*).
+- Blank cells are under 5 war posts: @USCCB after the strike phase (5
+  war posts across the three later phases), @WhiteHouse in the talks
+  phase (none), and @POTUS, @WhiteHouse, @SecRubio and @Pontifex from
+  Aug 18 (2 to 4). The talks and collapse cells of @marklevinshow,
+  @LauraLoomer, @RealAlexJones and @WhiteHouse rest on part of each
+  phase, a collection limit, not silence (see *Limitations*), and the
+  strike-phase cells of the nine accounts whose data starts between
+  Feb 21 and Apr 9 miss their earliest posts (see *Data collection*).
 
 ### Audience replies: eight Trump posts, April to September
 
