@@ -51,13 +51,12 @@ Two layers at different depths. Nothing runs on a schedule.
 
 ## Open
 
-- dkweb branch `iran-war-stance` (draft post, 7 Observable Plot charts, the
-  stance colour tokens) is not merged. Pushed 2026-09-30 to the private
-  GitHub repo; Cloudflare built no preview (non-production branch builds
-  look switched off, though dkweb's README says other branches get preview
-  URLs). The reply-scatter labels for the two new posts still need a visual
-  check: enable branch builds, or `npm run preview` on 127.0.0.1 over an
-  SSH tunnel.
+- The dkweb post `iran-war-stance` (7 Observable Plot charts, the stance
+  colour tokens) merged to dkweb `main` on 2026-10-04 and deploys with it,
+  behind Cloudflare Access until launch. Branch builds did run; the Sep 30
+  "no preview" note predated the build finishing. The reply-scatter labels
+  for the two new posts still need a visual check on the deployed page or
+  `npm run preview` on 127.0.0.1 over an SSH tunnel.
 - **Next X pull: Oct 25-30, 2026, no later than Nov 1.** On Sep 18
   @RealAlexJones's ~3,200-tweet timeline reached back only ~7 weeks, so his
   gap starts opening around Nov 1-6 (@WhiteHouse ~Nov 20, @LauraLoomer early
