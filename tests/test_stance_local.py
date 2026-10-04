@@ -219,3 +219,129 @@ def test_distill_extra_rows_join_pool_and_split(tmp_path, monkeypatch):
     assert {"reply_a", "reply_b"} <= seen["train_tiers"] and {"reply_a", "reply_b"} <= seen["test_tiers"]
     assert any(r["tier"] == "reply_a" for r in m["distilled_by_tier"])
     assert (tmp_path / "stance_distilled_score_opus_mixed" / "distill_metrics.json").exists()
+
+
+class _Tensor:
+    """Just enough of a torch tensor for score_with_distilled."""
+    def __init__(self, a):
+        self.a = np.asarray(a, dtype=float)
+
+    def reshape(self, *shape):
+        return _Tensor(self.a.reshape(*shape))
+
+    def float(self):
+        return self
+
+    def cpu(self):
+        return self
+
+    def numpy(self):
+        return self.a
+
+
+def _stub_model(monkeypatch):
+    """Fake torch / transformers: the model scores len(text) / 100. Returns
+    (texts sent to the tokenizer per batch, model dirs loaded)."""
+    import contextlib
+    import sys
+    import types
+    seen, loaded = [], []
+
+    class _Enc(dict):
+        def to(self, device):
+            return self
+
+    def tok(texts, **kw):
+        seen.append(list(texts))
+        return _Enc(n=_Tensor([len(t) for t in texts]))
+
+    class _Model:
+        def to(self, device):
+            return self
+
+        def eval(self):
+            return self
+
+        def __call__(self, n):
+            return types.SimpleNamespace(logits=_Tensor(n.a / 100).reshape(-1, 1))
+
+    torch = types.ModuleType("torch")
+    torch.cuda = types.SimpleNamespace(is_available=lambda: False)
+    torch.no_grad = contextlib.nullcontext
+    tf = types.ModuleType("transformers")
+    tf.AutoTokenizer = types.SimpleNamespace(from_pretrained=lambda d: loaded.append(d) or tok)
+    tf.AutoModelForSequenceClassification = types.SimpleNamespace(
+        from_pretrained=lambda d: _Model())
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    monkeypatch.setitem(sys.modules, "transformers", tf)
+    return seen, loaded
+
+
+def test_score_with_distilled_leaves_textless_nan(tmp_path, monkeypatch):
+    # The old "." stand-in scored every image-only post the same +0.111.
+    seen, loaded = _stub_model(monkeypatch)
+    texts = ["", "   ", None, " ok ", "yes", "a real post"]
+    out = sl.score_with_distilled(texts, tmp_path, batch_size=1)
+    assert np.isnan(out[:4]).all()
+    assert out[4] == pytest.approx(0.03) and out[5] == pytest.approx(0.11)
+    assert seen == [["yes"], ["a real post"]]                       # only texts reach the model
+    loaded.clear()
+    assert np.isnan(sl.score_with_distilled(["", "  "], tmp_path)).all()
+    assert loaded == []                                     # nothing to score: no model load
+
+
+def test_score_post_file_and_replies_never_resend_textless(tmp_path, monkeypatch):
+    import json as _j
+    f = tmp_path / "posts.jsonl"
+    recs = (("1", "strikes on Iran"), ("2", ""), ("3", None), ("4", "ok"))
+    f.write_text("".join(_j.dumps({"id": i, "user": "t", "text": t}) + "\n" for i, t in recs))
+    calls = []
+    monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)
+    def fake_score(texts, md, bs=64, max_len=None):
+        calls.append(list(texts))
+        return np.full(len(texts), 0.5)
+    monkeypatch.setattr(sl, "score_with_distilled", fake_score)
+    out = tmp_path / "scored.parquet"
+    df = sl.score_post_file([f], out)
+    assert calls == [["strikes on Iran"]]
+    unscored = df.set_index("id")["score_opus_distilled"].isna().to_dict()
+    assert unscored == {"1": False, "2": True, "3": True, "4": True}
+    sl.score_post_file([f], out)
+    assert len(calls) == 1                                  # the NaN rows are not queued again
+
+    calls.clear()
+    monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
+    replies = pd.DataFrame({"id": ["a", "b"], "text": ["I support this", " "]})
+    replies.to_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    r = sl.score_replies(tmp_path, col="score_x")
+    assert calls == [["I support this"]] and r["score_x"].isna().tolist() == [False, True]
+    sl.score_replies(tmp_path, col="score_x")
+    assert len(calls) == 1
+
+
+def test_score_post_file_rescores_rows_that_gain_text(tmp_path, monkeypatch):
+    # A ReTruth stored with no text (and the old "." score) gets the reblogged
+    # text from a re-collected feed: it takes the text and is scored again.
+    # Posts that had text keep their score, and image-only posts stay NaN.
+    import json as _j
+    out = tmp_path / "scored.parquet"
+    pd.DataFrame({"id": ["1", "2", "3"], "user": "t", "text": ["", "strikes on Iran", ""],
+                  "score_opus_distilled": [0.111, 0.7, 0.111],
+                  "score_other": [0.111, 0.2, 0.111]}).to_parquet(out, index=False)
+    f = tmp_path / "posts.jsonl"
+    recs = (("1", "RT @someone: no war with Iran"), ("2", "strikes on Iran, edited"), ("3", ""))
+    f.write_text("".join(_j.dumps({"id": i, "user": "t", "text": t}) + "\n" for i, t in recs))
+    calls = []
+    monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)
+    def fake_score(texts, md, bs=64, max_len=None):
+        calls.append(list(texts))
+        return np.full(len(texts), -0.5)
+    monkeypatch.setattr(sl, "score_with_distilled", fake_score)
+    df = sl.score_post_file([f], out, max_len=8).set_index("id")
+    assert calls == [["RT @someone: no war with Iran"]]
+    assert df.loc["1", "text"] == "RT @someone: no war with Iran"
+    assert df.loc["1", "score_opus_distilled"] == -0.5 and np.isnan(df.loc["1", "score_other"])
+    assert df.loc["2", "text"] == "strikes on Iran" and df.loc["2", "score_opus_distilled"] == 0.7
+    assert df.loc["3", "score_opus_distilled"] == 0.111       # untouched: still no text
+    sl.score_post_file([f], out, max_len=8)
+    assert len(calls) == 1

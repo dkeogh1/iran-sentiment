@@ -57,3 +57,27 @@ def test_score_stance_scores_only_new(tmp_path, monkeypatch):
     assert sorted(res["id"]) == ["1", "2"]
     assert res.set_index("id").loc["2", "stance"] == "antiwar_betrayal"
     assert len(pd.read_parquet(out)) == 2
+
+
+def test_score_stance_media_only_follows_min_text_chars(tmp_path, monkeypatch):
+    import types
+    monkeypatch.setattr(es, "STANCE_OUTPUT", tmp_path / "stance_sample.parquet")
+    monkeypatch.setattr(settings, "MIN_TEXT_CHARS", 5)
+    sent = []
+    class _Msgs:
+        def create(self, **kw):
+            sent.append(kw["messages"][0]["content"])
+            return types.SimpleNamespace(content=[types.SimpleNamespace(
+                text='{"stance": "neutral_other", "confidence": 0.5, "reason": "r"}')])
+    class _Client:
+        def __init__(self, *a, **k):
+            self.messages = _Msgs()
+    import anthropic
+    monkeypatch.setattr(anthropic, "Anthropic", _Client)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+
+    sample = pd.DataFrame({"id": ["1", "2"], "tracked_slug": ["p", "p"], "user": ["u1", "u2"],
+                           "text": [" abcd ", "long enough"], "score_transformer": [0.0, 0.0]})
+    res = es.score_stance(sample).set_index("id")
+    assert res.loc["1", "stance"] == "media_only" and len(sent) == 1   # 4 chars < 5: no API call
+    assert res.loc["2", "stance"] == "neutral_other"

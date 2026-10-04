@@ -33,6 +33,11 @@ REPLY_SENTIMENT_OUTPUT = PROCESSED_DIR / "reply_sentiment.parquet"
 # Trump's own Truth Social feed, scored by the Opus-taught distilled model
 # (`score-posts ... --col score_opus_distilled`).
 TRUMP_FEED_STANCE = PROCESSED_DIR / "truthsocial_trump_stance.parquet"
+# The random bucket draws behind the Opus-labelled reply sample (id,
+# tracked_slug, bucket at draw time), recorded once per tracked post so
+# `reply-population` weights the sample that was labelled, not a fresh
+# redraw from a reply frame that has grown since.
+REPLY_DRAWS_MANIFEST = PROCESSED_DIR / "reply_sample_draws.parquet"
 
 
 # ── Date window for data collection / analysis ────────────────────
@@ -53,6 +58,15 @@ COLLECTION_END = (
 # absent from the frame are skipped by the plots.
 STANCE_SCORE_COL = "score_opus"
 PLOT_SCORE_COLS = ["score_vader", "score_transformer", "score_llm", "score_opus"]
+# Posts and replies with fewer characters, once links and a leading
+# "RT @x: " are removed (src/text_rules.py), carry no text to judge: image /
+# video only or a ReTruth stored before 2026-10-04 on Truth Social, a bare
+# t.co link on X. They are not scored and leave every share and mean,
+# rather than counting as off-topic. Same cut as the reply sampler's
+# media_only. 1,622 of Trump's 4,360 Truth Social posts fell under it on
+# 2026-09-30 (the distilled model had scored each one a constant +0.111, as
+# it did the image-only replies).
+MIN_TEXT_CHARS = 3
 
 
 # ── War-topic filter ───────────────────────────────────────────────
@@ -76,9 +90,10 @@ TOPIC_SOURCE = "either"
 # Group pairs `phases` reports gaps for (a - b, within each phase).
 PHASE_GAPS = [("maga_prowar", "admin"), ("maga_prowar", "maga_antiwar")]
 # Bootstrap for the phase tables: posts are resampled in account-day blocks
-# within each account, so same-day posts move together and each account's
-# weight stays as observed. The intervals are sampling noise for THESE
-# accounts, not a claim about accounts we did not track.
+# within each account, so same-day posts move together. Each account keeps
+# its total day count, but its days (and so its weight in a phase) are
+# resampled across the whole series. The intervals are sampling noise for
+# THESE accounts, not a claim about accounts we did not track.
 BOOTSTRAP_N = 1000
 BOOTSTRAP_SEED = 42
 
@@ -105,8 +120,12 @@ X_READ_COST_USD = 0.005
 # default cap.
 ACCOUNT_CAP_OVERRIDES: dict[str, int] = {
     # 2026-09-18 May 10 -> Sep 18 refresh: the five accounts projected far
-    # over the cap are sampled at ~450 (spread across ~10 two-week slices);
-    # everything else fits under 500 and is fetched in full.
+    # over the cap are sampled at ~450 (spread across ~10 two-week slices).
+    # The rest ran at 500, but split_cap gives every slice an equal share,
+    # so a busy fortnight is cut there too: 8 more accounts hit a slice cap
+    # (collect_2026-09-18.log: @POTUS, @PeteHegseth, @VP, @VaticanNews in 9
+    # slices, @RealCandaceO 7, @WhiteHouse 6, @mtgreenee and @Pontifex 1).
+    # A capped slice keeps its newest posts.
     "LauraLoomer": 450,
     "marklevinshow": 450,
     "RealAlexJones": 450,
@@ -116,8 +135,8 @@ ACCOUNT_CAP_OVERRIDES: dict[str, int] = {
 
 # Hard ceiling on one `collect` run. The CLI prints the per-account plan
 # and refuses to start if the plan's maximum spend exceeds this. Set it to
-# the X credit you are actually willing to burn (balance was $4.40 on
-# 2026-09-16); raise it deliberately, per run.
+# the X credit you are actually willing to burn, never above the current
+# balance; raise it deliberately, per run.
 X_RUN_BUDGET_USD = 45.00   # raised 2026-09-18 after a top-up for the May->Sep refresh
 
 
@@ -150,8 +169,9 @@ TS_PREFER_AUTH = True
 # mark the account current -- a permanent hole (bitten after the May 10 ->
 # Sep gap: 9 of 17 accounts were over the cap). collect_user instead walks
 # the gap oldest-slice-first in windows of this many days, giving each
-# slice an even share of the account's cap, so a cap hit thins a slice
-# instead of deleting months.
+# slice an even share of the account's cap, so a cap hit costs a slice its
+# older days (the endpoint is newest-first: a capped slice keeps its last
+# day or two) instead of deleting months.
 GAP_FILL_SLICE_DAYS = 14
 
 

@@ -2,7 +2,7 @@
 Relabel the broadcaster dataset with a stronger teacher through the Message
 Batches API (50% of standard pricing, results within ~1 h, kept 29 days).
 
-  submit   build one request per labelled post -> batch; state -> RELABEL_STATE
+  submit   build one request per post with text -> batch; state -> RELABEL_STATE
   status   poll processing_status / request_counts
   collect  read results, parse the JSON stance, write teacher_labels parquet;
            errored / expired ids are listed for a resubmit
@@ -22,6 +22,7 @@ import pandas as pd
 
 from config import settings
 from src.analysis.sentiment import llm_prompt, parse_llm_json
+from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +59,16 @@ def estimate_cost(n: int) -> float:
 
 
 def posts_to_label(df: pd.DataFrame, model: str, only_ids: set[str] | None = None) -> pd.DataFrame:
-    """Labelled, on-topic, non-empty posts not already in the teacher parquet."""
-    d = df[df["score_llm"].notna()]
+    """Posts with text (src/text_rules.py) not already in the teacher
+    parquet, less those Haiku marked off_topic. A Haiku score is not
+    required: the refresh order runs `analyze` without --llm, and a post with
+    no Opus label silently drops out of `phases`. Bare links (X's image /
+    video tweets) have no text: the model can't follow the link, so a label
+    would be a paid 0.0."""
+    d = df
     if "label_llm" in d:
         d = d[d["label_llm"] != "off_topic"]
-    d = d[d["text"].fillna("").str.strip().str.len() > 0]
+    d = d[d["text"].map(has_text).astype(bool)]
     lp = labels_path(model)
     if lp.exists():
         have = set(pd.read_parquet(lp)["id"].astype(str))

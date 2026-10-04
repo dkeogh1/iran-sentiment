@@ -11,8 +11,9 @@ from the same functions as `phases` / `reply-population`, never recomputed.
   decomposition.json    each tier's strike-phase -> September change, split into
                         "talked about the war less" and "changed its war stance"
   trump_phases.json     Trump's own Truth Social war posts by phase (distilled model)
-  replies.json          Trump's reply audience per post: Opus-corrected anti /
-                        neutral / pro shares, net stance with CI, RoBERTa valence
+  replies.json          Trump's reply audience per post (replies with text):
+                        Opus-corrected anti / neutral / pro shares, net stance
+                        with CI, RoBERTa valence
 """
 
 from __future__ import annotations
@@ -99,10 +100,15 @@ def decomposition(d: pd.DataFrame, score: str) -> list[dict]:
 
 
 def trump_phases() -> list[dict]:
+    """Trump's war posts by phase. Each tick's dates are clipped to the feed:
+    it was collected from Apr 4, so the first phase reads Apr 4, not Feb 1."""
     df = pd.read_parquet(settings.TRUMP_FEED_STANCE)
     d = inf.prepare(df, "score_opus_distilled", group="user")
     st = inf.phase_stats(inf.bootstrap_cells(d, "score_opus_distilled"))
-    ticks = {label: f"{start:%b %-d}–{end:%b %-d}\n{label}" for label, start, end in PHASES}
+    days = pd.to_datetime(df["created_at"], utc=True).dt.date
+    first, last = days.min(), days.max()
+    ticks = {label: f"{max(start, first):%b %-d}–{min(end, last):%b %-d}\n{label}"
+             for label, start, end in PHASES}
     return [{"phase": str(r["phase"]), "tick": ticks[str(r["phase"])],
              "stance": _r(r["mean_on"]), "lo": _r(r["mean_on_lo"]), "hi": _r(r["mean_on_hi"]),
              "share": _r(r["share"]), "n_war": int(r["n_on"]), "n": int(r["n"])}
@@ -110,12 +116,22 @@ def trump_phases() -> list[dict]:
 
 
 def replies() -> list[dict]:
+    """Per tracked post, over its replies with text (as reply_population). A
+    post whose Opus estimate is NaN (replies in a valence bucket with no
+    labelled draw) is left out with a warning, not exported as nulls."""
     rp = inf.reply_population()
-    val = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT, columns=["tracked_slug", "score_transformer"])
+    val = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT,
+                          columns=["id", "tracked_slug", "text", "score_transformer"])
+    val = val[~val["id"].astype(str).duplicated() & inf.has_text(val["text"])]
     val = val.groupby("tracked_slug")["score_transformer"].mean()
     posts = {p.slug: p for p in TRACKED_POSTS}
     rows = []
     for _, r in rp[rp["post"] != "ALL"].iterrows():
+        if r[["assisted_mean", "assisted_pro", "assisted_anti"]].isna().any():
+            logger.warning("export-web: %s left out of replies.json: %.0f%% of its replies are in "
+                           "a valence bucket with no Opus-labelled draw",
+                           r["post"], 100 * (1 - r["coverage"]))
+            continue
         p = posts[r["post"]]
         pro, anti = r["assisted_pro"], r["assisted_anti"]
         rows.append({"post": settings.WEB_POST_LABELS.get(r["post"], p.label), "slug": r["post"],

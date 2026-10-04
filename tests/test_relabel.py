@@ -13,18 +13,28 @@ def _df():
                          "score_llm": [0.1, -0.2, 0.0, None], "label_llm": ["positive", "negative", "neutral", None]})
 
 
-def test_posts_to_label_skips_empty_unlabelled_and_done(tmp_path, monkeypatch):
+def test_posts_to_label_skips_textless_off_topic_and_done(tmp_path, monkeypatch):
+    # Post 4 has no Haiku score (analyze ran without --llm): it still needs an
+    # Opus label, or `phases` drops it. Off-topic, textless and bare-link
+    # posts (7, never seen by Haiku either) do not.
     monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
-    assert rl.posts_to_label(_df(), "claude-opus-5")["id"].tolist() == ["1", "2"]
+    more = pd.DataFrame({"id": ["5", "6", "7"], "text": ["off topic post", "ok",
+                                                      " https://t.co/abc https://t.co/d "],
+                         "user": "u", "tier": "admin", "score_llm": [0.0, None, None],
+                         "label_llm": ["off_topic", None, None]})
+    df = pd.concat([_df(), more], ignore_index=True)
+    assert rl.posts_to_label(df, "claude-opus-5")["id"].tolist() == ["1", "2", "4"]
     pd.DataFrame({"id": ["1"], "score_teacher": [0.5], "label_teacher": ["positive"]}).to_parquet(
         rl.labels_path("claude-opus-5"), index=False)
-    assert rl.posts_to_label(_df(), "claude-opus-5")["id"].tolist() == ["2"]
-    assert rl.posts_to_label(_df(), "claude-opus-5", only_ids={"1", "2"})["id"].tolist() == ["2"]
+    assert rl.posts_to_label(df, "claude-opus-5")["id"].tolist() == ["2", "4"]
+    assert rl.posts_to_label(df, "claude-opus-5", only_ids={"1", "2"})["id"].tolist() == ["2"]
+    no_haiku = df.drop(columns="label_llm")                     # no Haiku labels at all
+    assert rl.posts_to_label(no_haiku, "claude-opus-5")["id"].tolist() == ["2", "4", "5"]
 
 
 def test_build_requests_shape():
     reqs = rl.build_requests(rl.posts_to_label(_df(), "x"), "claude-opus-5", 1024, "low")
-    assert [r["custom_id"] for r in reqs] == ["1", "2"]
+    assert [r["custom_id"] for r in reqs] == ["1", "2", "4"]
     p = reqs[0]["params"]
     assert p["model"] == "claude-opus-5" and p["max_tokens"] == 1024
     assert p["output_config"] == {"effort": "low"} and "a post" in p["messages"][0]["content"]

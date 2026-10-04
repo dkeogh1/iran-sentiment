@@ -15,7 +15,8 @@ Design:
 import json
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import tweepy
@@ -51,15 +52,13 @@ def _search_cache_path(query: str) -> Path:
 def _save_jsonl(path: Path, records: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
-        for r in records:
-            f.write(json.dumps(r) + "\n")
+        f.writelines(json.dumps(r) + "\n" for r in records)
 
 
 def _append_jsonl(path: Path, records: list[dict]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a") as f:
-        for r in records:
-            f.write(json.dumps(r) + "\n")
+        f.writelines(json.dumps(r) + "\n" for r in records)
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -83,13 +82,43 @@ def _latest_created_at(records: list[dict]) -> datetime | None:
     return max(timestamps) if timestamps else None
 
 
+# Fields of the post itself, never expansions: X bills per resource returned,
+# so an expansion could add billed reads. note_tweet holds the full text of a
+# post over 280 characters; referenced_tweets marks retweets, quotes, replies.
+_TWEET_FIELDS = ["created_at", "public_metrics", "lang", "note_tweet", "referenced_tweets"]
+
+_RT_PREFIX = re.compile(r"RT @\w+: ")
+
+
+def _full_text(tweet) -> str:
+    """
+    The post's whole text. `text` stops at 280 characters; a longer post's
+    full text is in note_tweet, which tweepy's Tweet model does not parse.
+    A retweet keeps its "RT @handle: " prefix so it still reads as one.
+    """
+    note = ((tweet.data or {}).get("note_tweet") or {}).get("text")
+    if not note:
+        return tweet.text
+    rt = _RT_PREFIX.match(tweet.text or "")
+    return rt.group(0) + note if rt and not note.startswith(rt.group(0)) else note
+
+
+def _with_refs(record: dict, tweet) -> dict:
+    """Add `ref` ([{type, id}], type retweeted|quoted|replied_to) when the post
+    references another. Old cache records lack the key."""
+    refs = (tweet.data or {}).get("referenced_tweets") or []
+    if refs:
+        record["ref"] = [{"type": r.get("type"), "id": str(r.get("id"))} for r in refs]
+    return record
+
+
 # ── User timeline collection ───────────────────────────────────────
 
 
 def _naive_utc(dt: datetime) -> datetime:
     """Strip tz after converting to UTC (the API formatter appends 'Z')."""
     if dt.tzinfo is not None:
-        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+        dt = dt.astimezone(UTC).replace(tzinfo=None)
     return dt
 
 
@@ -101,15 +130,16 @@ def account_cap(handle: str) -> int:
 def plan_slices(
     start: datetime,
     end: datetime,
-    slice_days: int = settings.GAP_FILL_SLICE_DAYS,
+    slice_days: int | None = None,
 ) -> list[tuple[datetime, datetime]]:
     """
-    Split [start, end] into contiguous windows of at most `slice_days`,
-    OLDEST FIRST. The last slice is short so the final edge is exactly `end`.
+    Split [start, end] into contiguous windows of at most `slice_days`
+    (default settings.GAP_FILL_SLICE_DAYS, read per call), OLDEST FIRST.
+    The last slice is short so the final edge is exactly `end`.
     """
     if end <= start:
         return []
-    step = timedelta(days=slice_days)
+    step = timedelta(days=slice_days or settings.GAP_FILL_SLICE_DAYS)
     slices: list[tuple[datetime, datetime]] = []
     s = start
     while s < end:
@@ -242,7 +272,7 @@ def _fetch_window(
             end_time=end.isoformat() + "Z",
             max_results=max(5, per_page),  # API requires min 5
             pagination_token=pagination_token,
-            tweet_fields=["created_at", "public_metrics", "lang"],
+            tweet_fields=_TWEET_FIELDS,
         )
 
         if resp.data:
@@ -250,16 +280,19 @@ def _fetch_window(
                 if len(out) >= cap:
                     break
                 out.append(
-                    {
-                        "id": str(tweet.id),
-                        "user": handle,
-                        "tier": tier,
-                        "text": tweet.text,
-                        "created_at": tweet.created_at.isoformat(),
-                        "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
-                        "lang": tweet.lang,
-                        "platform": "x",
-                    }
+                    _with_refs(
+                        {
+                            "id": str(tweet.id),
+                            "user": handle,
+                            "tier": tier,
+                            "text": _full_text(tweet),
+                            "created_at": tweet.created_at.isoformat(),
+                            "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
+                            "lang": tweet.lang,
+                            "platform": "x",
+                        },
+                        tweet,
+                    )
                 )
 
         if resp.meta and resp.meta.get("next_token") and len(out) < cap:
@@ -328,10 +361,10 @@ def collect_user(
         return existing
 
     new_tweets: list[dict] = []
-    any_capped = False
+    walked: list[tuple[datetime, datetime, int, int, bool]] = []  # s, e, cap, got, capped
     for (s, e), cap in zip(plan["slices"], plan["caps"]):
         got, capped = _fetch_window(client, user.data.id, handle, tier, s, e, cap)
-        any_capped = any_capped or capped
+        walked.append((s, e, cap, len(got), capped))
         new_tweets.extend(got)
         logger.info(
             "@%s: slice %s..%s -> %d%s",
@@ -342,6 +375,21 @@ def collect_user(
             " (CAPPED)" if capped else "",
         )
 
+    # An empty slice next to a capped one is more likely a failed fetch than
+    # a silent account, and nothing revisits it: the cursor is the newest post.
+    # A slice whose share of the cap is 0 made no request, so cannot fail.
+    for i, (s, e, cap, n, _) in enumerate(walked):
+        if n == 0 and cap > 0 and any(walked[j][4] for j in (i - 1, i + 1) if 0 <= j < len(walked)):
+            logger.warning(
+                "@%s: slice %s..%s returned 0 posts next to a capped slice -- "
+                "possible fetch failure; later runs start after the newest "
+                "post and will not fetch this window again",
+                handle,
+                s,
+                e,
+            )
+
+    any_capped = any(c for *_, c in walked)
     capped = " (CAPPED)" if any_capped else ""
 
     if incremental:
@@ -389,18 +437,18 @@ def collect_search(
     if incremental:
         latest = _latest_created_at(existing)
         if latest is not None:
-            from datetime import timedelta, timezone
+            from datetime import timedelta
 
             start_time = latest + timedelta(seconds=1)
             if start_time.tzinfo is not None:
-                start_time = start_time.astimezone(timezone.utc).replace(tzinfo=None)
+                start_time = start_time.astimezone(UTC).replace(tzinfo=None)
             # /search/recent only goes back ~7 days. If the cached
             # latest is older than that, the API will 400. Clamp
             # start_time forward to the window edge (with a 5-minute
             # buffer for clock drift) and warn — there is no way to
             # backfill the gap without the paid full-archive endpoint.
             search_floor = (
-                datetime.now(timezone.utc).replace(tzinfo=None, microsecond=0)
+                datetime.now(UTC).replace(tzinfo=None, microsecond=0)
                 - timedelta(days=7)
                 + timedelta(minutes=5)
             )
@@ -434,7 +482,7 @@ def collect_search(
             query=query,
             max_results=max(10, per_page),
             next_token=pagination_token,
-            tweet_fields=["created_at", "author_id", "public_metrics", "lang"],
+            tweet_fields=[*_TWEET_FIELDS, "author_id"],
         )
         if start_time is not None:
             kwargs["start_time"] = start_time.isoformat() + "Z"
@@ -446,17 +494,20 @@ def collect_search(
                 if len(new_tweets) >= max_total:
                     break
                 new_tweets.append(
-                    {
-                        "id": str(tweet.id),
-                        "author_id": str(tweet.author_id),
-                        "user": f"search:{query}",
-                        "tier": "search",
-                        "text": tweet.text,
-                        "created_at": tweet.created_at.isoformat(),
-                        "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
-                        "lang": tweet.lang,
-                        "platform": "x",
-                    }
+                    _with_refs(
+                        {
+                            "id": str(tweet.id),
+                            "author_id": str(tweet.author_id),
+                            "user": f"search:{query}",
+                            "tier": "search",
+                            "text": _full_text(tweet),
+                            "created_at": tweet.created_at.isoformat(),
+                            "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
+                            "lang": tweet.lang,
+                            "platform": "x",
+                        },
+                        tweet,
+                    )
                 )
 
         if resp.meta and resp.meta.get("next_token") and len(new_tweets) < max_total:

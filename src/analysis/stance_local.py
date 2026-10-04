@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 
 from config import settings
+from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
 
@@ -428,7 +429,14 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
 
 def score_with_distilled(texts: list[str], model_dir: Path | None = None,
                          batch_size: int = 64, max_len: int | None = None) -> np.ndarray:
-    """Scores in [-1, 1]. max_len defaults to the model's training length."""
+    """Scores in [-1, 1]; NaN for texts without text to judge
+    (src/text_rules.py), which never reach the model (the old "." stand-in scored
+    every image-only post a constant +0.111, i.e. pro-war). max_len defaults
+    to the model's training length."""
+    out = np.full(len(texts), np.nan)
+    keep = [i for i, t in enumerate(texts) if has_text(t)]
+    if not keep:
+        return out
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -437,13 +445,22 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tok = AutoTokenizer.from_pretrained(model_dir)
     model = AutoModelForSequenceClassification.from_pretrained(model_dir).to(device).eval()
-    out = np.zeros(len(texts), dtype=float)
     with torch.no_grad():
-        for i in range(0, len(texts), batch_size):
-            chunk = [t if isinstance(t, str) and t.strip() else "." for t in texts[i:i + batch_size]]
-            enc = tok(chunk, truncation=True, max_length=max_len, padding=True, return_tensors="pt").to(device)
-            out[i:i + batch_size] = model(**enc).logits.reshape(-1).float().cpu().numpy()
+        for i in range(0, len(keep), batch_size):
+            idx = keep[i:i + batch_size]
+            enc = tok([texts[j] for j in idx], truncation=True, max_length=max_len, padding=True,
+                      return_tensors="pt").to(device)
+            out[idx] = model(**enc).logits.reshape(-1).float().cpu().numpy()
     return np.clip(out, -1, 1)
+
+
+def _to_score(df: pd.DataFrame, col: str) -> pd.Series:
+    """Rows still to score: no `col` yet, and text to score (adds `col` as
+    NaN when the frame lacks it). Textless rows stay NaN, so incremental
+    runs do not resend them forever."""
+    if col not in df:
+        df[col] = np.nan
+    return df[col].isna() & df["text"].map(has_text)
 
 
 def score_replies(model_dir: Path | None = None, col: str = "score_distilled",
@@ -453,7 +470,7 @@ def score_replies(model_dir: Path | None = None, col: str = "score_distilled",
     max_len = max_len or model_max_len(model_dir)
     out = settings.REPLY_SENTIMENT_OUTPUT
     df = pd.read_parquet(out)
-    todo = df[col].isna() if col in df else pd.Series(True, index=df.index)
+    todo = _to_score(df, col)
     if todo.any():
         logger.info("scoring %d replies with %s -> %s (max_len %d)", int(todo.sum()),
                     model_dir, col, max_len)
@@ -545,6 +562,8 @@ def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None
     write id / user / tier / platform / created_at / text / <col> to `out`.
     Incremental: new ids are appended, and only rows without a `col` score
     are scored, so a new column scores every row and existing scores stay.
+    A stored row without text whose record now has some (a ReTruth, once the
+    feed is re-collected with the reblogged text) takes it and is rescored.
     max_len defaults to the model's training length."""
     model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
     max_len = max_len or model_max_len(model_dir)
@@ -559,9 +578,20 @@ def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None
                 rows.append({k: r.get(k) for k in ("id", "user", "tier", "platform", "created_at", "text")})
     df = pd.DataFrame(rows).drop_duplicates("id")
     have = pd.read_parquet(out) if out.exists() else pd.DataFrame()
+    if not have.empty:
+        fresh = df.set_index(df["id"].astype(str))["text"]
+        fresh = fresh[~fresh.index.duplicated()]
+        now = have["id"].astype(str).map(fresh)
+        gained = ~have["text"].map(has_text) & now.map(has_text)
+        if gained.any():
+            # Its old scores were of no text (the "." stand-in): drop them all.
+            have.loc[gained, "text"] = now[gained]
+            have.loc[gained, [c for c in have if c.startswith("score_")]] = np.nan
+            logger.info("%d stored posts without text now have some: rescoring them",
+                        int(gained.sum()))
     new = df[~df["id"].astype(str).isin(set(have["id"].astype(str)))] if not have.empty else df
     result = pd.concat([have, new], ignore_index=True) if not have.empty else new
-    todo = result[col].isna() if col in result else pd.Series(True, index=result.index)
+    todo = _to_score(result, col)
     if todo.any():
         logger.info("scoring %d posts from %d file(s) -> %s (max_len %d)", int(todo.sum()),
                     len(inputs), col, max_len)

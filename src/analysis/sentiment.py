@@ -31,11 +31,11 @@ import pandas as pd
 from tqdm import tqdm
 
 from config import settings
+from src.text_rules import has_text
 
 # Matches text consisting only of one or more URLs separated by whitespace.
 # Pre-filtering these avoids wasted LLM calls on posts whose "content" is
 # just a media link (Claude can't follow URLs and returns a refusal).
-_URL_ONLY_RE = re.compile(r"^\s*(https?://\S+\s*)+$")
 
 logger = logging.getLogger(__name__)
 
@@ -453,7 +453,7 @@ def score_llm_inplace(
         text = (p.get("text") or "").strip()
         if not text:
             continue
-        if _URL_ONLY_RE.match(text):
+        if not has_text(text):
             p["score_llm"] = 0.0
             p["label_llm"] = "off_topic"
             url_only_count += 1

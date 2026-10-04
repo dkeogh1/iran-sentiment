@@ -27,6 +27,7 @@ import pandas as pd
 
 from config import settings
 from src.analysis.sentiment import parse_llm_json
+from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ def all_posts() -> pd.DataFrame:
         frames.append(pd.read_parquet(settings.TRUMP_FEED_STANCE, columns=["id", "user", "text"]))
     d = pd.concat(frames, ignore_index=True)
     d["id"] = d["id"].astype(str)
-    d = d[d["text"].fillna("").str.strip().str.len() > 0]
+    d = d[d["text"].map(has_text).astype(bool)]
     return d.drop_duplicates("id").reset_index(drop=True)
 
 

@@ -66,8 +66,8 @@ def collect(force: bool, no_search: bool, estimate: bool, yes: bool):
     """Collect tweets from all configured X accounts (caches per-account).
 
     Incremental: each account fetches only tweets newer than its cache,
-    walked oldest-slice-first so a cap hit thins a slice instead of
-    dropping months. The plan below is a MAXIMUM -- accounts that posted
+    walked oldest-slice-first so a cap hit costs a slice its older days
+    instead of dropping months. The plan below is a MAXIMUM -- accounts that posted
     less than their cap cost less.
     """
     from src.collectors.x_collector import collect_all, estimate_run
@@ -652,6 +652,12 @@ def stance(n_per_bucket: int, force: bool, model: str | None):
         kwargs["model"] = model
 
     result = score_stance(sample, **kwargs)
+    # Freeze new posts' random draws, drawn from this same frame, now that
+    # they are saved: a later reply collection can't move what
+    # reply-population weights (it records only draws stance_sample holds).
+    from src.analysis.event_study import pick_score_col
+    from src.analysis.inference import reply_draws
+    reply_draws(df_replies, n_per_bucket=n_per_bucket, score_col=pick_score_col(df_replies))
     stance_summary(result)
 
 

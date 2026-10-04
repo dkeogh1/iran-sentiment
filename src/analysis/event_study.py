@@ -47,6 +47,7 @@ import numpy as np
 import pandas as pd
 
 from config import settings
+from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
 
@@ -597,7 +598,7 @@ def score_stance(
     for _, row in tqdm(df.iterrows(), total=len(df), desc="Stance"):
         text = (row.get("text") or "")[:500]
         user = row.get("user", "")
-        if len(text.strip()) < 3:
+        if not has_text(text):
             # Media-only reply (image/GIF): nothing to classify, no API call.
             results.append({
                 "id": row["id"], "tracked_slug": row.get("tracked_slug"), "user": user,

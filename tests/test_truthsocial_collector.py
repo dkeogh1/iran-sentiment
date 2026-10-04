@@ -1,7 +1,7 @@
 """Incremental refresh of a Truth Social account cache (stubbed API)."""
 
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 
@@ -27,7 +27,7 @@ def cache(tmp_path, monkeypatch):
 
 
 def test_incremental_appends_only_new_and_dedupes_overlap(cache, monkeypatch):
-    t0 = datetime(2026, 4, 1, tzinfo=timezone.utc)
+    t0 = datetime(2026, 4, 1, tzinfo=UTC)
     # 1 post/day for 10 days cached (newest first, like the API)
     old = [_post(i, t0 + timedelta(days=i, hours=1)) for i in range(10)][::-1]
     cache.write_text("".join(json.dumps(p) + "\n" for p in old))
@@ -59,7 +59,7 @@ def test_incremental_appends_only_new_and_dedupes_overlap(cache, monkeypatch):
 
 
 def test_current_cache_skips_api(cache, monkeypatch):
-    cache.write_text(json.dumps(_post(1, datetime(2026, 9, 15, tzinfo=timezone.utc))) + "\n")
+    cache.write_text(json.dumps(_post(1, datetime(2026, 9, 15, tzinfo=UTC))) + "\n")
     monkeypatch.setattr(
         ts, "collect_via_public_api", lambda *a, **k: pytest.fail("API should not be called")
     )
@@ -68,16 +68,74 @@ def test_current_cache_skips_api(cache, monkeypatch):
     assert len(got) == 1
 
 
-def test_force_overwrites(cache, monkeypatch):
-    cache.write_text(json.dumps(_post(1, datetime(2026, 4, 1, tzinfo=timezone.utc))) + "\n")
+def _fake_walk(posts, complete):
+    def walk(*a, **k):
+        return [dict(p) for p in posts]
+
+    walk.last_complete = complete
+    return walk
+
+
+def test_force_complete_walk_merges(cache, monkeypatch):
+    # A complete forced walk over a narrower window (--since) must keep the
+    # cached posts outside it.
+    cache.write_text(json.dumps(_post(1, datetime(2026, 4, 1, tzinfo=UTC))) + "\n")
     monkeypatch.setattr(
-        ts,
-        "collect_via_public_api",
-        lambda *a, **k: [_post(7, datetime(2026, 4, 2, tzinfo=timezone.utc))],
+        ts, "collect_via_public_api", _fake_walk([_post(7, datetime(2026, 9, 2, tzinfo=UTC))], True)
     )
+    got = ts.collect_user("t", "admin", start=date(2026, 9, 1), end=date(2026, 9, 14), force=True)
+    assert [p["id"] for p in got] == ["7", "1"]
+    assert len(cache.read_text().splitlines()) == 2
+
+
+def test_force_incomplete_walk_merges(cache, monkeypatch, caplog):
+    """A forced walk cut short keeps the cached posts it never reached and
+    takes the fetched version of the ones it did."""
+    t0 = datetime(2026, 4, 1, tzinfo=UTC)
+    old = [_post(i, t0 + timedelta(days=i)) for i in range(5)]
+    cache.write_text("".join(json.dumps(p) + "\n" for p in old))
+    refreshed = {**_post(4, t0 + timedelta(days=4)), "metrics": {"replies": 99}}
+    walk = [_post(6, t0 + timedelta(days=6)), _post(5, t0 + timedelta(days=5)), refreshed]
+    monkeypatch.setattr(ts, "collect_via_public_api", _fake_walk(walk, False))
+    with caplog.at_level("WARNING", logger=ts.logger.name):
+        got = ts.collect_user(
+            "t", "admin", start=date(2026, 2, 1), end=date(2026, 9, 14), force=True
+        )
+    assert [p["id"] for p in got] == ["6", "5", "4", "3", "2", "1", "0"]  # newest first
+    on_disk = {json.loads(x)["id"]: json.loads(x) for x in cache.read_text().splitlines()}
+    assert sorted(on_disk, key=int) == [str(i) for i in range(7)]
+    assert on_disk["4"]["metrics"]["replies"] == 99  # new version wins
+    assert any("INCOMPLETE" in r.getMessage() for r in caplog.records)
+
+
+def test_force_incomplete_empty_walk_leaves_cache(cache, monkeypatch):
+    t0 = datetime(2026, 4, 1, tzinfo=UTC)
+    # incremental runs append, so the file is oldest first
+    cache.write_text("".join(json.dumps(_post(i, t0 + timedelta(days=i))) + "\n" for i in (1, 2)))
+    before = cache.read_text()
+    monkeypatch.setattr(ts, "collect_via_public_api", _fake_walk([], False))
     got = ts.collect_user("t", "admin", start=date(2026, 2, 1), end=date(2026, 9, 14), force=True)
-    assert [p["id"] for p in got] == ["7"]
-    assert sum(1 for _ in open(cache)) == 1
+    assert [p["id"] for p in got] == ["2", "1"] and cache.read_text() == before
+
+
+def test_force_walk_cut_by_429_merges(cache, monkeypatch):
+    """End to end over the stubbed HTTP layer: the server 429s on the 3rd
+    statuses page, so the forced walk is incomplete and the older cached
+    posts survive."""
+    monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
+    cache.write_text(
+        "".join(
+            json.dumps(_post(i, t0 + timedelta(hours=i - 1000))) + "\n" for i in range(1000, 1200)
+        )
+    )
+    server, _ = _fake_server(_statuses(200, t0), fail_429_on_call=4)  # lookup + 2 pages
+    monkeypatch.setattr(ts, "_ts_get_paced", server)
+    got = ts.collect_user("t", "admin", start=date(2026, 4, 1), end=date(2026, 4, 30), force=True)
+    assert len(got) == 200 and len(cache.read_text().splitlines()) == 200
+    fetched = {p["id"]: p for p in got if p["text"].startswith("s")}  # server's versions
+    assert len(fetched) == 80 and min(fetched, key=int) == "1120"
+    assert all(p["tier"] == "admin" for p in fetched.values())
 
 
 # ── page walker against a stubbed HTTP layer ───────────────────────
@@ -131,7 +189,7 @@ def _fake_server(all_statuses, fail_429_on_call=None):
 
 def test_backward_walk_stops_at_cache_edge(monkeypatch):
     monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
-    t0 = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
     server, state = _fake_server(_statuses(100, t0))
     monkeypatch.setattr(ts, "_ts_get_paced", server)
     got = ts.collect_via_public_api("t", date(2026, 4, 1), date(2026, 4, 30), stop_at_id="1049")
@@ -141,7 +199,7 @@ def test_backward_walk_stops_at_cache_edge(monkeypatch):
 
 def test_backward_walk_no_progress_guard(monkeypatch):
     monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
-    t0 = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
     same_page = sorted(_statuses(20, t0), key=lambda s: -int(s["id"]))
 
     def ignores_cursor(url, params=None):
@@ -152,6 +210,80 @@ def test_backward_walk_no_progress_guard(monkeypatch):
     monkeypatch.setattr(ts, "_ts_get_paced", ignores_cursor)
     got = ts.collect_via_public_api("t", date(2026, 4, 1), date(2026, 4, 30))
     assert len(got) == 20 and ts.collect_via_public_api.last_complete is False
+
+
+# ── ReTruths and media ─────────────────────────────────────────────
+
+
+def _retruth(sid, when, inner="<p>Peace through <b>strength</b></p>", media=0):
+    return {
+        "id": sid,
+        "content": "",
+        "created_at": when,
+        "media_attachments": [],
+        "reblog": {
+            "id": "555",
+            "content": inner,
+            "account": {"acct": "WhiteHouse"},
+            "media_attachments": [{"type": "image"}] * media,
+        },
+    }
+
+
+def test_status_content_retruth_and_media():
+    when = "2026-04-10T00:00:00.000Z"
+    rt = ts._status_content(_retruth("1", when))
+    assert rt == {"text": "RT @WhiteHouse: Peace through strength", "reblog_of": "555"}
+    # a ReTruth of a post with no text stays a no-text post, media counted
+    bare = ts._status_content(_retruth("2", when, inner="", media=2))
+    assert bare == {"text": "", "reblog_of": "555", "media": 2}
+    # ... and so does one under MIN_TEXT_CHARS: the prefix must not lift it over
+    for inner in ("<p>!!</p>", "<p>\U0001f64f</p>"):
+        short = ts._status_content(_retruth("3", when, inner=inner, media=1))
+        assert short == {"text": "", "reblog_of": "555", "media": 1}
+    assert ts._status_content(_retruth("4", when, inner="<p>No!</p>"))["text"] == (
+        "RT @WhiteHouse: No!"
+    )
+    pic = ts._status_content({"content": "", "media_attachments": [{}, {}, {}]})
+    assert pic == {"text": "", "media": 3}
+    assert ts._status_content({"content": "<p>hi</p>", "media_attachments": []}) == {"text": "hi"}
+    assert ts._status_content({"content": None}) == {"text": ""}
+
+
+def test_public_api_records_retruth_and_media(monkeypatch):
+    monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
+    statuses = _statuses(3, t0)
+    statuses[1] = {**statuses[1], **_retruth(statuses[1]["id"], statuses[1]["created_at"])}
+    statuses[2] = {**statuses[2], "content": "", "media_attachments": [{"type": "video"}]}
+    server, _ = _fake_server(statuses)
+    monkeypatch.setattr(ts, "_ts_get_paced", server)
+    got = {p["id"]: p for p in ts.collect_via_public_api("t", date(2026, 4, 1), date(2026, 4, 30))}
+    assert got["1001"]["text"] == "RT @WhiteHouse: Peace through strength"
+    assert got["1001"]["reblog_of"] == "555" and "media" not in got["1001"]
+    assert got["1002"]["text"] == "" and got["1002"]["media"] == 1
+    assert "reblog_of" not in got["1000"] and "media" not in got["1000"]  # old shape
+
+
+def test_truthbrush_records_retruth(monkeypatch):
+    when = "2026-04-10T00:00:00.000Z"
+    api = type("Api", (), {"pull_statuses": lambda self, u, **kw: iter([_retruth("9", when)])})
+    monkeypatch.setattr(ts, "_get_truthbrush_api", lambda: api())
+    got = ts.collect_via_truthbrush("t", date(2026, 4, 1), date(2026, 4, 30))
+    assert got[0]["text"].startswith("RT @WhiteHouse: ") and got[0]["reblog_of"] == "555"
+
+
+def test_reply_record_counts_media():
+    status = {
+        "id": "3",
+        "content": "",
+        "created_at": "2026-04-10T00:00:00.000Z",
+        "media_attachments": [{"type": "image"}],
+        "account": {"username": "u"},
+    }
+    rec = ts._reply_record(status, parent_id="900")
+    assert rec["text"] == "" and rec["media"] == 1 and "reblog_of" not in rec
+    assert rec["source"] == "reply" and rec["account"]["username"] == "u"
 
 
 def test_paced_get_retries_429(monkeypatch):
@@ -168,7 +300,7 @@ def test_anonymous_incremental_interrupt_then_resume(cache, monkeypatch):
     Run 1 dies on the 3rd page: cache untouched, partial holds 2 pages.
     Run 2 resumes from the partial's oldest id, reaches the edge, merges."""
     monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
-    t0 = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
     cache.write_text(
         "".join(
             json.dumps(_post(i, t0 + timedelta(hours=i - 1000))) + "\n" for i in range(1000, 1010)
@@ -199,9 +331,44 @@ def test_anonymous_incremental_interrupt_then_resume(cache, monkeypatch):
     assert len(got) == 210 and got[0]["id"] == "1209"
 
 
+def test_stale_partial_after_forced_walk_adds_no_duplicates(cache, monkeypatch):
+    """An interrupted anonymous run leaves a partial; a forced walk then
+    refetches the whole window, those posts included. The next anonymous run
+    must not append the partial's posts a second time."""
+    monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
+    window = {"start": date(2026, 4, 1), "end": date(2026, 4, 30)}
+    cache.write_text(
+        "".join(
+            json.dumps(_post(i, t0 + timedelta(hours=i - 1000))) + "\n" for i in range(1000, 1010)
+        )
+    )
+    server, state = _fake_server(_statuses(210, t0))
+
+    def flaky(url, params=None):
+        r = server(url, params)
+        return _Resp(429, headers={"retry-after": "1"}) if state["calls"] == 4 else r
+
+    monkeypatch.setattr(ts, "_ts_get_paced", flaky)
+    ts.collect_user("t", "admin", **window, use_auth=False)
+    partial = cache.with_suffix(".partial.jsonl")
+    assert len(partial.read_text().splitlines()) == 80
+
+    monkeypatch.setattr(ts, "_ts_get_paced", server)
+    ts.collect_user("t", "admin", **window, force=True)
+    assert len(cache.read_text().splitlines()) == 210 and partial.exists()
+
+    newer, _ = _fake_server(_statuses(212, t0))  # two posts since the forced walk
+    monkeypatch.setattr(ts, "_ts_get_paced", newer)
+    got = ts.collect_user("t", "admin", **window, use_auth=False)
+    ids = [json.loads(x)["id"] for x in cache.read_text().splitlines()]
+    assert len(ids) == len(set(ids)) == 212 and len(got) == 212
+    assert not partial.exists()
+
+
 def test_anonymous_incremental_skips_when_current(cache, monkeypatch):
     monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
-    t0 = datetime(2026, 4, 10, tzinfo=timezone.utc)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
     cache.write_text(json.dumps(_post(1099, t0 + timedelta(hours=99))) + "\n")
     server, state = _fake_server(_statuses(100, t0))
     monkeypatch.setattr(ts, "_ts_get_paced", server)

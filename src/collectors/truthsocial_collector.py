@@ -28,12 +28,13 @@ used from `collect_replies`.
 import json
 import logging
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from curl_cffi import requests as cffi_requests
 
 from config import settings
+from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,7 @@ def _retry_after_seconds(resp) -> float:
         if reset:
             try:
                 dt = datetime.fromisoformat(reset.replace("Z", "+00:00"))
-                wait = (dt - datetime.now(timezone.utc)).total_seconds()
+                wait = (dt - datetime.now(UTC)).total_seconds()
             except ValueError:
                 pass
     if wait is None:
@@ -117,8 +118,9 @@ def _account_cache_path(handle: str) -> Path:
 
 
 def _has_truthbrush_creds() -> bool:
-    from dotenv import load_dotenv
     import os
+
+    from dotenv import load_dotenv
 
     load_dotenv(override=True)
     return bool(os.environ.get("TRUTHSOCIAL_USERNAME") and os.environ.get("TRUTHSOCIAL_PASSWORD"))
@@ -146,7 +148,7 @@ def collect_via_truthbrush(
 
     posts: list[dict] = []
     if created_after is not None and created_after.tzinfo is None:
-        created_after = created_after.replace(tzinfo=timezone.utc)
+        created_after = created_after.replace(tzinfo=UTC)
 
     for status in api.pull_statuses(username, since_id=since_id, created_after=created_after):
         created = datetime.fromisoformat(status["created_at"].replace("Z", "+00:00"))
@@ -159,7 +161,7 @@ def collect_via_truthbrush(
             {
                 "id": status["id"],
                 "user": username,
-                "text": _strip_html(status.get("content", "")),
+                **_status_content(status),
                 "created_at": status["created_at"],
                 "metrics": {
                     "reblogs": status.get("reblogs_count", 0),
@@ -259,7 +261,7 @@ def collect_via_public_api(
                     {
                         "id": status["id"],
                         "user": username,
-                        "text": _strip_html(status.get("content", "")),
+                        **_status_content(status),
                         "created_at": status["created_at"],
                         "metrics": {
                             "reblogs": status.get("reblogs_count", 0),
@@ -309,12 +311,40 @@ def _strip_html(html: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _status_content(status: dict) -> dict:
+    """
+    `text` plus the optional `reblog_of` / `media` keys for a status record.
+
+    A ReTruth carries no content of its own, so its text is the reblogged
+    post's, prefixed "RT @acct: " like an X retweet: a ReTruth counts as the
+    account's messaging. A ReTruth of a post with no text (src/text_rules.py,
+    e.g. a lone emoji or a bare link) keeps text empty, since the prefix
+    alone would carry it past that cut. `media` is the attachment
+    count, the reblogged post's for a ReTruth; both keys appear only when set.
+    """
+    out = {"text": _strip_html(status.get("content") or "")}
+    reblog = status.get("reblog")
+    if isinstance(reblog, dict):
+        out["reblog_of"] = reblog.get("id")
+        inner = _strip_html(reblog.get("content") or "")
+        if not out["text"] and has_text(inner):
+            acct = (reblog.get("account") or {}).get("acct", "")
+            out["text"] = f"RT @{acct}: {inner}"
+    media = (
+        status.get("media_attachments")
+        or (reblog.get("media_attachments") if isinstance(reblog, dict) else None)
+        or []
+    )
+    if media:
+        out["media"] = len(media)
+    return out
+
+
 def _save_jsonl(path: Path, records: list[dict]) -> None:
     """Write a list of dicts to a JSONL file (overwrites)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w") as f:
-        for r in records:
-            f.write(json.dumps(r) + "\n")
+        f.writelines(json.dumps(r) + "\n" for r in records)
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -357,7 +387,8 @@ def collect_user(
     needs no login), None = settings.TS_PREFER_AUTH and credentials present.
 
     Mirrors `x_collector.collect_user`:
-      - force=True   : re-fetch the whole [start, end] window, overwrite.
+      - force=True   : re-fetch the whole [start, end] window and merge it
+                       into the cache by id, the fetched version winning.
       - force=False  : incremental -- if a non-empty cache exists, fetch
                        only from the day of the latest cached post, drop
                        ids already cached, and append. Returns the full
@@ -434,7 +465,11 @@ def collect_user(
             # so an interrupted run never leaves a hole and a rerun resumes
             # from the partial's oldest id.
             partial_path = cache.with_suffix(".partial.jsonl")
-            partial = _load_jsonl(partial_path) if partial_path.exists() else []
+            # Drop partial posts the cache already holds: a forced or
+            # authenticated run since the partial was written may have
+            # fetched them, and appending them again would duplicate ids.
+            cached_ids = {r.get("id") for r in existing}
+            partial = [r for r in _load_jsonl(partial_path) if r.get("id") not in cached_ids]
             resume_from = (
                 min((r["id"] for r in partial if r.get("id")), key=int) if partial else None
             )
@@ -445,7 +480,7 @@ def collect_user(
                     len(partial),
                     resume_from,
                 )
-            seen_ids = {r.get("id") for r in existing} | {r.get("id") for r in partial}
+            seen_ids = cached_ids | {r.get("id") for r in partial}
 
             def _flush(page: list[dict]) -> None:
                 fresh = [p for p in page if p.get("id") not in seen_ids]
@@ -454,8 +489,7 @@ def collect_user(
                     seen_ids.add(p["id"])
                 if fresh:
                     with open(partial_path, "a") as f:
-                        for r in fresh:
-                            f.write(json.dumps(r) + "\n")
+                        f.writelines(json.dumps(r) + "\n" for r in fresh)
                     partial.extend(fresh)
 
             collect_via_public_api(
@@ -478,9 +512,10 @@ def collect_user(
                 return existing
             if partial:
                 with open(cache, "a") as f:
-                    for r in partial:
-                        f.write(json.dumps(r) + "\n")
-                partial_path.unlink()
+                    f.writelines(json.dumps(r) + "\n" for r in partial)
+            # Also when every partial post was already cached (nothing new).
+            partial_path.unlink(missing_ok=True)
+            if partial:
                 logger.info(
                     "@%s [%s]: +%d new posts (total: %d)",
                     handle,
@@ -493,6 +528,7 @@ def collect_user(
             return sorted(partial + existing, key=lambda r: r["created_at"], reverse=True)
     else:
         posts = collect_via_public_api(handle, start_date, end_date)
+        complete = getattr(collect_via_public_api, "last_complete", True)
     for p in posts:
         p["tier"] = tier  # annotate for downstream grouping
 
@@ -501,8 +537,7 @@ def collect_user(
         new = [p for p in posts if p.get("id") not in seen]
         if new:
             with open(cache, "a") as f:
-                for r in new:
-                    f.write(json.dumps(r) + "\n")
+                f.writelines(json.dumps(r) + "\n" for r in new)
             logger.info(
                 "@%s [%s]: +%d new posts (total: %d)%s",
                 handle,
@@ -519,6 +554,34 @@ def collect_user(
                 "" if complete else " (fetch failed before any new page)",
             )
         return sorted(new + existing, key=lambda r: r["created_at"], reverse=True)
+
+    # A forced walk must not shrink the cache it was meant to refresh: one cut
+    # short (the anonymous API 429s after ~5 pages) or run over a narrower
+    # --since/--until window never reaches the rest. Merge into it by id, the
+    # fetched version of a post winning.
+    prior = _load_jsonl(cache) if force and cache.exists() else []
+    if prior:
+        if not complete:
+            logger.warning(
+                "@%s [%s]: forced walk INCOMPLETE -- merging %d fetched posts into "
+                "the %d cached instead of replacing them",
+                handle,
+                tier,
+                len(posts),
+                len(prior),
+            )
+        if not posts:  # cache untouched; newest first like every other return
+            return sorted(prior, key=lambda r: r.get("created_at") or "", reverse=True)
+        fetched = {p["id"] for p in posts}
+        posts = sorted(
+            posts + [r for r in prior if r.get("id") not in fetched],
+            key=lambda r: r.get("created_at") or "",
+            reverse=True,
+        )
+    elif not complete:
+        logger.warning(
+            "@%s [%s]: walk INCOMPLETE -- the older end of the window is missing", handle, tier
+        )
 
     logger.info("@%s [%s]: %d posts", handle, tier, len(posts))
     if posts:
@@ -593,7 +656,7 @@ def _reply_record(status: dict, parent_id: str) -> dict:
         "parent_id": parent_id,
         "in_reply_to_id": status.get("in_reply_to_id"),
         "user": acct.get("username", ""),
-        "text": _strip_html(status.get("content", "")),
+        **_status_content(status),
         "created_at": status["created_at"],
         "metrics": {
             "reblogs": status.get("reblogs_count", 0),
@@ -730,8 +793,9 @@ def _get_truthbrush_api():
             "Install with: pip install 'truthbrush>=0.2'"
         )
 
-    from dotenv import load_dotenv
     import os
+
+    from dotenv import load_dotenv
 
     load_dotenv(override=True)
 
@@ -753,8 +817,9 @@ _TS_USER_AGENT = (
 
 
 def _get_token() -> str:
-    from dotenv import load_dotenv
     import os
+
+    from dotenv import load_dotenv
 
     load_dotenv(settings.PROJECT_ROOT / ".env", override=True)
     token = os.environ.get("TRUTHSOCIAL_TOKEN")
@@ -877,8 +942,7 @@ def collect_replies(
     # Write cache
     out = RAW_DIR / f"replies_{label}.jsonl"
     with open(out, "w") as f:
-        for r in replies:
-            f.write(json.dumps(r) + "\n")
+        f.writelines(json.dumps(r) + "\n" for r in replies)
     logger.info("Saved replies → %s", out)
 
     return replies
