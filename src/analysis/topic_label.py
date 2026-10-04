@@ -21,12 +21,14 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
 
 from config import settings
 from src.analysis.sentiment import parse_llm_json
+from src.superseded import drop_superseded, stamp
 from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
@@ -116,7 +118,7 @@ def submit(model: str = settings.LLM_MODEL) -> dict:
             for r in posts.itertuples()]
     batch = _client().messages.batches.create(requests=reqs)
     st = {"batch_id": batch.id, "model": model, "n_submitted": int(len(posts)),
-          "status": batch.processing_status}
+          "status": batch.processing_status, "submitted_at": stamp()}
     state_path().write_text(json.dumps(st))
     logger.info("topic: submitted batch %s with %d requests", batch.id, len(posts))
     return st
@@ -157,6 +159,17 @@ def _file_results(path: Path):
         yield NS(custom_id=r["custom_id"], result=NS(type=res["type"], message=NS(content=content)))
 
 
+def _batch_time(st: dict, results_file: Path | None) -> str | None:
+    """When the collected batch was submitted, at the latest: the recorded
+    submit time, or a results file's mtime when that is earlier (a download
+    of an older batch)."""
+    t = st.get("submitted_at")
+    if results_file is not None and t:
+        mtime = datetime.fromtimestamp(results_file.stat().st_mtime, UTC)
+        t = min(t, mtime.isoformat(timespec="seconds"))
+    return t
+
+
 def collect(results_file: Path | None = None) -> dict:
     st = status()
     if st["status"] not in ("ended", "collected"):
@@ -167,6 +180,7 @@ def collect(results_file: Path | None = None) -> dict:
     new = pd.DataFrame(rows)
     good = new[new["about_war"].notna()].copy()
     good["about_war"] = good["about_war"].astype(bool)
+    good = drop_superseded(good, labels_path(), _batch_time(st, results_file))
     prev = load_labels()
     if prev is not None:
         good = pd.concat([prev[~prev["id"].isin(good["id"])], good], ignore_index=True)

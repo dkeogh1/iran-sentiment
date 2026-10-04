@@ -252,7 +252,8 @@ rate-capped, resumable process.
 (Glacier IR) to the bucket in homelab-infra
 `terraform/iran-sentiment-backups.tf`: no `--delete`, writer without
 `DeleteObject`, versioned bucket. It needs `IRAN_BACKUP_S3_BUCKET` and the AWS
-keys in `.env`. Run it after every paid `collect`, `relabel` or `topic-label`.
+keys in `.env`. Run it after every paid `collect`, `x-backfill-text`,
+`relabel` or `topic-label`.
 The host's restic drive is often unplugged, so S3 is the copy to count on.
 
 ### Blog charts (dkweb)

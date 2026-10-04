@@ -15,6 +15,7 @@ Commands:
   run-all         Full pipeline: collect → analyze → visualize → summary
 """
 
+import contextlib
 import json
 import logging
 import sys
@@ -70,6 +71,27 @@ def collect(force: bool, no_search: bool, estimate: bool, yes: bool):
     instead of dropping months. The plan below is a MAXIMUM -- accounts that posted
     less than their cap cost less.
     """
+    with _x_cache_lock(estimate):
+        _collect(force, no_search, estimate, yes)
+
+
+@contextlib.contextmanager
+def _x_cache_lock(estimate: bool):
+    """Hold x_collector.cache_lock through a paid X run, planned under it;
+    exit 1 at once if another run holds it. An estimate only reads."""
+    from src.collectors.x_collector import CacheBusy, cache_lock
+
+    with contextlib.ExitStack() as stack:
+        if not estimate:
+            try:
+                stack.enter_context(cache_lock())
+            except CacheBusy as e:
+                click.secho(f"Refusing: {e}.", fg="red")
+                raise SystemExit(1) from None
+        yield
+
+
+def _collect(force: bool, no_search: bool, estimate: bool, yes: bool):
     from src.collectors.x_collector import collect_all, estimate_run
 
     plan = estimate_run(X_ACCOUNTS, None if no_search else SEARCH_TERMS, force=force)
@@ -124,11 +146,16 @@ def collect(force: bool, no_search: bool, estimate: bool, yes: bool):
 def x_backfill_text_cmd(estimate: bool, limit: int | None, yes: bool):
     """Re-read the cached X posts stored cut at 280 characters (collected
     before note_tweet was requested) by id, and put their full text in the
-    raw cache. Their Opus and topic labels move to *_superseded.parquet and
-    their sentiment_all scores are cleared, so the refresh order (analyze,
+    raw cache. Their Opus and topic labels and their sentiment_all scores
+    move to *_superseded.parquet, so the refresh order (analyze,
     relabel, topic-label) redoes exactly them. Paid: one X read per post
     returned. A killed run resumes from the journal; a run with nothing left
     to read only applies it (free)."""
+    with _x_cache_lock(estimate):
+        _x_backfill_text(estimate, limit, yes)
+
+
+def _x_backfill_text(estimate: bool, limit: int | None, yes: bool):
     from src.collectors import x_backfill as xb
 
     p = xb.plan(limit)
@@ -173,12 +200,17 @@ def x_backfill_text_cmd(estimate: bool, limit: int | None, yes: bool):
         except (tweepy.errors.TweepyException, requests.exceptions.RequestException) as e:
             failed = e  # what was journalled before the error still gets applied
             click.secho(f"\nLookup stopped: {e}. Rerun to resume from the journal.", fg="red")
+        except xb.NoNoteTweet as e:
+            failed = e
+            click.secho(f"\nLookup stopped: {e} Find out why before a rerun, which buys those "
+                        f"reads again.", fg="red")
 
     a = xb.apply()
     click.echo(f"\nJournal: {a['checked']} checked, {a['long']} long, {a['missing']} not returned. "
                f"Applied {a['changed']} new full texts ({a['already_applied']} were already in), "
                f"{a['files_rewritten']} raw files rewritten, {a['sentiment_rows_cleared']} "
-               f"sentiment_all rows cleared; labels moved to *_superseded: {a['labels_moved']}")
+               f"sentiment_all rows cleared ({a['sentiment_rows_archived']} archived); "
+               f"labels moved to *_superseded: {a['labels_moved']}")
     if a["drifted"]:
         click.secho(f"{len(a['drifted'])} cached posts changed since they were checked; left alone.",
                     fg="yellow")

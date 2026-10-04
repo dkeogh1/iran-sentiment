@@ -13,11 +13,13 @@ that cut.
               (atomically) before the next request and before any cache is
               touched, so a killed run never buys a read twice and a checked
               id is never read again
-  apply       journal -> raw cache text. First the labels made from the cut
-              text move to *_superseded.parquet archives (append; paid data
-              is never deleted) and the post's sentiment_all row loses its
-              scores, then its raw records are rewritten, so `analyze`,
-              `relabel` and `topic-label` redo exactly those posts
+  apply       journal -> raw cache text. First what was made from the cut
+              text moves to *_superseded.parquet archives (src/superseded.py;
+              appended, paid data is never deleted): the Opus and topic
+              labels, then the post's sentiment_all row (its scores, Haiku's
+              among them) before that row is cleared. Then its raw records
+              are rewritten, so `analyze`, `relabel` and `topic-label` redo
+              exactly those posts
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ import pandas as pd
 
 from config import settings
 from src.collectors import x_collector as xc
+from src.superseded import archive, score_columns, superseded_path
 
 logger = logging.getLogger(__name__)
 
@@ -98,8 +101,10 @@ def _created(rec: dict) -> datetime | None:
 
 def candidates() -> list[dict]:
     """Account posts (keyword-search rows are not) created before
-    settings.X_CUT_TEXT_BEFORE whose cached text is likely_cut, one per id,
-    oldest first."""
+    settings.X_CUT_TEXT_BEFORE whose cached text is likely_cut, plus every
+    post already looked up (its text may now be whole), one per id, oldest
+    first."""
+    checked = set(load_journal())
     out: dict[str, dict] = {}
     for path in sorted(settings.X_RAW_DIR.glob("*.jsonl")):
         if path.stem.startswith("search_"):
@@ -109,7 +114,9 @@ def candidates() -> list[dict]:
             ts = _created(r)
             if r.get("tier") == "search" or pid in out or ts is None:
                 continue
-            if ts >= settings.X_CUT_TEXT_BEFORE or not likely_cut(r.get("text")):
+            if pid not in checked and (
+                ts >= settings.X_CUT_TEXT_BEFORE or not likely_cut(r.get("text"))
+            ):
                 continue
             out[pid] = {
                 "id": pid,
@@ -197,6 +204,10 @@ def append_journal(entries: list[dict]) -> None:
 # ── Lookup (paid) ───────────────────────────────────────────────────
 
 
+class NoNoteTweet(RuntimeError):
+    """X sends back posts but no note_tweet on any of them."""
+
+
 def lookup(client, todo: list[dict], batch_size: int | None = None) -> dict:
     """
     Read `todo` (plan()["todo"]) by id with the timeline's tweet fields
@@ -206,6 +217,11 @@ def lookup(client, todo: list[dict], batch_size: int | None = None) -> dict:
     (deleted, protected) is journalled as missing with X's error title, so it
     is not asked for again either. Returns counts; posts returned are the
     reads X bills.
+
+    Raises NoNoteTweet, without journalling that batch, once the run has
+    read settings.X_BACKFILL_NOTE_CHECK_MIN posts and none came with
+    note_tweet: ~90% of candidates are cut, so X is not sending the field,
+    and journalling them as whole would leave them cut for good.
     """
     size = batch_size or settings.X_LOOKUP_BATCH
     stats = {"requests": 0, "returned": 0, "long": 0, "missing": 0}
@@ -230,6 +246,11 @@ def lookup(client, todo: list[dict], batch_size: int | None = None) -> dict:
                 stats["returned"] += 1
                 stats["long"] += bool(note)
             entries.append(e)
+        if not stats["long"] and stats["returned"] >= settings.X_BACKFILL_NOTE_CHECK_MIN:
+            raise NoNoteTweet(
+                f"{stats['returned']} posts read and none came with note_tweet (~90% "
+                f"expected): X is not sending the field. The last batch was not journalled."
+            )
         append_journal(entries)
         logger.info(
             "x-backfill: batch %d: %d returned, %d long, %d missing (run so far: %d read)",
@@ -243,11 +264,6 @@ def lookup(client, todo: list[dict], batch_size: int | None = None) -> dict:
 
 
 # ── Apply (free) ────────────────────────────────────────────────────
-
-
-def superseded_path(path: Path) -> Path:
-    """teacher_labels_<model>.parquet -> teacher_labels_<model>_superseded.parquet"""
-    return path.with_name(path.stem + "_superseded.parquet")
 
 
 def post_label_files() -> list[Path]:
@@ -266,10 +282,10 @@ def post_label_files() -> list[Path]:
 def supersede_labels(ids: set[str], reason: str = SUPERSEDED_REASON) -> dict[str, int]:
     """
     Move the rows for `ids` out of every post label cache into its
-    *_superseded.parquet archive (appended, with superseded_at and
-    superseded_reason), so `relabel` and `topic-label` see those posts as
-    unlabelled. The archive is written first; rows a killed run left in both
-    files are not archived twice. Returns {file name: rows moved}.
+    *_superseded.parquet archive (superseded.archive), so `relabel` and
+    `topic-label` see those posts as unlabelled. The archive is written
+    first; a row a killed run left in both files is not archived twice.
+    Returns {file name: rows moved}.
     """
     from src.analysis.stance_local import write_parquet_atomic
 
@@ -282,40 +298,45 @@ def supersede_labels(ids: set[str], reason: str = SUPERSEDED_REASON) -> dict[str
         moved[path.name] = int(hit.sum())
         if not hit.any():
             continue
-        out = lab[hit].copy()
-        out["superseded_at"] = datetime.now(UTC).isoformat(timespec="seconds")
-        out["superseded_reason"] = reason
-        arch = superseded_path(path)
-        if arch.exists():
-            prev = pd.read_parquet(arch)
-            again = set(prev.loc[prev["superseded_reason"] == reason, "id"].astype(str))
-            out = pd.concat([prev, out[~out["id"].astype(str).isin(again)]], ignore_index=True)
-        write_parquet_atomic(out, arch)
+        archive(lab[hit], path, reason)
         write_parquet_atomic(lab[~hit].reset_index(drop=True), path)
-        logger.info("x-backfill: %d rows %s -> %s", moved[path.name], path.name, arch.name)
+        logger.info(
+            "x-backfill: %d rows %s -> %s", moved[path.name], path.name, superseded_path(path).name
+        )
     return moved
 
 
-def clear_scores(changes: dict[str, str]) -> int:
+def clear_scores(changes: dict[str, str], reason: str = SUPERSEDED_REASON) -> tuple[int, int]:
     """Give the sentiment_all rows of the changed posts their full text and
     drop every score_* / label_* made from the cut, so a `relabel` or
     `topic-label` run before `analyze` sends the full text, and `phases` skips
-    them until they are relabelled. Returns rows changed."""
+    them until they are relabelled. The rows as they were (cut text and every
+    score, Haiku's score_llm among them, which has no other copy) go to
+    sentiment_all_superseded.parquet first. Returns (rows cleared, rows
+    archived)."""
     from src.analysis.stance_local import write_parquet_atomic
 
     path = settings.SENTIMENT_OUTPUT
     if not path.exists() or not changes:
-        return 0
+        return 0, 0
     df = pd.read_parquet(path)
     hit = df["id"].astype(str).isin(changes)
     if not hit.any():
-        return 0
+        return 0, 0
+    cols = score_columns(df)
+    old = df.loc[hit, ["id", "text", *cols]]
+    archived = archive(old[old[cols].notna().any(axis=1)], path, reason)  # a rerun has none
     df.loc[hit, "text"] = df.loc[hit, "id"].astype(str).map(changes)
-    for col in df.columns:
-        if col.startswith(("score_", "label_")):
-            df.loc[hit, col] = None
+    for col in cols:
+        df.loc[hit, col] = None
     write_parquet_atomic(df, path)
-    return int(hit.sum())
+    logger.info(
+        "x-backfill: %d sentiment_all rows cleared, %d archived -> %s",
+        int(hit.sum()),
+        archived,
+        superseded_path(path).name,
+    )
+    return int(hit.sum()), archived
 
 
 def apply() -> dict:
@@ -323,8 +344,9 @@ def apply() -> dict:
     Put the journalled full text into the raw cache. A post changes when the
     journal has its full text and a cached record still holds the text the
     journal checked; then, in order, its labels move to the archives
-    (supersede_labels), its sentiment_all row is cleared (clear_scores) and
-    every raw X file holding it is rewritten with only `text` changed. Each
+    (supersede_labels), its sentiment_all row is archived and cleared
+    (clear_scores) and every raw X file holding it is rewritten with only
+    `text` changed. Each
     write is atomic and a rerun redoes only what is left, so a run killed
     between steps finishes on the next. A record whose text matches neither
     is left alone and reported (`drifted`).
@@ -350,7 +372,7 @@ def apply() -> dict:
                 drifted.add(pid)
 
     moved = supersede_labels(set(changes)) if changes else {}
-    cleared = clear_scores(changes)
+    cleared, archived = clear_scores(changes)
     for path, recs in files.items():
         for r in recs:
             pid = str(r.get("id"))
@@ -374,6 +396,7 @@ def apply() -> dict:
         "files_rewritten": len(files),
         "labels_moved": moved,
         "sentiment_rows_cleared": cleared,
+        "sentiment_rows_archived": archived,
     }
 
 

@@ -22,6 +22,7 @@ import pandas as pd
 
 from config import settings
 from src.analysis.sentiment import llm_prompt, parse_llm_json
+from src.superseded import drop_superseded, stamp
 from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
@@ -107,7 +108,7 @@ def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
     batch = client.messages.batches.create(requests=build_requests(posts, model, max_tokens, effort))
     st = {"batch_id": batch.id, "model": model, "effort": effort, "max_tokens": max_tokens,
           "n_submitted": int(len(posts)), "status": batch.processing_status,
-          "ids": posts["id"].astype(str).tolist()}
+          "ids": posts["id"].astype(str).tolist(), "submitted_at": stamp()}
     state_path().parent.mkdir(parents=True, exist_ok=True)
     state_path().write_text(json.dumps(st))
     logger.info("relabel: submitted batch %s with %d requests", batch.id, len(posts))
@@ -154,6 +155,7 @@ def collect() -> dict:
     new = pd.DataFrame(rows)
     good = new[new["score_teacher"].notna()].drop(columns=["outcome"])
     lp = labels_path(st["model"])
+    good = drop_superseded(good, lp, st.get("submitted_at"))  # text changed since submit
     if lp.exists():
         prev = pd.read_parquet(lp)
         good = pd.concat([prev[~prev["id"].isin(good["id"])], good], ignore_index=True)

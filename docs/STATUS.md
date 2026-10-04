@@ -21,7 +21,7 @@ Two layers at different depths. Nothing runs on a schedule.
 - **Posts over 280 characters**: 2,981 cached originals look stored cut at
   280 (`x-backfill-text`'s rule; ~89% of them truly cut, from the length
   density below the pile-up), since `note_tweet` was not requested before
-  2026-10-04: 884 of the 4,044 war posts in the phases (22%, topic
+  2026-10-04: 883 of the 4,044 war posts in the phases (22%, topic
   `either`), 37% of the religious tier's, 30% of pro-war MAGA's, 29% of
   anti-war MAGA's, 18% of media's, 8% of admin's. Their Opus and topic
   labels saw only the cut text.
@@ -130,16 +130,32 @@ Two layers at different depths. Nothing runs on a schedule.
 - **Paid: run `x-backfill-text`** (built 2026-10-04, not run): it re-reads
   the 2,981 posts above by id with `note_tweet` (≈ $14.91 at $0.005 a read;
   the lookup's price is unverified, so pilot `--limit 100` and check the X
-  console), journals every batch, rewrites the raw text, and moves the cut
-  text's Opus and topic labels to `*_superseded.parquet`. Then `analyze`
-  rescores only those posts, and `relabel` and `topic-label` label only
-  them (plus the 5 and 319 they already resubmit). The relabel costs more
-  than `relabel estimate`'s average-post rate: `x-backfill-text` prints the
-  full-length figure after the reads (~$5-7 if the whole posts run 600-1,000
-  characters), plus ~$0.45-0.7 in topic labels.
+  console), journals every batch, rewrites the raw text, and moves what was
+  made from the cut text to `*_superseded.parquet`: the Opus and topic
+  labels, and the posts' `sentiment_all` rows (the only copy of their Haiku
+  `score_llm`). It stops before journalling a batch once 20 or more posts
+  read carry no `note_tweet` (~90% should), and refuses to start while a
+  `collect` or another run holds the X cache. Then `analyze` rescores only
+  those posts, and `relabel` and `topic-label` label only them (plus the 5
+  and 319 they already resubmit); collecting a batch submitted before the
+  backfill again skips them. The relabel costs more than `relabel
+  estimate`'s average-post rate: `x-backfill-text` prints the full-length
+  figure after the reads, at 2 characters a token, which errs high (~$6-7
+  if the whole posts run 600-1,000 characters; ~$5-6 at the 2.8 the
+  2026-10-04 reply pilot measured), plus ~$0.4-0.7 in topic labels.
+- After `x-backfill-text`, `teacher-check` (x) stays fully cached:
+  `training_frame` takes a changed post's Haiku score and cut text back
+  from `sentiment_all_superseded.parquet`, so the seeded 497-post sample is
+  unchanged (checked on a copy of the data: sample identical, 0 to label;
+  without it ~400 new direct Opus calls). `sync-data.sh push` carries that
+  archive, which the k8s teacher-check Job needs. Running `analyze --llm`
+  on the changed posts afterwards (paid) gives them a full-text Haiku score
+  instead, which the check would then compare with its cut-text Opus
+  labels for the sampled posts among them (96 of the 497 are candidates).
 - X `collect --force` still replaces an account's cache with what the forced
   run fetched, capped. Decide on merging by id before any forced backfill.
 - `analyze` restores a prior score only onto the same text (2026-10-04),
+  and archives a prior row with a paid score (Haiku's) before rescoring it,
   but the paid labels are still keyed by id: `x-backfill-text` moves the
   labels of the posts it changes, while any other re-fetch that changes a
   post's text (`collect --force`) keeps the old Opus and topic labels.

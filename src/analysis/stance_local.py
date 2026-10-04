@@ -52,7 +52,12 @@ NEUTRAL_BAND = 0.05  # same as VADER / the Haiku label fallback
 # ── Frames and splits ──────────────────────────────────────────────
 
 def training_frame(df: pd.DataFrame) -> pd.DataFrame:
-    """Rows usable as teacher labels: a Haiku score, on-topic, non-empty text."""
+    """Rows usable as teacher labels: a Haiku score, on-topic, non-empty text.
+    A post whose text changed after Haiku scored it (x-backfill-text) counts
+    as it was scored, from the archive (superseded.with_archived_scores), so
+    the seeded teacher-check sample and the training pairs stay the same."""
+    from src.superseded import with_archived_scores
+    df = with_archived_scores(df, "score_llm")
     d = df[df["score_llm"].notna()].copy()
     if "label_llm" in d:
         d = d[d["label_llm"] != "off_topic"]

@@ -403,7 +403,7 @@ def teacher_retest(model: str = settings.TEACHER_CHECK_MODEL) -> tuple[pd.DataFr
     tier plus the per-label noise SD implied by the differences."""
     from src.analysis.relabel import labels_path
     from src.analysis.stance_local import agreement_by_tier
-    from src.collectors.x_backfill import superseded_path
+    from src.superseded import superseded_path
 
     tag = model.replace("/", "_")
     direct = pd.read_parquet(settings.PROCESSED_DIR / f"teacher_check_{tag}.parquet")

@@ -1,11 +1,14 @@
 """
 The long-post backfill (x-backfill-text) against a stub tweepy client: the
 candidate rule, the free estimate, the cap and budget gates, journal resume,
-the raw-cache rewrite, and the invalidation that makes `analyze`, `relabel`
-and `topic-label` redo exactly the changed posts. No network, no spend.
+the stop when X sends no note_tweet, the cache lock, the raw-cache rewrite,
+the archives that keep what was paid for, and the invalidation that makes
+`analyze`, `relabel` and `topic-label` redo exactly the changed posts. No
+network, no spend.
 """
 
 import json
+import os
 from types import SimpleNamespace
 
 import pandas as pd
@@ -14,11 +17,14 @@ import tweepy
 from click.testing import CliRunner
 
 from config import settings
+from src import superseded as sup
 from src.analysis import inference as inf
 from src.analysis import relabel as rl
 from src.analysis import sentiment as sen
+from src.analysis import stance_local as sl
 from src.analysis import topic_label as tl
 from src.collectors import x_backfill as xb
+from src.collectors import x_collector as xc
 
 LINK = "https://t.co/AbCdEfGhIj"  # 23 characters, as X sends every link
 
@@ -227,11 +233,42 @@ def test_cli_pilot_then_full_run(data, monkeypatch):
     assert stub.asked() == ["1", "2"] and "Applied 2 new full texts" in res.output
     res = CliRunner().invoke(main, ["x-backfill-text", "--yes"])
     assert res.exit_code == 0, res.output
+    assert "6 cached originals likely cut at 280 characters, 2 already checked" in res.output
     assert stub.asked() == ["1", "2", "3", "4", "5", "6"]  # nothing read twice
     assert "Applied 2 new full texts (2 were already in)" in res.output
     res = CliRunner().invoke(main, ["x-backfill-text", "--yes"])
     assert res.exit_code == 0 and "This run: 0 reads" in res.output
+    assert "6 cached originals likely cut at 280 characters, 6 already checked" in res.output
     assert len(stub.calls) == 3  # 1 pilot request + 2 for the rest; none on the rerun
+
+
+def test_lookup_stops_unjournalled_when_x_sends_no_note_tweet(data, monkeypatch):
+    from src.cli import main
+
+    _cache(data)
+    stub = LookupStub(full={})  # X answers, but never with note_tweet
+    monkeypatch.setattr(xc, "get_client", lambda: stub)
+    monkeypatch.setattr(settings, "X_LOOKUP_BATCH", 2)
+    monkeypatch.setattr(settings, "X_BACKFILL_NOTE_CHECK_MIN", 2)
+    res = CliRunner().invoke(main, ["x-backfill-text", "--yes"])
+    assert res.exit_code == 1 and "none came with note_tweet" in res.output
+    assert stub.calls == [["1", "2"]]  # stopped after the first batch
+    assert not xb.journal_path().exists()  # so those posts are read again once fixed
+    assert xb.plan()["reads"] == 6
+
+
+def test_cache_lock_refuses_a_second_paid_run(data, monkeypatch):
+    from src.cli import main
+
+    _cache(data)
+    monkeypatch.setattr(xc, "get_client", _no_client)
+    with xc.cache_lock():
+        for cmd in (["x-backfill-text", "--yes"], ["collect", "--yes"]):
+            res = CliRunner().invoke(main, cmd)
+            assert res.exit_code == 1 and "another collect or x-backfill-text" in res.output
+        res = CliRunner().invoke(main, ["x-backfill-text", "--estimate"])  # reads only
+        assert res.exit_code == 0 and "This run: 6 reads" in res.output
+    assert not xb.journal_path().exists()
 
 
 # ── journal resume ─────────────────────────────────────────────────
@@ -280,6 +317,7 @@ def _processed(data, ids=tuple(str(i) for i in range(1, 11))):
     for c in ("vader", "transformer", "llm", "opus"):
         posts[f"score_{c}"] = 0.4
         posts[f"label_{c}"] = "positive"
+    posts["score_llm"] = posts["id"].astype(int) / 20  # distinct, to check by value
     posts.to_parquet(settings.SENTIMENT_OUTPUT, index=False)
     pd.DataFrame({"id": list(ids), "score_teacher": 0.4, "label_teacher": "positive"}).to_parquet(
         rl.labels_path(settings.TEACHER_CHECK_MODEL), index=False
@@ -315,7 +353,7 @@ def test_apply_moves_cut_labels_and_relabel_topic_redo_exactly_them(data):
     changed = {"1", "2", "4", "6"}
     model = settings.TEACHER_CHECK_MODEL
     assert a["labels_moved"] == {rl.labels_path(model).name: 4, tl.labels_path().name: 4}
-    assert a["sentiment_rows_cleared"] == 4
+    assert a["sentiment_rows_cleared"] == 4 and a["sentiment_rows_archived"] == 4
 
     arch = pd.read_parquet(xb.superseded_path(rl.labels_path(model)))
     assert set(arch["id"]) == changed and (arch["superseded_reason"] == xb.SUPERSEDED_REASON).all()
@@ -377,9 +415,145 @@ def test_apply_killed_between_steps_finishes_on_rerun(data, monkeypatch):
     monkeypatch.setattr(xb, "_write_jsonl_atomic", real)
     a = xb.apply()
     assert a["changed"] == 4 and set(a["labels_moved"].values()) == {0}
+    assert a["sentiment_rows_archived"] == 0  # the rows were cleared the first time
     assert _read(raw / "levin.jsonl")[0]["text"] == FULL["1"]
     arch = pd.read_parquet(xb.superseded_path(rl.labels_path(settings.TEACHER_CHECK_MODEL)))
     assert len(arch) == 4  # archived once
+    assert len(pd.read_parquet(sup.superseded_path(settings.SENTIMENT_OUTPUT))) == 4
+
+
+def test_apply_archives_the_haiku_scores_and_the_teacher_check_sample_holds(data):
+    """sentiment_all is the only copy of the Haiku score_llm: apply archives
+    each changed row as it was (cut text, every score) before clearing it, and
+    training_frame takes it back from there, so the seeded teacher-check
+    sample, already paid for, is the same posts with the same text."""
+    _cache(data)
+    before = _processed(data)
+    model = settings.TEACHER_CHECK_MODEL
+    sample0 = sl.teacher_check_todo(before, n=10)[0]
+    pd.DataFrame(
+        {"id": sample0["id"], "score_teacher": 0.1, "label_teacher": "neutral"}
+    ).to_parquet(data / "processed" / f"teacher_check_{model}.parquet", index=False)
+    tf0 = sl.training_frame(before)
+    _run_all(data)
+
+    after = pd.read_parquet(settings.SENTIMENT_OUTPUT)
+    changed = ["1", "2", "4", "6"]
+    assert after.set_index("id").loc[changed, "score_llm"].isna().all()
+    arch = pd.read_parquet(sup.superseded_path(settings.SENTIMENT_OUTPUT)).set_index("id")
+    assert (
+        sorted(arch.index) == changed and (arch["superseded_reason"] == xb.SUPERSEDED_REASON).all()
+    )
+    b = before.set_index("id").loc[changed]
+    assert (arch.loc[changed, "text"] == b["text"]).all()  # the cut text the scores came from
+    for c in ("score_llm", "label_llm", "score_vader", "score_opus"):
+        assert (arch.loc[changed, c] == b[c]).all()
+
+    pd.testing.assert_frame_equal(sl.training_frame(after), tf0)
+    sample1, cached, todo1 = sl.teacher_check_todo(after, n=10)
+    pd.testing.assert_frame_equal(sample1, sample0)
+    assert todo1.empty and len(cached) == len(sample0)
+
+
+def test_archive_adds_a_row_once_and_never_drops_a_later_label(data):
+    path = settings.PROCESSED_DIR / "labels.parquet"
+    rows = pd.DataFrame({"id": ["1", "2"], "score_teacher": [0.5, 0.2]})
+    assert sup.archive(rows, path, "r") == 2
+    assert sup.archive(rows, path, "r") == 0  # a killed run, rerun
+    assert sup.archive(rows.iloc[:1], path, "other reason") == 1
+    later = pd.DataFrame({"id": ["1"], "score_teacher": [-0.9]})  # relabelled since
+    assert sup.archive(later, path, "r") == 1
+    arch = pd.read_parquet(sup.superseded_path(path))
+    assert sorted(arch["score_teacher"]) == [-0.9, 0.2, 0.5, 0.5]
+
+
+def test_supersede_archives_a_label_made_after_an_earlier_archive(data):
+    """Apply killed between raw files, then analyze + relabel + merge, then
+    apply again: the label made in between moves to the archive too."""
+    model = settings.TEACHER_CHECK_MODEL
+    lp = rl.labels_path(model)
+    pd.DataFrame({"id": ["1", "2"], "score_teacher": [0.5, 0.2], "label_teacher": "x"}).to_parquet(
+        lp, index=False
+    )
+    xb.supersede_labels({"1"})
+    lab = pd.read_parquet(lp)
+    new = pd.DataFrame({"id": ["1"], "score_teacher": [-0.9], "label_teacher": "y"})
+    pd.concat([lab, new]).to_parquet(lp, index=False)
+    assert xb.supersede_labels({"1"})[lp.name] == 1
+    arch = pd.read_parquet(xb.superseded_path(lp))
+    assert list(arch["score_teacher"]) == [0.5, -0.9]
+    assert list(pd.read_parquet(lp)["id"]) == ["2"]
+
+
+class BatchStub:
+    """messages.batches for relabel / topic-label collect: an ended batch
+    whose results label every id in `ids`."""
+
+    def __init__(self, ids, text):
+        self.ids, self.text = ids, text
+
+    def retrieve(self, batch_id):
+        counts = SimpleNamespace(
+            processing=0, succeeded=len(self.ids), errored=0, canceled=0, expired=0
+        )
+        return SimpleNamespace(processing_status="ended", request_counts=counts)
+
+    def results(self, batch_id):
+        for i in self.ids:
+            content = [SimpleNamespace(type="text", text=self.text)]
+            msg = SimpleNamespace(content=content)
+            yield SimpleNamespace(
+                custom_id=i, result=SimpleNamespace(type="succeeded", message=msg)
+            )
+
+
+def _batch_client(ids, text):
+    return lambda: SimpleNamespace(messages=SimpleNamespace(batches=BatchStub(ids, text)))
+
+
+def test_collecting_a_batch_from_before_the_backfill_skips_the_changed_posts(data, monkeypatch):
+    """An old batch saw the cut text: collecting it again (relabel status +
+    collect, topic-label collect --results-file) must not put that label
+    back over the posts whose text changed after it was submitted."""
+    model = settings.TEACHER_CHECK_MODEL
+    lp = rl.labels_path(model)
+    pd.DataFrame({"id": ["1", "2"], "score_teacher": 0.5, "label_teacher": "x"}).to_parquet(
+        lp, index=False
+    )
+    xb.supersede_labels({"1"})
+    archived_at = pd.read_parquet(xb.superseded_path(lp))["superseded_at"].iloc[0]
+    monkeypatch.setattr(rl, "_client", _batch_client(["1", "2"], '{"score": -0.7}'))
+    for submitted_at, kept in [(None, ["2"]), ("2026-01-01T00:00:00+00:00", ["2"])]:
+        st = {"batch_id": "b", "model": model, "status": "collected"}
+        rl.state_path().write_text(json.dumps({**st, "submitted_at": submitted_at}))
+        rl.collect()
+        assert sorted(pd.read_parquet(lp)["id"]) == kept
+    rl.state_path().write_text(json.dumps({**st, "submitted_at": "2999-01-01T00:00:00+00:00"}))
+    rl.collect()  # submitted after the text changed: the full text's label
+    assert sorted(pd.read_parquet(lp)["id"]) == ["1", "2"] and archived_at < "2999"
+
+    tlp = tl.labels_path()
+    pd.DataFrame({"id": ["1", "2"], "about_war": False}).to_parquet(tlp, index=False)
+    xb.supersede_labels({"1"})
+    old = data / "old_results.jsonl"  # a download from before the backfill
+    line = {
+        "custom_id": "1",
+        "result": {
+            "type": "succeeded",
+            "message": {"content": [{"type": "text", "text": '{"about_war": true}'}]},
+        },
+    }
+    old.write_text(json.dumps(line) + "\n" + json.dumps({**line, "custom_id": "2"}) + "\n")
+    os.utime(old, (0, 0))  # 1970
+    monkeypatch.setattr(tl, "_client", _batch_client([], ""))
+    tl.state_path().write_text(
+        json.dumps(
+            {"batch_id": "b", "status": "collected", "submitted_at": "2999-01-01T00:00:00+00:00"}
+        )
+    )
+    tl.collect(old)
+    t = pd.read_parquet(tlp).set_index("id")["about_war"]
+    assert list(t.index) == ["2"] and bool(t["2"]) is True
 
 
 def test_apply_leaves_a_post_that_changed_since_it_was_checked(data):
@@ -416,6 +590,12 @@ def test_restore_skips_posts_whose_text_changed(data):
     assert posts[1]["score_vader"] == 0.2 and posts[1]["score_llm"] == 0.8
     posts = [{"id": "1", "text": "the whole text"}, {"id": "2", "text": "same text"}]
     assert sen._restore_roberta_checkpoint(posts) == 1 and "score_transformer" not in posts[0]
+    # the paid Haiku score of the changed post is archived before analyze overwrites the file
+    arch = pd.read_parquet(sup.superseded_path(settings.SENTIMENT_OUTPUT))
+    assert list(arch["id"]) == ["1"] and arch["score_llm"].iloc[0] == 0.9
+    assert arch["text"].iloc[0] == "the cut text"
+    sen._restore_prior_scores([{"id": "1", "text": "the whole text"}])
+    assert len(pd.read_parquet(sup.superseded_path(settings.SENTIMENT_OUTPUT))) == 1
 
 
 def test_teacher_retest_pairs_the_direct_label_with_the_cut_text_label(data):

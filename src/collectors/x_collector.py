@@ -12,10 +12,12 @@ Design:
   - Config-driven: accepts the accounts dict from config.accounts.
 """
 
+import fcntl
 import json
 import logging
 import os
 import re
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -35,6 +37,29 @@ def get_client() -> tweepy.Client:
     if not token:
         raise RuntimeError("X_BEARER_TOKEN not set — add it to .env")
     return tweepy.Client(bearer_token=token, wait_on_rate_limit=True)
+
+
+class CacheBusy(RuntimeError):
+    """Another collect or x-backfill-text holds the X cache."""
+
+
+@contextmanager
+def cache_lock():
+    """
+    One paid writer of the raw X cache at a time: `collect` and
+    `x-backfill-text` both plan from the cache, buy reads and rewrite these
+    files, so two at once would buy the same reads or lose appended records.
+    Raises CacheBusy at once rather than wait. The lock file sits in the
+    data root, outside what `backup` syncs.
+    """
+    path = settings.DATA_DIR / ".x_cache.lock"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w") as f:
+        try:
+            fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise CacheBusy("another collect or x-backfill-text is running") from None
+        yield
 
 
 # ── Helpers ─────────────────────────────────────────────────────────

@@ -183,13 +183,14 @@ def _restore_prior_scores(posts: list[dict]) -> tuple[int, int]:
         if entry:
             lookup[pid] = entry
 
-    v_count = t_count = changed = 0
+    v_count = t_count = 0
+    changed: set = set()
     for post in posts:
         hit = lookup.get(post.get("id"))
         if not hit:
             continue
         if not _same_text(texts.get(post.get("id"), _NO_TEXT), post):
-            changed += 1
+            changed.add(post.get("id"))
             continue
         if "score_vader" in hit and "score_vader" not in post:
             post["score_vader"] = hit["score_vader"]
@@ -203,8 +204,26 @@ def _restore_prior_scores(posts: list[dict]) -> tuple[int, int]:
             post["score_llm"] = hit["score_llm"]
             post["label_llm"] = hit["label_llm"]
     if changed:
-        logger.info("Prior run: %d posts' text has changed since -- rescoring them", changed)
+        logger.info("Prior run: %d posts' text has changed since -- rescoring them", len(changed))
+        _archive_changed(prior[prior["id"].isin(changed)])
     return (v_count, t_count)
+
+
+def _archive_changed(rows: pd.DataFrame) -> None:
+    """The prior rows of posts whose text changed, if they hold a paid score
+    (Haiku's score_llm has no other copy), go to sentiment_all_superseded
+    before this run overwrites sentiment_all. x-backfill-text archives and
+    clears its rows itself, so this is for any other re-fetch."""
+    from src.superseded import FREE_SCORES, archive, score_columns
+
+    paid = [c for c in score_columns(rows) if c.startswith("score_") and c not in FREE_SCORES]
+    if not paid:
+        return
+    rows = rows[rows[paid].notna().any(axis=1)]
+    n = archive(rows[["id", "text", *score_columns(rows)]], settings.SENTIMENT_OUTPUT,
+                "analyze: the post's text changed after it was scored")
+    if n:
+        logger.info("Archived %d prior rows with paid scores -> sentiment_all_superseded", n)
 
 
 def score_roberta_inplace(

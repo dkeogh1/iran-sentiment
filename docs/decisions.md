@@ -15,11 +15,18 @@ behind the stance-model entries are in README *Stance-model experiments* and
   `note_tweet` (2026-09-18) never are. Every batch is journalled
   (`data/processed/x_backfill_journal.jsonl`) before anything else is
   touched, so no read is bought twice. A changed post's Opus and topic
-  labels move to `*_superseded.parquet` (appended, never deleted) and its
-  `sentiment_all` row loses its scores; `analyze` restores a prior score only
-  onto the same text. The refresh order then redoes exactly those posts.
+  labels move to `*_superseded.parquet` (appended, never deleted; a later
+  label for the same post is archived too), and so does its `sentiment_all`
+  row, cut text and every score, before the row is cleared: it is the only
+  copy of the Haiku `score_llm`. `analyze` restores a prior score only onto
+  the same text. The refresh order then redoes exactly those posts.
+  `training_frame` reads a cleared post back from the archive as it was
+  scored, so the teacher check's seeded sample stays the posts it already
+  paid for, each with the text its labels saw; a batch submitted before the
+  backfill (`relabel status` + `collect`, an old `topic-label collect
+  --results-file`) is not collected over the changed posts again.
 - **Why:** in the 12,154 cached originals the length runs at ~27 posts per
-  character from 240 to 265, then 2,911 sit at 270-280 and none above (the cut
+  character from 240 to 265, then 2,911 sit at 270-280 and 1 above (the cut
   is in code points: X's own weighting, emoji and CJK as 2, puts ~70 over
   280). At the lower density about 300 of the 2,911 would be whole posts, so
   ~90% are cut; at 266-269 only the mid-sentence endings beat the density
@@ -30,8 +37,11 @@ behind the stance-model entries are in README *Stance-model experiments* and
 - **Rejected:** `collect --force` over the old windows (re-buys every post,
   capped, and replaces the cache); keeping the old labels by id (a re-fetch
   must not keep scores made from other text); deleting the superseded labels
-  (paid data); a candidate rule on ending alone (cut posts end a sentence
-  about one time in eight).
+  or clearing the Haiku scores without a copy (paid data; clearing alone
+  would also have moved the teacher-check sample onto ~400 unlabelled
+  posts); pinning the teacher-check sample to its cached ids instead (the
+  Haiku side of each pair would have been gone); a candidate rule on ending
+  alone (cut posts end a sentence about one time in eight).
 
 ## 2026-10-04: Retweets and ReTruths count as the account's messaging
 

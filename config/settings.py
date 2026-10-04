@@ -157,6 +157,9 @@ X_BACKFILL_OPEN_MIN_CHARS = 266
 # 2026-10-04: about $10-16, every post near 280 characters.
 X_BACKFILL_MAX_READS = 3300
 X_LOOKUP_BATCH = 100       # GET /2/tweets takes up to 100 ids per request
+# A run stops, not journalling the batch, once it has read this many posts
+# and none came with note_tweet (~90% should): X is not sending the field.
+X_BACKFILL_NOTE_CHECK_MIN = 20
 
 
 # ── Truth Social pacing ────────────────────────────────────────────

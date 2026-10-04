@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Move data between dkbl1's data/ (source of truth) and the PVC on dkbl2.
-#   sync-data.sh push    # sentiment_all / reply_sentiment / stance_sample / teacher_labels_replies_* / truthsocial_trump_stance parquet,
+#   sync-data.sh push    # sentiment_all (+ _superseded) / reply_sentiment / stance_sample / teacher_labels_replies_* / truthsocial_trump_stance parquet,
 #                        # raw/truthsocial/*.jsonl, models/stance_distilled_final* -> PVC
 #   sync-data.sh pull    # models/ (final dirs whole, other dirs their result files), teacher_check_*, local_llm_*,
 #                        # truthsocial_trump_stance.parquet, reply_sentiment.parquet <- PVC; then verify
@@ -65,8 +65,11 @@ case "$MODE" in
     files=(data/processed/sentiment_all.parquet)
     # The feed parquet goes up too: pull brings it back, so a feed Job must
     # start from dkbl1's copy, not build a fresh one that overwrites it.
+    # sentiment_all_superseded holds the Haiku scores of the posts
+    # x-backfill-text changed; without it the teacher-check Job resamples
+    # (stance_local.training_frame) and pays for ~400 new calls.
     for f in data/processed/reply_sentiment.parquet data/processed/stance_sample.parquet data/processed/teacher_labels_replies_*.parquet \
-             data/processed/truthsocial_trump_stance.parquet; do
+             data/processed/truthsocial_trump_stance.parquet data/processed/sentiment_all_superseded.parquet; do
         [ -f "$f" ] && files+=("$f"); done
     "${RSYNC[@]}" "${files[@]}" "$SYNC_HOST:$PVC_DIR/processed/"
     "${RSYNC[@]}" data/raw/truthsocial/*.jsonl "$SYNC_HOST:$PVC_DIR/raw/truthsocial/"
