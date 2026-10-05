@@ -106,6 +106,10 @@ timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
 `collect` -> `merge` for the new posts; `topic-label estimate|submit|status|collect`;
 `phases`, `visualize`, `export-web`; `backup`.
 
+A batch `collect` (`relabel`, `topic-label`, `--batch collect`) streams results
+through the SDK, which breaks on this host (httpx `ReadError`): download the
+batch's `results_url` and pass the file with `--results-file`.
+
 ## Layout
 
 ```
@@ -176,9 +180,10 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   `RT @acct: ...`). Posts and replies with no text (`src/text_rules.py`:
   under 3 characters once links and a leading `RT @x: ` are removed) leave
   every denominator and are never scored.
-- Reply population shares come from `reply-population` (Opus-corrected), not
-  raw `score_opus_distilled`, which runs ~9 points pro-war (63% vs Opus's
-  55% on the 1,157 labelled replies with text).
+- Reply population shares come from `reply-population` (Opus-corrected
+  against the v2 reply labels, `settings.REPLY_TEACHER_LABELS_VERSION`), not
+  raw `score_opus_distilled`, which runs ~15 points pro-war (63% vs 49% for
+  the v2 Opus labels on the 1,157 labelled replies with text).
 - `analyze --llm` and `event-study` / `stance` are restart-safe and
   incremental: only posts or replies without a score are sent. `analyze`
   restores a prior score only onto the same text, so a post whose text

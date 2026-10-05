@@ -4,6 +4,114 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-10-05: Reply labels v2, made with the parent post, replace v1
+
+- **Decision:** `reply-population`, and with it the published audience
+  shares and `export-web`, weights the v2 Opus reply labels
+  (`settings.REPLY_TEACHER_LABELS_VERSION = "v2"`). v2 labelled the 1,157
+  sampled replies with text from the whole reply and the Trump post it
+  answers. It asks for the author's position on the war, not the tone,
+  and leaves out the author's handle (`stance_local.REPLY_TEACHER_V2_PREFIX`,
+  prompt `reply-v2-2026-10-04`). The v1 labels are kept unchanged, as
+  history. Still on v1: the mixed-domain distill's training rows
+  (`stance_local.reply_label_frame`) and the mixed-vs-posts-only
+  comparison in the 2026-09-19 and 2026-09-30 entries. Against v2, on the
+  same 267 replies to the two unseen September posts, the posts-only
+  model leads instead (0.61 vs 0.55 Pearson; gap interval -0.15 to
+  +0.04).
+- **Why:** v1 sent the broadcaster prompt only the first 100 characters
+  of each reply (423 of its 1,225 labels were cut) and never the post
+  being answered, so a reply that only cheered took the sign of the
+  cheering. A rough keyword check (replies with an assent word and no war,
+  peace, deal or strike word; aggregates only, no reply read): under the
+  ceasefire, hold-off and deal posts, v1 put 74% of 87 such replies
+  pro-war and 10% anti-war, v2 9% and 59%. Under the September strikes
+  post, where cheering backs the strikes, both put them pro-war (86% and
+  93% of 28). On the same 1,157 replies v1 and v2 agree only loosely
+  (0.55 Pearson, 17% sign flips), and about as loosely where v1 saw the
+  whole reply (0.56, 734 replies) as where it saw 100 characters (0.54,
+  423). The parent post and the stance question drive the change, not the
+  cut.
+- **What it changes** (Opus-corrected, replies with text, v1 -> v2): the
+  June 14 deal post goes from the largest pro-war share (62.8% pro, 22.4%
+  anti) to more anti than pro (30.8% / 42.3%; mean -0.041 [-0.140,
+  +0.061]). The May 18 hold-off post's audience becomes the most hawkish
+  (53.4% / 38.9% -> 70.4% / 5.2%; mean +0.068 -> +0.372 [+0.293,
+  +0.460]). The April 7 "civilisation will die" post's is roughly split
+  (39.8% pro, 41.8% anti; mean -0.074 [-0.151, +0.008]). All eight posts: 45.1% pro, 27.9% anti (was
+  47.2% / 37.3%). The distilled scorer tracks v2 less well than v1 (0.58
+  vs 0.70 Pearson on the same replies) and RoBERTa valence not at all
+  (-0.04), so the correction against the labelled sample carries more.
+- **Rejected:** keeping v1 (it reads applause for a ceasefire as support
+  for the war); relabelling only the 423 cut replies (v1 and v2 disagree
+  as much on the replies v1 saw whole).
+
+## 2026-10-05: The Trump-feed scorer is checked against Opus on the feed
+
+- **Decision:** the Trump chart's caption (README and the blog) cites a
+  check on his feed instead of the 0.88 measured on held-out X posts: Opus
+  labels on 400 random feed posts with text (`teacher-check --source
+  trump`, the broadcaster prompt the distilled model learned) against
+  `score_opus_distilled`. The published Trump war-post levels stand.
+- **Why:** the feed had no Opus labels, and the caption had to say it was
+  unchecked. The check: on all 400 posts 0.74 Pearson, 1.5% sign flips,
+  the model's mean 0.009 above Opus's; on the 59 war posts 0.61 Pearson,
+  10% flips, its mean 0.03 below Opus's (0.398 vs 0.430). The level holds;
+  single posts agree less well than on X. Each phase has only 9-20 of
+  those war posts, too few to check phase by phase.
+- **Rejected:** citing the X holdout's 0.88 for the feed.
+
+## 2026-10-05: Teacher checks run through the Batch API
+
+- **Decision:** `reply-teacher-check --v2` and `teacher-check --source
+  trump` send full runs as Message Batches (`--batch submit|status|collect`,
+  half price), with the direct path's prompts, cached-prefix blocks and
+  model settings; direct calls stay for pilots. Each check keeps its own
+  state file, refuses a submit while a batch is open or uncollected, and
+  never resends a cached id. Every batch `collect` (these, `relabel`,
+  `topic-label`) also reads a downloaded results file (`--results-file`).
+- **Why:** a 16-call direct pilot was billed $0.069, $0.0043 a call. The
+  prompt cache engaged for one parent post in eight (the rest fell under
+  the cache minimum), so the estimate that cached every parent post was
+  too low. At the pilot's rate the 1,157-reply run would have cost about
+  $5.07 direct, against $3.44 estimated with every parent post cached. By
+  Batch the 1,141 replies left after the pilot cost $2.10, and the Trump
+  check's 400 posts $0.70. The SDK's results stream failed on this host for all four
+  collects on 2026-10-04/05 (httpx `ReadError`, "Bad file descriptor");
+  each was collected from the batch's downloaded `results_url`.
+- **Rejected:** the direct API for full runs (twice the price, and the
+  prefix cache saved little).
+
+## 2026-10-05: Long X posts backfilled; war-post stance barely moves
+
+- **Decision:** the X tables and figures use the full text of the 2,571
+  long posts `x-backfill-text` recovered, and everything made from the cut
+  text is redone from it: Opus (`relabel`), Haiku topic labels
+  (`topic-label`), and VADER, RoBERTa and Haiku stance (`analyze`,
+  `analyze --llm`). All 2,571 were relabelled, not only the war posts
+  among them.
+- **What ran:** the 2,981 candidates were read by id (a 100-post pilot,
+  then 2,881; ≈ $14.90). 2,980 came back: 2,571 longer than the cached
+  text (86%, close to the ~90% the length density predicted) and 409
+  whole already; 1 was not returned. Before the raw cache was rewritten,
+  their `sentiment_all` rows (2,571, holding the only copy of the cut-text
+  Haiku scores), Opus labels (2,570) and topic labels (2,571) went to
+  `*_superseded.parquet`. The scorers then redid only those posts, plus
+  the few they already retry.
+- **Effect** (X war posts in the phases, point estimates, before vs after
+  on the same posts): tier means move by at most 0.048 under topic
+  `either` (anti-war MAGA in expiry/strikes, -0.417 -> -0.465; pro-war
+  MAGA in the same phase +0.407 -> +0.444), 0.065 under the Haiku label
+  alone and 0.051 under keywords. No tier's mean changes sign under
+  `either`, and pro-war MAGA stays above the administration in every
+  phase. War shares rise by up to 2.2 points, because the full text shows
+  more war content: 4,225 war posts instead of 4,045 (`either`), 929 of
+  them backfilled. Retweets stay cut at about 140 characters (no
+  expansions, 2026-10-04).
+- **Rejected:** relabelling only the war posts among them (the war flag
+  itself changes with the full text, and the all-post means use every
+  post).
+
 ## 2026-10-04: Long X posts are re-read by id; labels from the cut are archived
 
 - **Decision:** `x-backfill-text` re-reads by id (`GET /2/tweets` with
@@ -55,8 +163,8 @@ behind the stance-model entries are in README *Stance-model experiments* and
   inside a tier.
 - **Why:** what an account chooses to amplify is part of its messaging, and
   for the administration it is most of it: 5,683 of the 17,837 X account
-  posts are retweets (32%; 70% of admin), as are 39 of admin's 46 September
-  war posts.
+  posts are retweets (32%; 70% of admin), as are 39 of admin's 48 September
+  war posts (46 before the long-post backfill, 2026-10-05).
 - **Rejected:** dropping retweets, at collection (`exclude=retweets`) or in
   the analysis: that measures authorship, not messaging, and would empty
   @POTUS.
