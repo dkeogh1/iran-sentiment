@@ -63,3 +63,27 @@ def test_merge_adds_tag_columns(tmp_path, monkeypatch):
 
 def test_estimate_matches_measured_rate():
     assert round(rl.estimate_cost(1) / rl.BATCH_DISCOUNT * 1e6, 0) == 217 * 5 + 86 * 25
+
+
+def test_collect_reads_a_downloaded_results_file(tmp_path, monkeypatch):
+    # The SDK's results stream broke on this host; collect reads the JSONL
+    # downloaded from the batch's results_url instead, and never streams.
+    import json
+
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    rl.state_path().write_text(json.dumps({"batch_id": "b", "model": "m", "status": "ended",
+                                           "submitted_at": "2026-10-05T00:00:00+00:00"}))
+    monkeypatch.setattr(rl, "status", lambda: json.loads(rl.state_path().read_text()))
+    monkeypatch.setattr(rl, "_client", lambda: (_ for _ in ()).throw(AssertionError("streamed")))
+
+    def line(cid, text, kind="succeeded"):
+        msg = {"content": [{"type": "text", "text": text}]}
+        return json.dumps({"custom_id": cid, "result": {"type": kind, "message": msg}})
+
+    f = tmp_path / "results.jsonl"
+    f.write_text("\n".join([line("1", '{"score": 0.4, "label": "positive"}'),
+                            line("2", "no json"), line("3", "", kind="errored")]) + "\n")
+    st = rl.collect(f)
+    lab = pd.read_parquet(rl.labels_path("m"))
+    assert lab["id"].tolist() == ["1"] and lab["score_teacher"].tolist() == [0.4]
+    assert st["status"] == "collected" and sorted(st["collected"]["failed_ids"]) == ["2", "3"]

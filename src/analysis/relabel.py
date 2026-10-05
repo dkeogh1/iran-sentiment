@@ -144,18 +144,23 @@ def parse_result(result) -> dict:
     return out
 
 
-def collect() -> dict:
-    """Pull results of the recorded batch into the teacher parquet (append)."""
+def collect(results_file: Path | None = None) -> dict:
+    """Pull results of the recorded batch into the teacher parquet (append).
+    results_file: a downloaded results JSONL, for when the SDK's results
+    stream breaks (it did on 2026-09-23 and 2026-10-05)."""
+    from src.analysis.topic_label import _batch_time, _file_results
+
     st = status()
     if st["status"] != "ended":
         logger.info("relabel: batch %s still %s (%s)", st["batch_id"], st["status"], st.get("counts"))
         return st
-    client = _client()
-    rows = [parse_result(r) for r in client.messages.batches.results(st["batch_id"])]
+    results = (_file_results(results_file) if results_file
+               else _client().messages.batches.results(st["batch_id"]))
+    rows = [parse_result(r) for r in results]
     new = pd.DataFrame(rows)
     good = new[new["score_teacher"].notna()].drop(columns=["outcome"])
     lp = labels_path(st["model"])
-    good = drop_superseded(good, lp, st.get("submitted_at"))  # text changed since submit
+    good = drop_superseded(good, lp, _batch_time(st, results_file))  # text changed since submit
     if lp.exists():
         prev = pd.read_parquet(lp)
         good = pd.concat([prev[~prev["id"].isin(good["id"])], good], ignore_index=True)

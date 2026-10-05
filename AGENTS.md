@@ -24,6 +24,10 @@ Hand these to the user, with the estimate, instead of running them:
     $0.50-1.50 per 1,000 posts, README *Cost*; `teacher-check` ~$1 and
     `reply-teacher-check` ~$2 on Opus). Narrow `analyze --llm` with
     `--llm-tiers` / `--llm-accounts` to the subset that needs it.
+  - `reply-teacher-check --v2` and `teacher-check --source trump`, direct or
+    `--batch submit` (half price): `--estimate` prints both, calibrated on a
+    measured pilot (~$0.0043 a call direct). `--batch status|collect` and
+    `--report` are free.
 - **The user's Truth Social account.** `ts-login` (the security code goes to
   the user), `collect-replies`, and `collect-truth` unless `--anonymous`. Free,
   but rate-limited and tied to the account.

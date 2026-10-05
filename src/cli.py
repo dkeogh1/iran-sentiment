@@ -1099,7 +1099,10 @@ def score_distilled_cmd(model_dir: str | None, col: str, max_len: int | None):
 @click.argument("action", type=click.Choice(["estimate", "submit", "status", "collect", "merge", "resubmit"]))
 @click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
 @click.option("--yes", is_flag=True, help="Submit without the confirmation prompt")
-def relabel_cmd(action: str, model: str, yes: bool):
+@click.option("--results-file", type=click.Path(exists=True), default=None,
+              help="collect: read a downloaded results JSONL instead of the SDK stream "
+                   "(curl the batch's results_url)")
+def relabel_cmd(action: str, model: str, yes: bool, results_file: str | None):
     """Relabel every labelled post with a stronger teacher through the Batch
     API (half price, ~1 h). Steps: estimate -> submit -> status -> collect
     -> merge; `resubmit` retries the ids that failed in the last collect."""
@@ -1132,7 +1135,8 @@ def relabel_cmd(action: str, model: str, yes: bool):
         click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('counts')}")
         return
     if action == "collect":
-        st = rl.collect()
+        from pathlib import Path as _P
+        st = rl.collect(_P(results_file) if results_file else None)
         click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
         return
     if action == "merge":
