@@ -2,6 +2,7 @@
 .env.*
 data/raw/
 data/processed/
+data/.x_cache.lock
 __pycache__/
 *.pyc
 .venv/
