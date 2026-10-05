@@ -250,7 +250,7 @@ TEACHER_V2_PILOT = {
 }
 # Which reply labels `reply-population` (and so export-web) weights: "v1"
 # or "v2". Flip only once the v2 run is complete.
-REPLY_TEACHER_LABELS_VERSION = "v1"
+REPLY_TEACHER_LABELS_VERSION = "v2"
 # Trump-feed check (`teacher-check --source trump`): Opus labels on a fixed
 # random sample of Trump's Truth Social posts with text, against the
 # distilled scorer used on his feed. Its 0.88 correlation with Opus was

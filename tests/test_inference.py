@@ -91,12 +91,14 @@ def reply_files(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
     monkeypatch.setattr(settings, "REPLY_DRAWS_MANIFEST", tmp_path / "draws.parquet")
     monkeypatch.setattr(es, "STANCE_OUTPUT", tmp_path / "stance_sample.parquet")
-    labels = tmp_path / "teacher_labels_replies_claude-opus-5.parquet"
+    from src.analysis.stance_local import reply_labels_path
 
     def write(replies: pd.DataFrame, lab: pd.DataFrame, sampled: pd.DataFrame | None = None):
-        """sampled: what `stance` drew into stance_sample (default: the labelled rows)."""
+        """sampled: what `stance` drew into stance_sample (default: the labelled rows).
+        Labels go to the file reply_population reads: the version settings pick."""
         replies.to_parquet(settings.REPLY_SENTIMENT_OUTPUT, index=False)
-        lab[["id", "score_teacher"]].to_parquet(labels, index=False)
+        lab[["id", "score_teacher"]].to_parquet(
+            reply_labels_path(version=settings.REPLY_TEACHER_LABELS_VERSION), index=False)
         smp = lab if sampled is None else sampled
         smp[["id", "tracked_slug"]].to_parquet(es.STANCE_OUTPUT, index=False)
     return write
@@ -167,9 +169,10 @@ def test_reply_population_uncovered_post_is_nan_not_zero_width(reply_files, capl
 
 def test_reply_population_reads_the_label_version_set(reply_files, monkeypatch):
     # v1 says -1 / +1 by bucket; the v2 file (its own name, extra columns)
-    # says +0.5 everywhere. The setting picks the file; v1 stays the default.
+    # says +0.5 everywhere. The setting picks the file (v2 since 2026-10-05).
     from src.analysis.event_study import bucket_draws
     from src.analysis.stance_local import reply_labels_path
+    monkeypatch.setattr(settings, "REPLY_TEACHER_LABELS_VERSION", "v1")
     reps = _replies({"p": [-0.9] * 30 + [0.9] * 30})
     drawn = bucket_draws(reps, n_per_bucket=5, score_col="score_transformer")
     reply_files(reps, _opus(drawn))
