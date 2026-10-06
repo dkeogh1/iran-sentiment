@@ -4,6 +4,28 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-10-06: A reply-trained scorer feeds `reply-population` only cross-fit
+
+- **Decision:** the reply-domain scorer (`reply-distill`: the posts-only
+  model fine-tuned on the v2 reply labels, the reply alone or with its
+  parent post) is judged leave-one-post-out against the published scores,
+  and reaches `reply-population` only as a cross-fit column: each post's
+  replies are scored by a fit on the other seven posts' labels
+  (`--crossfit`, `score_<variant>_crossfit`). `reply-population` refuses a
+  column from a fit on all the labelled replies (`--fit-all`,
+  `score-replies-ctx`); `reply_sentiment_columns.json` records which model
+  wrote each such column.
+- **Why:** the model-assisted estimate is the model's census plus the
+  labelled sample's mean of Opus minus model. A model fit on that sample
+  nearly reproduces its labels there, so the correction and its interval
+  shrink while the model's error on the other replies goes uncorrected. A
+  per-post cross-fit keeps census and correction from one model the
+  post's sample is new to, so the estimate stays unbiased and a better
+  scorer narrows the interval honestly.
+- **Rejected:** weighting the full-sample fit's column; the full-sample
+  fit for the census with out-of-fold predictions for the correction
+  (mixes two models: biased by their difference).
+
 ## 2026-10-06: Truth Social quote posts count as messaging; the textless Trump posts were never ReTruths
 
 - **Decision:** a Truth Social quote post counts as the account's messaging,

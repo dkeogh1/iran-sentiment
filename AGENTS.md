@@ -188,6 +188,11 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   against the v2 reply labels, `settings.REPLY_TEACHER_LABELS_VERSION`), not
   raw `score_opus_distilled`, which runs ~15 points pro-war (63% vs 49% for
   the v2 Opus labels on the 1,157 labelled replies with text).
+- A scorer fit on the Opus-labelled replies (`reply-distill`) enters
+  `reply-population` only as a cross-fit column (`--crossfit`: each post
+  scored by a fit that never saw its labels); `reply-population` refuses
+  a full-sample one. `reply_sentiment_columns.json` records the model
+  behind each such column; one column never takes two models' scores.
 - `analyze --llm` and `event-study` / `stance` are restart-safe and
   incremental: only posts or replies without a score are sent. `analyze`
   restores a prior score only onto the same text, so a post whose text

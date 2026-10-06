@@ -332,7 +332,19 @@ def reply_population(col: str = "score_opus_distilled", model: str = settings.TE
     rather than renormalised over the covered buckets; `coverage` is the
     share of its population in labelled buckets, and ALL is NaN unless every
     post is covered. CIs resample the labelled rows within each bucket; the
-    model terms are a census and carry no sampling error."""
+    model terms are a census and carry no sampling error.
+
+    A `col` whose model was fit on the labelled replies is refused (its
+    recorded fit, stance_local.reply_column_entry): its errors on the sample
+    are in-sample, so the correction would shrink with no gain in accuracy.
+    A cross-fit column (`reply-distill --crossfit`) scores each post with a
+    model that never saw that post's labels."""
+    from src.analysis.stance_local import reply_column_entry, reply_labels_path
+    fit = reply_column_entry(col)
+    if fit and fit.get("trained_on_reply_labels") and not fit.get("crossfit"):
+        raise ValueError(f"{col} comes from {fit.get('model_dir')}, fit on the labelled replies "
+                         "this corrects against: weight a cross-fit column instead "
+                         "(reply-distill --crossfit)")
     replies = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
     replies["id"] = replies["id"].astype(str)
     draws = reply_draws(replies)                     # fixed before any filtering
@@ -341,8 +353,11 @@ def reply_population(col: str = "score_opus_distilled", model: str = settings.TE
     text = has_text(replies["text"])
     n_no_text = (~text).groupby(replies["tracked_slug"]).sum()
     pop = replies[text & replies[col].notna() & replies["score_transformer"].notna()].copy()
+    unscored = text & replies[col].isna()
+    if unscored.any():
+        logger.warning("reply population: %d replies with text have no %s and are left out: %s",
+                       int(unscored.sum()), col, _per_post(replies[unscored]))
     pop["bucket"] = stance_bucket(pop["score_transformer"]).astype(int)
-    from src.analysis.stance_local import reply_labels_path
     version = labels_version or settings.REPLY_TEACHER_LABELS_VERSION
     labels = pd.read_parquet(reply_labels_path(model, version))
     labels["id"] = labels["id"].astype(str)

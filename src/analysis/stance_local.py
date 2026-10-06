@@ -13,6 +13,11 @@ Stance-model experiments that run on the GPU node (k8s Jobs, see k8s/README.md):
                   Claude scorer on a held-out sample; same metrics.
   score_replies   score every cached reply with the distilled model so the
                   reply analysis has population-level stance, not a sample.
+  reply_lopo, reply_fit_all, score_replies_with, reply_crossfit
+                  the posts-only model fine-tuned on the Opus reply labels,
+                  with or without the parent post: leave-one-post-out
+                  evaluation, a final fit and its column, and cross-fit
+                  scores reply-population can weight (section at the end).
 
 Teacher checks on the host (direct API, no GPU): reply_teacher_check (v1,
 broadcaster prompt) and reply_teacher_check_v2 (the full reply with the
@@ -198,14 +203,35 @@ def teacher_report(joined: pd.DataFrame, model: str, out_dir: Path | None = None
 
 # ── 2. Distillation (GPU) ──────────────────────────────────────────
 
+def _seed_all(seed: int) -> None:
+    """Seed python, numpy, torch and transformers. _fit_eval calls it before
+    the model is built: Trainer seeds only once the model exists, which left
+    a freshly initialised regression head unseeded (review finding F11)."""
+    import random
+
+    import torch
+    import transformers
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    transformers.set_seed(seed)
+
+
 def _fit_eval(train: pd.DataFrame, test: pd.DataFrame | None, *, base_model: str, epochs: int,
               batch_size: int, lr: float, max_len: int, seed: int, label_col: str,
               work_dir: Path, save_to: Path | None = None,
               grad_accum: int = 1, optim: str = "adamw_torch",
-              gradient_checkpointing: bool = False) -> tuple[dict, np.ndarray | None]:
+              gradient_checkpointing: bool = False, encode: Callable | None = None,
+              eval_each_epoch: bool = True,
+              eval_batch_size: int | None = None) -> tuple[dict, np.ndarray | None]:
     """Fine-tune `base_model` (regression head) on `train`; predict `test` if
     given. Returns (info, predictions). Frees the GPU afterwards so a sweep
-    can chain recipes in one process."""
+    can chain recipes in one process. `encode(tok, batch)` builds the
+    tokenizer inputs from a batch of the frame's text (and parent_text)
+    columns; the default is the text alone cut at max_len. A `test` frame
+    without `label_col` is only predicted. eval_each_epoch=False leaves
+    `test` out of training altogether (it is only predicted at the end)."""
     import gc
     import torch
     from datasets import Dataset
@@ -213,30 +239,41 @@ def _fit_eval(train: pd.DataFrame, test: pd.DataFrame | None, *, base_model: str
                               Trainer, TrainingArguments)
 
     cuda = torch.cuda.is_available()
+    _seed_all(seed)                               # before the model (and its head) is built
     tok = AutoTokenizer.from_pretrained(base_model)
     model = AutoModelForSequenceClassification.from_pretrained(
         base_model, num_labels=1, ignore_mismatched_sizes=True)
 
+    def text_only(tok, b):
+        return tok(b["text"], truncation=True, max_length=max_len)
+    encode = encode or text_only
+
     def to_ds(frame: pd.DataFrame) -> Dataset:
-        ds = Dataset.from_pandas(frame[["text", label_col]].rename(columns={label_col: "labels"}))
-        ds = ds.map(lambda b: tok(b["text"], truncation=True, max_length=max_len), batched=True)
+        if label_col not in frame:
+            frame = frame.assign(**{label_col: 0.0})
+        cols = [c for c in ("text", "parent_text") if c in frame] + [label_col]
+        ds = Dataset.from_pandas(frame[cols].rename(columns={label_col: "labels"})
+                                 .reset_index(drop=True))
+        ds = ds.map(lambda b: encode(tok, b), batched=True)
         return ds.map(lambda b: {"labels": [float(x) for x in b["labels"]]}, batched=True)
 
     ds_train = to_ds(train)
     ds_test = to_ds(test) if test is not None else None
+    ds_eval = ds_test if eval_each_epoch else None
     # bf16 on Ampere+ (the 3080) is numerically safer than fp16 for DeBERTa-v3.
     bf16 = cuda and torch.cuda.is_bf16_supported()
     args = TrainingArguments(
         output_dir=str(work_dir / "trainer"), num_train_epochs=epochs,
-        per_device_train_batch_size=batch_size, per_device_eval_batch_size=batch_size * 2,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=eval_batch_size or batch_size * 2,
         gradient_accumulation_steps=grad_accum, optim=optim,
         gradient_checkpointing=gradient_checkpointing,
         learning_rate=lr, weight_decay=0.01, warmup_ratio=0.06,
         bf16=bf16, fp16=cuda and not bf16,
-        eval_strategy="epoch" if ds_test is not None else "no", save_strategy="no",
+        eval_strategy="epoch" if ds_eval is not None else "no", save_strategy="no",
         logging_steps=50, report_to=[], seed=seed, dataloader_num_workers=2,
     )
-    trainer = Trainer(model=model, args=args, train_dataset=ds_train, eval_dataset=ds_test,
+    trainer = Trainer(model=model, args=args, train_dataset=ds_train, eval_dataset=ds_eval,
                       processing_class=tok)
     out = trainer.train()
     pred = None
@@ -265,8 +302,12 @@ def recipe_by_name(name: str) -> dict:
 
 
 def model_max_len(model_dir: Path) -> int:
-    """The token length the model at model_dir was trained at: its recipe.txt
-    names a DISTILL_SWEEP recipe, else it was fit at DISTILL_MAX_LEN."""
+    """The token length the model at model_dir was trained at: a reply model
+    records it in reply_distill.json; else its recipe.txt names a
+    DISTILL_SWEEP recipe, else it was fit at DISTILL_MAX_LEN."""
+    meta = reply_model_meta(model_dir)
+    if meta:
+        return int(meta["max_len"])
     marker = model_dir / "recipe.txt"
     name = marker.read_text().strip() if marker.exists() else ""
     rc = next((r for r in settings.DISTILL_SWEEP if r["name"] == name), None)
@@ -461,11 +502,20 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
 
 
 def score_with_distilled(texts: list[str], model_dir: Path | None = None,
-                         batch_size: int = 64, max_len: int | None = None) -> np.ndarray:
+                         batch_size: int = 64, max_len: int | None = None,
+                         parents: list[str] | None = None) -> np.ndarray:
     """Scores in [-1, 1]; NaN for texts without text to judge
     (src/text_rules.py), which never reach the model (the old "." stand-in scored
     every image-only post a constant +0.111, i.e. pro-war). max_len defaults
-    to the model's training length."""
+    to the model's training length. A "ctx" reply model (reply_distill.json)
+    takes `parents`, the post each text answers, and is fed the pairs as it
+    was trained (reply_inputs); any other model refuses them."""
+    model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    variant = reply_model_meta(model_dir).get("variant", "text")
+    if (variant == "ctx") != (parents is not None):
+        raise ValueError(f"{model_dir.name} was trained on {variant} inputs: "
+                         + ("it needs each reply's parent post" if variant == "ctx"
+                            else "it takes no parent post"))
     out = np.full(len(texts), np.nan)
     keep = [i for i, t in enumerate(texts) if has_text(t)]
     if not keep:
@@ -473,7 +523,6 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-    model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
     max_len = max_len or model_max_len(model_dir)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tok = AutoTokenizer.from_pretrained(model_dir)
@@ -481,8 +530,9 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
     with torch.no_grad():
         for i in range(0, len(keep), batch_size):
             idx = keep[i:i + batch_size]
-            enc = tok([texts[j] for j in idx], truncation=True, max_length=max_len, padding=True,
-                      return_tensors="pt").to(device)
+            enc = reply_inputs(tok, [texts[j] for j in idx],
+                               [parents[j] for j in idx] if parents is not None else None,
+                               variant, max_len, padding=True, return_tensors="pt").to(device)
             out[idx] = model(**enc).logits.reshape(-1).float().cpu().numpy()
     return np.clip(out, -1, 1)
 
@@ -498,8 +548,12 @@ def _to_score(df: pd.DataFrame, col: str) -> pd.Series:
 
 def score_replies(model_dir: Path | None = None, col: str = "score_distilled",
                   max_len: int | None = None) -> pd.DataFrame:
-    """Add `col` (scores from the model at model_dir) to reply_sentiment.parquet."""
+    """Add `col` (scores from the model at model_dir) to reply_sentiment.parquet.
+    A reply-domain model goes through score_replies_with instead, which
+    records its column."""
     model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    if reply_model_meta(model_dir):
+        raise ValueError(f"{model_dir.name} is a reply model: score it with score-replies-ctx")
     max_len = max_len or model_max_len(model_dir)
     out = settings.REPLY_SENTIMENT_OUTPUT
     df = pd.read_parquet(out)
@@ -1685,3 +1739,471 @@ def teacher_batch_collect(check: str, *, client=None,
                 "again) -> %s; %s at direct prices, ≈ $%.2f at batch prices%s", check, len(new),
                 sum(failed.values()), out, spend.summary(), st["spend"]["usd_batch"], unknown)
     return st, spec.report(model, st["params"])
+
+
+# ── Reply-domain scorer (GPU): the posts-only model tuned on reply labels ──
+
+# settings.REPLY_DISTILL_BASE, the posts-only scorer of record, fine-tuned
+# warm on the Opus-labelled replies, with the reply alone ("text", what it
+# sees today) or with the Trump post the reply answers ("ctx"):
+#   reply_lopo          leave-one-post-out: fit on seven posts' labelled
+#                       replies, predict the eighth's, for every post,
+#                       variant and seed, against the published scores
+#   reply_fit_all       one variant fit on every labelled reply (a final dir)
+#   score_replies_with  that model on every reply with text, into a new column
+#   reply_crossfit      per post, a fit on the other posts' labels scores that
+#                       post's replies
+# A model fit on the labelled replies has seen the sample reply-population
+# corrects against: its errors there are in-sample, so the correction and
+# its interval shrink without the estimate getting any better. A cross-fit
+# column never scores a reply with a model that saw its post's labels, so
+# the census and the correction come from one model the sample is new to.
+# reply_columns_path records which model wrote each column these make, and
+# reply-population refuses an in-sample one.
+
+REPLY_META = "reply_distill.json"
+
+
+def reply_model_meta(model_dir) -> dict:
+    """reply_distill.json of a reply-domain model; {} for any other model."""
+    path = Path(model_dir) / REPLY_META
+    return json.loads(path.read_text()) if path.exists() else {}
+
+
+def _model_ref(path) -> str:
+    """A model dir as recorded: relative to MODELS_DIR when under it, so a
+    record made in a Job (/data/models) matches one made on dkbl1."""
+    path = Path(path)
+    try:
+        return str(path.resolve().relative_to(settings.MODELS_DIR.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def reply_max_len(variant: str, base_dir: Path) -> int:
+    """Token length a variant trains and scores at: "text" at the base
+    model's own training length, "ctx" at settings.REPLY_CTX_MAX_LEN."""
+    if variant == "text":
+        return model_max_len(Path(base_dir))
+    if variant == "ctx":
+        return settings.REPLY_CTX_MAX_LEN
+    raise ValueError(f"reply variant {variant!r} is not one of {settings.REPLY_DISTILL_VARIANTS}")
+
+
+def reply_inputs(tok, replies, parents, variant: str, max_len: int, **kw):
+    """Tokenizer inputs for a reply scorer, built the same way in training
+    and scoring. "text": the reply alone, cut at max_len. "ctx": the pair
+    (reply, parent post) cut only on the post ("only_second"), so context
+    never crowds out the reply. A pair whose reply alone overflows makes the
+    tokenizer raise, so a reply too long to leave
+    settings.REPLY_CTX_MIN_PARENT_TOKENS of its post is first cut at a token
+    boundary (10 of the 1,157 labelled replies at 384)."""
+    replies = list(replies)
+    if variant == "text":
+        return tok(replies, truncation=True, max_length=max_len, **kw)
+    if variant != "ctx":
+        raise ValueError(f"reply variant {variant!r} is not one of "
+                         f"{settings.REPLY_DISTILL_VARIANTS}")
+    room = (max_len - tok.num_special_tokens_to_add(pair=True)
+            - settings.REPLY_CTX_MIN_PARENT_TOKENS)
+    if room < 1:
+        raise ValueError(f"max_len {max_len} leaves no room for the reply")
+    enc = tok(replies, add_special_tokens=False, return_offsets_mapping=True)
+    cut = [r if len(ids) <= room else r[:offs[room - 1][1]]
+           for r, ids, offs in zip(replies, enc["input_ids"], enc["offset_mapping"])]
+    return tok(cut, list(parents), truncation="only_second", max_length=max_len, **kw)
+
+
+def reply_training_rows(model: str = settings.TEACHER_CHECK_MODEL,
+                        version: str | None = None) -> pd.DataFrame:
+    """The Opus-labelled replies with text as training rows, by id: id,
+    tracked_slug, text (the full reply, from reply_sentiment.parquet),
+    parent_text (the Trump post it answers, as the v2 labelling sent it),
+    score_teacher (the label) and the published scorer's score
+    (settings.REPLY_DISTILL_BASE_COL). `version` defaults to
+    settings.REPLY_TEACHER_LABELS_VERSION. Raises when a labelled id has no
+    reply row, more than one distinct one, or one under another post."""
+    version = version or settings.REPLY_TEACHER_LABELS_VERSION
+    prompt = REPLY_TEACHER_V2_PROMPT_VERSION if version == "v2" else None
+    labels = read_label_cache(reply_labels_path(model, version), prompt)
+    labels = labels[labels["score_teacher"].notna()]
+    if labels["id"].duplicated().any():
+        raise ValueError(f"{int(labels['id'].duplicated().sum())} reply ids are labelled twice in "
+                         f"{reply_labels_path(model, version).name}")
+    base = settings.REPLY_DISTILL_BASE_COL
+    reps = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    reps["id"] = reps["id"].astype(str)
+    if base not in reps:
+        reps[base] = np.nan
+    reps = reps.loc[reps["id"].isin(set(labels["id"])), ["id", "tracked_slug", "text", base]]
+    reps = reps.drop_duplicates(["id", "tracked_slug", "text"])  # a few ids were collected twice
+    clash = reps["id"].duplicated(keep=False)
+    if clash.any():
+        raise ValueError(f"{reps.loc[clash, 'id'].nunique()} labelled reply ids have more than one "
+                         f"distinct row in {settings.REPLY_SENTIMENT_OUTPUT.name}")
+    keep = ["id", "score_teacher"] + (["tracked_slug"] if "tracked_slug" in labels else [])
+    j = labels[keep].merge(reps, on="id", how="left", suffixes=("_label", ""), indicator=True)
+    lost = j["_merge"] != "both"
+    if lost.any():
+        raise LookupError(f"{int(lost.sum())} labelled replies are not in "
+                          f"{settings.REPLY_SENTIMENT_OUTPUT.name}: their text is unknown")
+    if "tracked_slug_label" in j:
+        off = j["tracked_slug_label"].astype(str) != j["tracked_slug"].astype(str)
+        if off.any():
+            raise ValueError(f"{int(off.sum())} labelled replies sit under another post in "
+                             f"{settings.REPLY_SENTIMENT_OUTPUT.name}")
+    j = j[j["text"].map(has_text).astype(bool)]
+    posts = tracked_post_texts(j["tracked_slug"].unique())
+    j = j.assign(parent_text=j["tracked_slug"].map({s: t for s, (_, t) in posts.items()}))
+    cols = ["id", "tracked_slug", "text", "parent_text", "score_teacher", base]
+    return j[cols].sort_values(["tracked_slug", "id"]).reset_index(drop=True)
+
+
+def _rows_sha(rows: pd.DataFrame) -> str:
+    """Fingerprint of the training rows: ids, posts, texts and labels."""
+    cols = ["id", "tracked_slug", "text", "parent_text", "score_teacher"]
+    blob = rows[cols].sort_values("id").to_json(orient="values")
+    return hashlib.sha256(blob.encode()).hexdigest()[:16]
+
+
+def _reply_config(base_dir: Path, rows: pd.DataFrame, model: str, version: str) -> dict:
+    """What a reply fit depends on, as JSON: a results file or final dir made
+    under another config does not belong to this run."""
+    marker = Path(base_dir) / "recipe.txt"
+    return {"base_model_dir": _model_ref(base_dir),
+            "base_recipe": marker.read_text().strip() if marker.exists() else None,
+            "label_version": version, "label_file": reply_labels_path(model, version).name,
+            "n_rows": len(rows), "rows_sha": _rows_sha(rows),
+            "max_len": {v: reply_max_len(v, base_dir) for v in settings.REPLY_DISTILL_VARIANTS},
+            "min_parent_tokens": settings.REPLY_CTX_MIN_PARENT_TOKENS,
+            **settings.REPLY_DISTILL}
+
+
+def lopo_split(rows: pd.DataFrame, post: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(train, test) for one leave-one-post-out fold: the labelled replies to
+    every other post, and the held-out post's."""
+    held = rows["tracked_slug"] == post
+    if not held.any():
+        raise ValueError(f"no labelled replies to {post}")
+    return rows[~held].reset_index(drop=True), rows[held].reset_index(drop=True)
+
+
+def _reply_fit(train: pd.DataFrame, test: pd.DataFrame | None, *, variant: str, seed: int,
+               base_dir: Path, max_len: int, work_dir: Path,
+               save_to: Path | None = None) -> tuple[dict, np.ndarray | None]:
+    """_fit_eval for a reply variant: warm from base_dir (its regression head
+    included), with settings.REPLY_DISTILL's recipe, reply_inputs as the
+    encoder and no evaluation during training, so nothing is chosen on the
+    held-out rows. `test` is predicted shortest reply first (less padding)
+    and returned in its own order."""
+    hp = settings.REPLY_DISTILL
+
+    def encode(tok, b):
+        parents = b["parent_text"] if variant == "ctx" else None
+        return reply_inputs(tok, b["text"], parents, variant, max_len)
+
+    order = None
+    if test is not None:
+        order = np.argsort(test["text"].str.len().to_numpy(), kind="stable")
+        test = test.iloc[order]
+    info, pred = _fit_eval(train, test, base_model=str(base_dir), epochs=hp["epochs"],
+                           batch_size=hp["batch_size"], lr=hp["lr"], max_len=max_len, seed=seed,
+                           label_col="score_teacher", work_dir=work_dir, save_to=save_to,
+                           grad_accum=hp["grad_accum"], optim=hp["optim"],
+                           gradient_checkpointing=hp["gradient_checkpointing"], encode=encode,
+                           eval_each_epoch=False, eval_batch_size=settings.REPLY_SCORE_BATCH)
+    if pred is not None:
+        back = np.empty(len(pred))
+        back[order] = pred
+        pred = back
+    return {**info, "base_model": _model_ref(base_dir), "variant": variant}, pred
+
+
+def _seeds(n: int) -> list[int]:
+    return [settings.DISTILL_SEED + k for k in range(n)]
+
+
+def reply_lopo(*, variants=settings.REPLY_DISTILL_VARIANTS,
+               seeds: int = settings.REPLY_DISTILL_SEEDS,
+               base_dir: Path | None = None, out_dir: Path | None = None, force: bool = False,
+               model: str = settings.TEACHER_CHECK_MODEL, label_version: str | None = None) -> dict:
+    """Leave-one-post-out for each seed, variant and tracked post: fine-tune
+    on the other posts' labelled replies, predict the held-out post's. The
+    held-out predictions go to lopo_predictions.parquet and the folds and
+    summary (reply_lopo_summary) to lopo_results.json in out_dir (default
+    MODELS_DIR / REPLY_LOPO_DIR), after every fold. A rerun skips the folds
+    the results file holds; one made under another config (base model,
+    labels, recipe, lengths) is refused unless `force`, which starts over."""
+    base_dir = Path(base_dir) if base_dir else settings.MODELS_DIR / settings.REPLY_DISTILL_BASE
+    out_dir = out_dir or settings.MODELS_DIR / settings.REPLY_LOPO_DIR
+    res_path, pred_path = out_dir / "lopo_results.json", out_dir / "lopo_predictions.parquet"
+    version = label_version or settings.REPLY_TEACHER_LABELS_VERSION
+    for v in variants:
+        reply_max_len(v, base_dir)                    # unknown variant: fail before any fit
+    rows = reply_training_rows(model, version)
+    config = json.loads(json.dumps(_reply_config(base_dir, rows, model, version)))
+    old = json.loads(res_path.read_text()) if res_path.exists() and not force else None
+    if old is not None and old.get("config") != config:
+        differ = sorted(k for k in set(config) | set(old.get("config", {}))
+                        if config.get(k) != old.get("config", {}).get(k))
+        raise FileExistsError(f"{res_path} holds folds made under another config "
+                              f"({', '.join(differ)}): --force starts over")
+    # A fold is done when both files hold it: one killed between the two
+    # writes is fitted again.
+    preds = (pd.read_parquet(pred_path) if old and pred_path.exists()
+             else pd.DataFrame(columns=["id", "tracked_slug", "variant", "seed", "pred"]))
+    have = set(zip(preds["seed"], preds["variant"], preds["tracked_slug"]))
+    folds = [f for f in (old["folds"] if old else [])
+             if (f["seed"], f["variant"], f["held_out"]) in have]
+    done = {(f["seed"], f["variant"], f["held_out"]) for f in folds}
+    preds = preds[pd.Series([k in done for k in zip(preds["seed"], preds["variant"],
+                                                    preds["tracked_slug"])],
+                            index=preds.index, dtype=bool)]
+    posts = sorted(rows["tracked_slug"].unique())
+    if len(posts) < 2:
+        raise ValueError("leave-one-post-out needs labelled replies to two posts or more")
+    todo = [(s, v, p) for s in _seeds(seeds) for v in variants for p in posts
+            if (s, v, p) not in done]
+    logger.info("reply lopo: %d rows over %d posts, %d folds done, %d to fit", len(rows),
+                len(posts), len(done), len(todo))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for seed, variant, post in todo:
+        train, test = lopo_split(rows, post)
+        info, pred = _reply_fit(train, test, variant=variant, seed=seed, base_dir=base_dir,
+                                max_len=config["max_len"][variant], work_dir=out_dir / "work")
+        fold = pd.DataFrame({"id": test["id"], "tracked_slug": post, "variant": variant,
+                             "seed": seed, "pred": pred})
+        preds = pd.concat([preds, fold], ignore_index=True) if len(preds) else fold
+        write_parquet_atomic(preds, pred_path)        # predictions first, then the fold's entry
+        folds.append({"seed": seed, "variant": variant, "held_out": post,
+                      "n_train": len(train), "n_test": len(test),
+                      "train_runtime_s": info.get("train_runtime_s"),
+                      "train_loss": info.get("train_loss"),
+                      **agreement(test["score_teacher"].values, pred)})
+        _write_json(res_path, {"config": config, "folds": folds,
+                               "summary": reply_lopo_summary(rows, preds)})
+        logger.info("reply lopo: seed %d %s held out %s -> %s", seed, variant, post,
+                    json.dumps({k: folds[-1][k] for k in ("n", "pearson", "sign_flip_rate")}))
+    result = {"config": config, "folds": folds, "summary": reply_lopo_summary(rows, preds)}
+    _write_json(res_path, result)
+    return result
+
+
+LOPO_METRICS = ("pearson", "mae", "sign_agreement", "sign_flip_rate")
+
+
+def reply_lopo_summary(rows: pd.DataFrame, preds: pd.DataFrame) -> list[dict]:
+    """One row per model and post, plus ALL (pooled over every held-out
+    prediction): agreement with the labels for the published scorer (model
+    "base", no fine-tune, settings.REPLY_DISTILL_BASE_COL) and for each
+    variant, its metrics averaged over seeds with their min and max across
+    seeds. A variant's ALL row counts only the seeds that hold out every post."""
+    base = settings.REPLY_DISTILL_BASE_COL
+    posts = sorted(rows["tracked_slug"].unique())
+    out = [{"model": "base", "post": post, "seeds": 1,
+            **agreement(g["score_teacher"].values, g[base].values)}
+           for post, g in [("ALL", rows), *((p, rows[rows["tracked_slug"] == p]) for p in posts)]]
+    if preds.empty:
+        return out
+    j = preds.merge(rows[["id", "score_teacher"]], on="id")
+    for variant, pv in j.groupby("variant", sort=False):
+        full = [s for s, g in pv.groupby("seed") if set(g["tracked_slug"]) >= set(posts)]
+        cells = [("ALL", pv[pv["seed"].isin(full)])]
+        cells += [(p, pv[pv["tracked_slug"] == p]) for p in posts]
+        for post, g in cells:
+            per_seed = [agreement(s["score_teacher"].values, s["pred"].values)
+                        for _, s in g.groupby("seed")]
+            if not per_seed:
+                continue
+            row = {"model": variant, "post": post, "seeds": len(per_seed),
+                   "n": int(min(a["n"] for a in per_seed))}
+            for k in LOPO_METRICS:
+                vals = np.array([a[k] for a in per_seed], dtype=float)
+                row[k], row[f"{k}_min"], row[f"{k}_max"] = (float(vals.mean()), float(vals.min()),
+                                                            float(vals.max()))
+            out.append(row)
+    return out
+
+
+def _fit_identity(meta: dict) -> dict:
+    """The parts of a reply fit's metadata that say which fit it is."""
+    keys = ("recipe", "variant", "max_len", "seed", "base_model_dir", "base_recipe",
+            "label_version", "label_file", "rows_sha", "min_parent_tokens",
+            *settings.REPLY_DISTILL)
+    return {k: meta.get(k) for k in keys}
+
+
+def reply_fit_all(variant: str, *, seed: int = settings.DISTILL_SEED, base_dir: Path | None = None,
+                  final_dir: Path | None = None, model: str = settings.TEACHER_CHECK_MODEL,
+                  label_version: str | None = None) -> dict:
+    """Fine-tune `variant` on every labelled reply (all tracked posts) into
+    final_dir (default MODELS_DIR / REPLY_FINAL_DIR), with recipe.txt and
+    reply_distill.json saying what it was fit from: base model, variant,
+    max_len, labels, seed, rows. Fit into partial_<name> beside it and
+    renamed, so a killed fit leaves no final dir. A final dir is never overwritten:
+    one holding this same fit is left as it is (returns its metadata), one
+    holding anything else is refused. Choose the variant from reply_lopo,
+    never from this fit's own rows."""
+    base_dir = Path(base_dir) if base_dir else settings.MODELS_DIR / settings.REPLY_DISTILL_BASE
+    max_len = reply_max_len(variant, base_dir)
+    final_dir = final_dir or settings.MODELS_DIR / settings.REPLY_FINAL_DIR.format(variant=variant)
+    version = label_version or settings.REPLY_TEACHER_LABELS_VERSION
+    rows = reply_training_rows(model, version)
+    meta = {**_reply_config(base_dir, rows, model, version), "recipe": f"reply-{variant}-{max_len}",
+            "variant": variant, "max_len": max_len, "seed": seed,
+            "n_by_post": {str(k): int(v) for k, v in rows.groupby("tracked_slug").size().items()}}
+    meta = json.loads(json.dumps(meta))
+    if final_dir.exists() and any(final_dir.iterdir()):
+        held = reply_model_meta(final_dir)
+        if held and _fit_identity(held) == _fit_identity(meta):
+            logger.info("reply fit: %s already holds this fit; not refitting", final_dir)
+            return held
+        what = held.get("recipe") if held else "another model"
+        raise FileExistsError(f"{final_dir} already holds {what}; move it aside to fit "
+                              f"{meta['recipe']} there")
+    # Outside the stance_distilled_final* glob, which sync-data.sh moves whole.
+    tmp = final_dir.parent / f"partial_{final_dir.name}"
+    if tmp.exists():
+        import shutil
+        shutil.rmtree(tmp)                            # a fit killed before its rename
+    logger.info("reply fit: %s on %d labelled replies -> %s", meta["recipe"], len(rows), final_dir)
+    info, _ = _reply_fit(rows, None, variant=variant, seed=seed, base_dir=base_dir,
+                         max_len=max_len, work_dir=final_dir.parent / f"work_{final_dir.name}",
+                         save_to=tmp)
+    meta.update(train_runtime_s=info.get("train_runtime_s"), train_loss=info.get("train_loss"),
+                fitted_at=pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds"),
+                git_sha=os.environ.get("IRAN_GIT_SHA"))
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / "recipe.txt").write_text(meta["recipe"])
+    _write_json(tmp / REPLY_META, meta)
+    if final_dir.exists():
+        final_dir.rmdir()                             # empty (checked above)
+    os.replace(tmp, final_dir)
+    return meta
+
+
+# Which model wrote each reply column made here: one column, one scorer.
+
+def reply_columns_path() -> Path:
+    """The record of the model behind each reply score column that
+    score_replies_with and reply_crossfit write, next to the reply parquet."""
+    return settings.REPLY_SENTIMENT_OUTPUT.with_name("reply_sentiment_columns.json")
+
+
+def reply_column_entry(col: str) -> dict | None:
+    path = reply_columns_path()
+    return json.loads(path.read_text()).get(col) if path.exists() else None
+
+
+def _claim_column(df: pd.DataFrame, col: str, entry: dict) -> None:
+    """Record `col` as `entry`'s before any score is written. Refuses a column
+    that holds scores from a model the record lacks, or records as another:
+    never two scorers in one series (AGENTS.md)."""
+    path = reply_columns_path()
+    reg = json.loads(path.read_text()) if path.exists() else {}
+    entry = json.loads(json.dumps(entry))
+    held = reg.get(col)
+    if held is None and col in df and df[col].notna().any():
+        raise ValueError(f"{col} already holds scores from a model {path.name} does not record: "
+                         "give these scores a new column")
+    if held is not None and {k: held.get(k) for k in entry} != entry:
+        who = f"{held.get('model_dir') or 'cross-fit'}, {held.get('recipe') or held.get('variant')}"
+        raise ValueError(f"{col} holds scores from another fit ({who}): give these a new column")
+    reg[col] = {**(held or {}), **entry}
+    _write_json(path, reg)
+
+
+def _parents_for(df: pd.DataFrame, mask: pd.Series) -> list[str]:
+    posts = tracked_post_texts(df.loc[mask, "tracked_slug"].unique())
+    return df.loc[mask, "tracked_slug"].map({s: t for s, (_, t) in posts.items()}).tolist()
+
+
+def score_replies_with(model_dir: Path, col: str,
+                       batch_size: int = settings.REPLY_SCORE_BATCH) -> pd.DataFrame:
+    """Score every reply with text in reply_sentiment.parquet into `col` with
+    a reply_fit_all model, at the input variant and token length it was
+    trained at ("ctx" with each reply's parent post, by tracked_slug).
+    Replies without text stay NaN and no other column is touched. `col` is
+    recorded as this model's (reply_columns_path) and refused if it holds
+    another's; incremental for the same model. This model saw the labelled
+    sample: reply-population refuses the column (use reply_crossfit)."""
+    model_dir = Path(model_dir)
+    meta = reply_model_meta(model_dir)
+    if not meta:
+        raise ValueError(f"{model_dir} has no {REPLY_META}: "
+                         "score a posts model with score-distilled")
+    out = settings.REPLY_SENTIMENT_OUTPUT
+    df = pd.read_parquet(out)
+    _claim_column(df, col, {"source": "fit", "model_dir": _model_ref(model_dir), "crossfit": False,
+                            "trained_on_reply_labels": meta["label_version"],
+                            **_fit_identity(meta)})
+    todo = _to_score(df, col)
+    if todo.any():
+        parents = _parents_for(df, todo) if meta["variant"] == "ctx" else None
+        logger.info("scoring %d replies with %s (%s, max_len %d) -> %s", int(todo.sum()),
+                    model_dir.name, meta["variant"], meta["max_len"], col)
+        df.loc[todo, col] = score_with_distilled(df.loc[todo, "text"].tolist(), model_dir,
+                                                 batch_size, int(meta["max_len"]), parents=parents)
+        write_parquet_atomic(df, out)
+    return df
+
+
+def reply_crossfit(variant: str, *, seed: int = settings.DISTILL_SEED, col: str | None = None,
+                   base_dir: Path | None = None, out_dir: Path | None = None,
+                   model: str = settings.TEACHER_CHECK_MODEL,
+                   label_version: str | None = None) -> dict:
+    """Cross-fit reply scores that reply-population can weight: for each
+    tracked post with labelled replies, fine-tune `variant` on the other
+    posts' (its LOPO fold) and score every reply with text under the held-out
+    post into `col` (default score_<variant>_crossfit). Textless replies and
+    posts without labels stay NaN; no other column is touched. A post is
+    scored whole by one fit and written before the next: a rerun skips posts
+    with every reply scored and rescores the rest whole (e.g. after new
+    replies are collected). Per-post fit info and the held-out agreement go
+    to <out_dir>/crossfit_<col>.json."""
+    base_dir = Path(base_dir) if base_dir else settings.MODELS_DIR / settings.REPLY_DISTILL_BASE
+    out_dir = out_dir or settings.MODELS_DIR / settings.REPLY_LOPO_DIR
+    col = col or f"score_{variant}_crossfit"
+    max_len = reply_max_len(variant, base_dir)
+    version = label_version or settings.REPLY_TEACHER_LABELS_VERSION
+    rows = reply_training_rows(model, version)
+    entry = {"source": "crossfit", "model_dir": None, "crossfit": True,
+             "trained_on_reply_labels": version, "recipe": f"reply-{variant}-{max_len}-crossfit",
+             "variant": variant, "max_len": max_len, "seed": seed,
+             **{k: v for k, v in _reply_config(base_dir, rows, model, version).items()
+                if k != "max_len"}}
+    out = settings.REPLY_SENTIMENT_OUTPUT
+    df = pd.read_parquet(out)
+    _claim_column(df, col, entry)
+    report_path = out_dir / f"crossfit_{col}.json"
+    report = json.loads(report_path.read_text()) if report_path.exists() else {}
+    report = {"col": col, **entry, "posts": report.get("posts", {})}
+    posts = sorted(rows["tracked_slug"].unique())
+    unlabelled = sorted(set(df["tracked_slug"].dropna()) - set(posts))
+    if unlabelled:
+        logger.warning("reply crossfit: no labelled replies to %s; left NaN", ", ".join(unlabelled))
+    text = df["text"].map(has_text).astype(bool)
+    for post in posts:
+        todo = text & (df["tracked_slug"] == post)
+        if col in df and df.loc[todo, col].notna().all():
+            continue
+        train, held = lopo_split(rows, post)
+        frame = df.loc[todo, ["id", "tracked_slug", "text"]].assign(
+            parent_text=held["parent_text"].iloc[0])
+        logger.info("reply crossfit: %s fit without %s (%d rows), scoring its %d replies -> %s",
+                    variant, post, len(train), int(todo.sum()), col)
+        info, pred = _reply_fit(train, frame, variant=variant, seed=seed, base_dir=base_dir,
+                                max_len=max_len, work_dir=out_dir / "work")
+        df.loc[todo, col] = pred
+        write_parquet_atomic(df, out)
+        scored = df.loc[todo, ["id", col]].assign(id=lambda d: d["id"].astype(str))
+        lab = held.merge(scored.drop_duplicates("id"), on="id")
+        y = lab["score_teacher"].values
+        report["posts"][post] = {
+            "n_train": len(train), "n_scored": int(todo.sum()),
+            "train_runtime_s": info.get("train_runtime_s"), "train_loss": info.get("train_loss"),
+            "held_out": agreement(y, lab[col].values),
+            "base_held_out": agreement(y, lab[settings.REPLY_DISTILL_BASE_COL].values)}
+        _write_json(report_path, report)
+    _write_json(report_path, report)
+    return report

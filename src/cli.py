@@ -1172,6 +1172,82 @@ def score_distilled_cmd(model_dir: str | None, col: str, max_len: int | None):
     click.echo(df.groupby("tracked_slug")[col].agg(["mean", "count"]).round(3).to_string())
 
 
+@main.command("reply-distill")
+@click.option("--lopo", "mode", flag_value="lopo",
+              help="Leave-one-post-out evaluation of every variant and seed (resumable)")
+@click.option("--fit-all", "mode", flag_value="fit_all",
+              help="Fit --variant on every labelled reply "
+                   "-> stance_distilled_final_reply_<variant>")
+@click.option("--crossfit", "mode", flag_value="crossfit",
+              help="Per post, fit --variant on the other posts' labels and score that post's "
+                   "replies -> score_<variant>_crossfit (the column reply-population can weight)")
+@click.option("--variants", default=",".join(settings.REPLY_DISTILL_VARIANTS), show_default=True,
+              help="(--lopo) Comma-separated input variants")
+@click.option("--variant", type=click.Choice(list(settings.REPLY_DISTILL_VARIANTS)), default=None,
+              help="(--fit-all, --crossfit) Input variant, chosen from the --lopo results")
+@click.option("--seeds", type=click.IntRange(min=1), default=settings.REPLY_DISTILL_SEEDS,
+              show_default=True, help="(--lopo) Seeds per fold")
+@click.option("--seed", type=int, default=settings.DISTILL_SEED, show_default=True,
+              help="(--fit-all, --crossfit) Seed")
+@click.option("--col", default=None, help="(--crossfit) Output column")
+@click.option("--base-dir", default=None,
+              help=f"Model to fine-tune (default MODELS_DIR/{settings.REPLY_DISTILL_BASE})")
+@click.option("--force", is_flag=True, help="(--lopo) Start over, replacing the results file")
+def reply_distill_cmd(mode: str | None, variants: str, variant: str | None, seeds: int, seed: int,
+                      col: str | None, base_dir: str | None, force: bool):
+    """Fine-tune the posts-only stance model on the Opus reply labels, the reply
+    alone ("text") or with the post it answers ("ctx") (GPU)."""
+    from pathlib import Path as _P
+
+    from src.analysis import stance_local as sl
+    if mode is None:
+        raise click.UsageError("pick one of --lopo, --fit-all, --crossfit")
+    if mode != "lopo" and variant is None:
+        raise click.UsageError("--fit-all and --crossfit need --variant")
+    base = _P(base_dir) if base_dir else None
+    if mode == "lopo":
+        vs = tuple(v.strip() for v in variants.split(",") if v.strip())
+        bad = sorted(set(vs) - set(settings.REPLY_DISTILL_VARIANTS))
+        if bad or not vs:
+            raise click.UsageError(f"--variants: one or more of {settings.REPLY_DISTILL_VARIANTS}")
+        res = sl.reply_lopo(variants=vs, seeds=seeds, base_dir=base, force=force)
+        click.echo(f"{'model':6s}{'post':20s}{'n':>6s}{'seeds':>6s}{'pearson':>16s}{'mae':>7s}"
+                   f"{'sign agr':>10s}{'flips':>7s}")
+        for r in res["summary"]:
+            spread = (f" [{r['pearson_min']:.2f},{r['pearson_max']:.2f}]"
+                      if r["model"] != "base" else "")
+            click.echo(f"{r['model']:6s}{r['post']:20s}{r['n']:>6d}{r['seeds']:>6d}"
+                       f"{r['pearson']:>7.3f}{spread:>9s}{r['mae']:>7.3f}"
+                       f"{r['sign_agreement']:>10.1%}{r['sign_flip_rate']:>7.1%}")
+        return
+    if mode == "fit_all":
+        meta = sl.reply_fit_all(variant, seed=seed, base_dir=base)
+        click.echo(f"{meta['recipe']}: {meta['n_rows']} replies ({meta['label_version']} labels), "
+                   f"seed {meta['seed']}, max_len {meta['max_len']}, from {meta['base_model_dir']}")
+        return
+    rep = sl.reply_crossfit(variant, seed=seed, col=col, base_dir=base)
+    click.echo(f"{rep['col']}: {rep['variant']} at max_len {rep['max_len']}, seed {rep['seed']}")
+    for post, r in rep["posts"].items():
+        h, b = r["held_out"], r["base_held_out"]
+        click.echo(f"  {post:20s} scored {r['n_scored']:>6d}  held-out n={h['n']:4d} "
+                   f"pearson {h['pearson']:.3f} (published {b['pearson']:.3f})")
+
+
+@main.command("score-replies-ctx")
+@click.option("--model-dir", required=True, help="A reply-distill --fit-all model dir")
+@click.option("--col", required=True, help="Output column (e.g. score_ctx_distilled)")
+@click.option("--batch-size", default=settings.REPLY_SCORE_BATCH, show_default=True)
+def score_replies_ctx_cmd(model_dir: str, col: str, batch_size: int):
+    """Score every reply with text with a reply-domain model, at its training
+    input (with the parent post for ctx) and length (GPU). Not for
+    reply-population: the model saw the labelled sample (use --crossfit)."""
+    from pathlib import Path as _P
+
+    from src.analysis.stance_local import score_replies_with
+    df = score_replies_with(_P(model_dir), col, batch_size)
+    click.echo(df.groupby("tracked_slug")[col].agg(["mean", "count"]).round(3).to_string())
+
+
 # ── relabel (Opus teacher via the Batch API) ──────────────────────
 
 @main.command("relabel")

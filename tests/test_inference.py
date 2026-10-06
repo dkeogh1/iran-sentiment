@@ -207,6 +207,34 @@ def test_reply_population_dedupes_and_drops_replies_without_text(reply_files):
     assert r["opus_mean"] == pytest.approx((8 * -1 + 9 * 1) / 17)  # the textless 0.0 labels are out
 
 
+def test_reply_population_takes_a_crossfit_column_and_refuses_an_in_sample_one(reply_files):
+    # A reply-domain column (NaN where a reply has no text) goes through the
+    # same census and buckets as score_opus_distilled; one whose model was fit
+    # on the labelled replies is refused.
+    import json
+
+    from src.analysis.event_study import bucket_draws
+    from src.analysis.stance_local import reply_columns_path
+    reps = _replies({"p": [-0.9] * 30 + [0.9] * 10})
+    reps.loc[[0, 30], "text"] = ""
+    reps["score_opus_distilled"] = np.where(reps["score_transformer"] < 0, -0.5, 0.25)
+    reps["score_ctx_crossfit"] = reps["score_opus_distilled"].where(inf.has_text(reps["text"]))
+    reps["score_ctx_distilled"] = reps["score_ctx_crossfit"]
+    reply_files(reps, _opus(bucket_draws(reps, n_per_bucket=5, score_col="score_transformer")))
+    reply_columns_path().write_text(json.dumps({
+        "score_ctx_crossfit": {"crossfit": True, "trained_on_reply_labels": "v2"},
+        "score_ctx_distilled": {"crossfit": False, "trained_on_reply_labels": "v2",
+                                "model_dir": "stance_distilled_final_reply_ctx"}}))
+    old = inf.reply_population(n_boot=20).set_index("post").loc["p"]
+    new = inf.reply_population(col="score_ctx_crossfit", n_boot=20).set_index("post").loc["p"]
+    for k in ("n_replies", "n_labelled", "model_mean", "assisted_mean", "assisted_mean_lo",
+              "assisted_pro", "coverage"):
+        assert new[k] == pytest.approx(old[k])
+    assert new["n_replies"] == 38 and new["model_mean"] == pytest.approx((29 * -0.5 + 9 * 0.25) / 38)
+    with pytest.raises(ValueError, match="cross-fit"):
+        inf.reply_population(col="score_ctx_distilled", n_boot=20)
+
+
 
 def _growing_post():
     """Post x before and after a later reply collection: 60 replies per

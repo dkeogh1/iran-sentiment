@@ -299,6 +299,36 @@ DISTILL_SWEEP = [
 ]
 DISTILL_CV_FOLDS = 5
 
+# Reply-domain scorer (`reply-distill`, 2026-10-06). The posts-only scorer of
+# record never sees the Trump post a reply answers, and the v2 labels depend
+# on it (a reply cheering a ceasefire is against the war): 0.58 Pearson
+# against v2 overall, 0.32 under the ceasefire post, 0.14 under the deal
+# post. It is fine-tuned, warm from its own weights, on the labelled replies
+# with the reply alone ("text", what it sees today) or with the pair (reply,
+# parent post) ("ctx"), and judged leave-one-post-out. Base model: a dir
+# under MODELS_DIR, whose published reply scores are REPLY_DISTILL_BASE_COL.
+REPLY_DISTILL_BASE = "stance_distilled_final_score_opus"
+REPLY_DISTILL_BASE_COL = "score_opus_distilled"
+REPLY_DISTILL_VARIANTS = ("text", "ctx")
+# "text" runs at the base model's training length (recipe.txt: 256); "ctx"
+# needs room for the parent post too (the eight run 55-244 tokens, 90% of
+# replies under 76). The pair is cut only on the post; a reply too long to
+# leave this many tokens of its post is cut first.
+REPLY_CTX_MAX_LEN = 384
+REPLY_CTX_MIN_PARENT_TOKENS = 32
+# Few epochs at a small LR from a fitted model. Effective batch 16 as
+# batch 4 x accumulation 4 with the base recipe's 8-bit AdamW and gradient
+# checkpointing (deb-256-1e5-3: DeBERTa-v3-large does not fit the 10 GB
+# 3080 otherwise).
+REPLY_DISTILL = {"epochs": 3, "lr": 1e-5, "batch_size": 4, "grad_accum": 4,
+                 "optim": "adamw_bnb_8bit", "gradient_checkpointing": True}
+REPLY_DISTILL_SEEDS = 2            # LOPO seeds: DISTILL_SEED, DISTILL_SEED + 1, ...
+REPLY_SCORE_BATCH = 32             # inference batch at up to 384 tokens
+REPLY_LOPO_DIR = "reply_ctx_lopo"  # under MODELS_DIR: results JSON + held-out predictions
+# Final fits go to a stance_distilled_final* dir: never overwritten, and
+# sync-data.sh carries those whole.
+REPLY_FINAL_DIR = "stance_distilled_final_reply_{variant}"
+
 # Local LLM: same prompt as the Claude scorer, run on the GPU in 4-bit.
 LOCAL_LLM_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 LOCAL_LLM_EVAL_N = 1000
