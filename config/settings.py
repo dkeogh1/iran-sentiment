@@ -183,6 +183,16 @@ TS_DESCENDANTS_PATH = "/api/v2/statuses/{id}/context/descendants"
 # credentials are present; set False (or pass --anonymous) to force the
 # paced public walk, e.g. while a new-device login check is pending.
 TS_PREFER_AUTH = True
+# No-text re-read (`ts-fill-text`, src/collectors/ts_fill_text.py): the cached
+# posts with no words of their own (no text, or only the quote fallback
+# "RT: <link>") are read again by id, anonymously, at TS_PAGE_DELAY_S with
+# the 429 backoff above. A run stops once this many reads in a row fail
+# (403 from Cloudflare, 5xx, network), or at once on a 429 that outlasts
+# TS_MAX_RETRIES; the next run retries the failed ids after the unread ones.
+TS_FILL_MAX_CONSECUTIVE_ERRORS = 3
+# Round trip of one status read, for `--estimate` only: a guess, not
+# measured. The pacing sleep comes on top.
+TS_FILL_EST_REQUEST_S = 0.5
 
 
 # ── Gap-fill slicing ───────────────────────────────────────────────

@@ -478,6 +478,85 @@ def collect_truth_cmd(force: bool, since_s: str | None, until_s: str | None,
         click.echo(f"  @{h}: {count}")
 
 
+# ── ts-fill-text ────────────────────────────────────────────────────
+
+@main.command("ts-fill-text")
+@click.option("--handle", default="realDonaldTrump", show_default=True,
+              help="Truth Social account whose cache to fill (not a replies_<slug> cache)")
+@click.option("--estimate", is_flag=True,
+              help="Count the posts to read and the time at the pacing, then exit (no request)")
+@click.option("--limit", type=click.IntRange(min=1), default=None,
+              help="Pilot: read only N of the posts still to read, spread over the window")
+def ts_fill_text_cmd(handle: str, estimate: bool, limit: int | None):
+    """Re-read by id the cached Truth Social posts with no words of their own
+    (no text, or only the quote fallback "RT: <link>"; anonymous, free,
+    paced) and put what they carry in the raw cache: a quote post with no
+    text of its own takes the quoted text as "RT @acct: ...", like a
+    ReTruth, one that quotes a post with no text is stored with no text, and
+    every post read gains quote_of / reblog_of / media. Each answer is
+    journalled before the cache is touched, so a killed run resumes without
+    reading a post twice; with nothing left to read a run only applies the
+    journal. Where a post's text changes, its topic and Trump-check labels
+    move to *_superseded and its feed row loses its score, so `score-posts`
+    and `topic-label` redo exactly those posts. Not alongside collect-truth
+    on the same handle."""
+    from src.collectors import ts_fill_text as tf
+
+    try:
+        p = tf.plan(handle, limit)
+    except ValueError as e:
+        click.secho(str(e), fg="red")
+        raise SystemExit(1) from None
+    if not p["cached"]:
+        click.secho(f"No cached posts for @{handle} ({tf.cache_path(handle)}).", fg="red")
+        raise SystemExit(1)
+    click.echo(f"@{handle}: {p['cached']} cached posts, {p['no_text']} with no words of their own "
+               f"({p['quote_fallback']} of them only a quote fallback \"RT: <link>\"), "
+               f"{p['answered']} of those already read (journal {tf.journal_path().name})")
+    click.echo(f"This run: {p['reads']} reads, ≈ {p['est_minutes']:.0f} min at TS_PAGE_DELAY_S "
+               f"{settings.TS_PAGE_DELAY_S} s + ~{settings.TS_FILL_EST_REQUEST_S} s a request "
+               f"(longer if Truth Social answers 429). Anonymous Truth Social API, free.")
+    if estimate:
+        return
+
+    def kinds(c) -> str:
+        return ", ".join(f"{k} {c.get(k, 0)}" for k in tf.KINDS)
+
+    stopped = None
+    if p["reads"]:
+        r = tf.fetch(handle, p["todo"])
+        stopped = r["stopped"]
+        click.echo(f"\nRead {r['requests']}: {kinds(r['kinds'])}")
+        if stopped:
+            click.secho(f"Stopped early: {stopped}. Rerun to resume from the journal.", fg="red")
+    a = tf.apply(handle)
+    click.echo(f"\nJournal for @{handle}: {kinds(a['kinds'])}")
+    click.echo(f"Applied: {a['changed']} records rewritten, {a['text_gained']} of them gained "
+               f"text and {a['text_dropped']} lost a bare quote fallback "
+               f"({a['already_applied']} were already in; {a['with_text']} read posts carry "
+               f"text in all)")
+    if a["quotes"]:
+        click.echo(f"Quote posts read: {a['quotes']} ({a['quotes_with_text']} carry the quoted "
+                   f"text); {a['quotes_of_own']} quote a post in this cache "
+                   f"({a['quotes_of_own_with_text']} of them with text, which counts twice)")
+    if a["labels_moved"] or a["feed_rows_cleared"]:
+        click.echo(f"Made from the old text: labels moved to *_superseded {a['labels_moved']}; "
+                   f"{a['feed_rows_cleared']} feed rows cleared ({a['feed_rows_archived']} "
+                   f"archived)")
+    if a["drifted"]:
+        click.secho(f"{len(a['drifted'])} cached posts changed since they were read; left alone.",
+                    fg="yellow")
+    if a["text_gained"] or a["text_dropped"]:
+        moved_check = any(k.startswith("teacher_check_trump") for k in a["labels_moved"])
+        click.echo("Next: score-posts on the feed (the score-trump-feed Job; it rescores the "
+                   "cleared rows with text), topic-label estimate|submit|status|collect, "
+                   + ("teacher-check --source trump (paid: estimate and ask; refills the "
+                      "sample), " if moved_check else "")
+                   + "phases --source trump, export-web, backup.")
+    if stopped:
+        raise SystemExit(1)
+
+
 # ── collect-replies ─────────────────────────────────────────────────
 
 @main.command("collect-replies")

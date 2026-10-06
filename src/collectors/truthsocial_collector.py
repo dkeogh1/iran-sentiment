@@ -27,6 +27,7 @@ used from `collect_replies`.
 
 import json
 import logging
+import re
 import time
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -90,19 +91,21 @@ def _ts_get_paced(url: str, params: dict | None = None):
     """
     GET with pacing and 429 backoff. Sleeps TS_PAGE_DELAY_S before every
     call; on 429 waits per the response headers and retries up to
-    TS_MAX_RETRIES times. Returns the final response (may still be 429).
+    TS_MAX_RETRIES times. Returns the final response (may still be 429),
+    at once: every caller stops on it, so a wait after it would only idle.
     """
-    for attempt in range(settings.TS_MAX_RETRIES + 1):
+    tries = settings.TS_MAX_RETRIES + 1
+    for attempt in range(tries):
         time.sleep(settings.TS_PAGE_DELAY_S)
         resp = _ts_get(url, params=params)
-        if resp.status_code != 429:
-            return resp
+        if resp.status_code != 429 or attempt + 1 == tries:
+            break  # no backoff after the last try: the caller stops on it
         wait = _retry_after_seconds(resp)
         logger.warning(
             "429 from %s (attempt %d/%d) -- backing off %.0fs",
             url.rsplit("/", 2)[-1],
             attempt + 1,
-            settings.TS_MAX_RETRIES,
+            tries,
             wait,
         )
         time.sleep(wait)
@@ -305,31 +308,92 @@ collect_via_public_api.last_complete = False
 
 def _strip_html(html: str) -> str:
     """Naive HTML tag removal for Truth Social post content."""
-    import re
-
     text = re.sub(r"<[^>]+>", " ", html)
     return re.sub(r"\s+", " ", text).strip()
 
 
+# Truth Social opens a quote post's content with a fallback for clients that
+# don't show quotes, "RT: <quoted status uri>", then the poster's own words if
+# any. The fallback is not words, and alone (198 of Trump's 4,360 cached
+# posts, 2026-10-06) it carried a post with nothing to judge past has_text's
+# cut: the link goes, but "RT:" is MIN_TEXT_CHARS long.
+_QUOTE_FALLBACK_RE = re.compile(r"^\s*RT:\s*https?://\S+\s*")
+
+
+def _drop_bare_fallback(text: str) -> str:
+    """`text` less a leading quote fallback ("RT: <uri>") when nothing with
+    text follows it, so the post reads as no text; otherwise unchanged. A
+    quote post with words of its own keeps the fallback before them, as the
+    cache has always stored it (40 of Trump's posts)."""
+    rest = _QUOTE_FALLBACK_RE.sub("", text, count=1)
+    return text if rest == text or has_text(rest) else rest.strip()
+
+
+def _text_of(status: dict) -> str:
+    """A status's own content as text, a bare quote fallback dropped."""
+    return _drop_bare_fallback(_strip_html(status.get("content") or ""))
+
+
+def _quoted(status: dict) -> dict | None:
+    """The status a quote post embeds (`quote`), or None. Truth Social sends
+    `quote_id` with it, and `quote` null when the quoted post is gone."""
+    q = status.get("quote")
+    return q if isinstance(q, dict) else None
+
+
+def _carried_text(status: dict) -> tuple[str, str]:
+    """(acct, text) of the words a status carries: its own text, or, for a
+    quote post with no text of its own (has_text), the quoted post's own
+    text. One level down only."""
+    own = _text_of(status)
+    q = _quoted(status)
+    if not has_text(own) and q is not None:
+        inner = _text_of(q)
+        if has_text(inner):
+            return (q.get("account") or {}).get("acct", ""), inner
+    return (status.get("account") or {}).get("acct", ""), own
+
+
 def _status_content(status: dict) -> dict:
     """
-    `text` plus the optional `reblog_of` / `media` keys for a status record.
+    `text` plus the optional `reblog_of` / `quote_of` / `media` keys for a
+    status record.
 
     A ReTruth carries no content of its own, so its text is the reblogged
     post's, prefixed "RT @acct: " like an X retweet: a ReTruth counts as the
-    account's messaging. A ReTruth of a post with no text (src/text_rules.py,
-    e.g. a lone emoji or a bare link) keeps text empty, since the prefix
-    alone would carry it past that cut. `media` is the attachment
-    count, the reblogged post's for a ReTruth; both keys appear only when set.
+    account's messaging (docs/decisions.md, 2026-10-04). A quote post with no
+    text of its own (src/text_rules.has_text: empty, an emoji, or only
+    Truth Social's "RT: <quoted uri>" fallback) is the same amplification,
+    so it is stored the same way, "RT @<quoted acct>: <quoted text>", with
+    `quote_of`. A quote post WITH text of its own keeps its text as sent
+    (the fallback, then its words) and gains `quote_of`: the decision is
+    about what an account amplifies, and its own words are its message;
+    appending the quoted text would make the scorers judge the quoted
+    author's words as well. The words of a ReTruth of a quote post with no
+    text are the quoted post's (_carried_text).
+
+    A ReTruth or quote of a post with no text (e.g. a lone emoji or a bare
+    link) keeps its own text, empty for a ReTruth and without the fallback
+    for a quote, since the prefix alone would carry it past that cut.
+    `media` is the attachment count, the reblogged post's for a ReTruth;
+    each key appears only when set.
     """
-    out = {"text": _strip_html(status.get("content") or "")}
+    out = {"text": _text_of(status)}
     reblog = status.get("reblog")
     if isinstance(reblog, dict):
         out["reblog_of"] = reblog.get("id")
-        inner = _strip_html(reblog.get("content") or "")
+        acct, inner = _carried_text(reblog)
         if not out["text"] and has_text(inner):
-            acct = (reblog.get("account") or {}).get("acct", "")
             out["text"] = f"RT @{acct}: {inner}"
+    else:
+        quote = _quoted(status)
+        quote_of = status.get("quote_id") or (quote or {}).get("id")
+        if quote_of:
+            out["quote_of"] = str(quote_of)
+            if not has_text(out["text"]) and quote is not None:
+                acct, inner = _carried_text(quote)
+                if has_text(inner):
+                    out["text"] = f"RT @{acct}: {inner}"
     media = (
         status.get("media_attachments")
         or (reblog.get("media_attachments") if isinstance(reblog, dict) else None)
@@ -831,17 +895,16 @@ def _get_token() -> str:
 def _ts_get_auth_paced(url: str, params: dict | None, token: str):
     """Authenticated GET with pacing and 429 backoff (mirrors _ts_get_paced)."""
     headers = {"Authorization": f"Bearer {token}", "User-Agent": _TS_USER_AGENT}
-    for attempt in range(settings.TS_MAX_RETRIES + 1):
+    tries = settings.TS_MAX_RETRIES + 1
+    for attempt in range(tries):
         time.sleep(settings.TS_AUTH_PAGE_DELAY_S)
         resp = cffi_requests.get(
             url, params=params, headers=headers, impersonate="chrome136", timeout=_DEFAULT_TIMEOUT
         )
-        if resp.status_code != 429:
-            return resp
+        if resp.status_code != 429 or attempt + 1 == tries:
+            break
         wait = _retry_after_seconds(resp)
-        logger.warning(
-            "429 (attempt %d/%d) -- backing off %.0fs", attempt + 1, settings.TS_MAX_RETRIES, wait
-        )
+        logger.warning("429 (attempt %d/%d) -- backing off %.0fs", attempt + 1, tries, wait)
         time.sleep(wait)
     return resp
 

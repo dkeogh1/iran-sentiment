@@ -250,6 +250,125 @@ def test_status_content_retruth_and_media():
     assert ts._status_content({"content": None}) == {"text": ""}
 
 
+def _quote(own="<p></p>", inner="<p>Iran must <b>never</b> have a nuclear weapon</p>", media=1):
+    """A quote post as Truth Social sends it: top-level quote_id plus the
+    embedded quoted status (with its own nested quote / reblog)."""
+    return {
+        "id": "2",
+        "content": own,
+        "media_attachments": [{"type": "image"}] * media,
+        "reblog": None,
+        "quote_id": "777",
+        "quote": {
+            "id": "777",
+            "content": inner,
+            "account": {"acct": "SecWar"},
+            "media_attachments": [],
+            "quote": None,
+            "reblog": None,
+        },
+    }
+
+
+def test_status_content_quote_without_own_text_counts_as_retruth():
+    got = ts._status_content(_quote())
+    assert got == {
+        "text": "RT @SecWar: Iran must never have a nuclear weapon",
+        "quote_of": "777",
+        "media": 1,
+    }
+    # own text under MIN_TEXT_CHARS is no text of its own either
+    assert ts._status_content(_quote(own="<p>\U0001f1fa\U0001f1f8</p>", media=0)) == {
+        "text": "RT @SecWar: Iran must never have a nuclear weapon",
+        "quote_of": "777",
+    }
+
+
+def test_status_content_quote_with_own_text_keeps_it():
+    got = ts._status_content(_quote(own="<p>So true!</p>", media=0))
+    assert got == {"text": "So true!", "quote_of": "777"}  # quoted words not appended
+
+
+def test_status_content_quote_of_nothing_to_carry():
+    # the quoted post has no text either: the prefix must not lift it past the cut
+    assert ts._status_content(_quote(inner="<p>!!</p>", media=0)) == {"text": "", "quote_of": "777"}
+    # the quoted post is gone: Truth Social keeps quote_id, sends quote null
+    gone = {**_quote(media=0), "quote": None}
+    assert ts._status_content(gone) == {"text": "", "quote_of": "777"}
+    # an int id is stored as a string, like every other id
+    assert ts._status_content({**_quote(media=0), "quote_id": 777})["quote_of"] == "777"
+
+
+def test_status_content_quote_of_a_quote_and_retruth_of_a_quote():
+    # one level down: the quoted post is itself a quote with no text
+    nested = _quote(inner="<p></p>", media=0)
+    nested["quote"]["quote"] = {"id": "5", "content": "<p>Peace!</p>", "account": {"acct": "VP"}}
+    assert ts._status_content(nested) == {"text": "RT @VP: Peace!", "quote_of": "777"}
+    # a ReTruth of a quote post with no text carries the quoted words, and is
+    # a ReTruth (reblog_of), not a quote
+    rt = {"id": "3", "content": "", "media_attachments": [], "reblog": _quote(media=0)}
+    assert ts._status_content(rt) == {
+        "text": "RT @SecWar: Iran must never have a nuclear weapon",
+        "reblog_of": "2",
+    }
+
+
+_LINK = "https://truthsocial.com/users/SecWar/statuses/777"
+_FALLBACK = f'<span class="quote-inline"><br/>RT: <a href="{_LINK}">{_LINK}</a></span>'
+
+
+def test_status_content_quote_holding_only_the_fallback():
+    # Truth Social's own fallback, "RT: <quoted uri>", is not words of the poster's
+    got = ts._status_content(_quote(own=f"<p>{_FALLBACK}</p>", media=0))
+    assert got == {"text": "RT @SecWar: Iran must never have a nuclear weapon", "quote_of": "777"}
+    # the quoted post has no text either: no text, not the fallback
+    bare = _quote(own=f"<p>{_FALLBACK}</p>", inner="<p></p>", media=0)
+    assert ts._status_content(bare) == {"text": "", "quote_of": "777"}
+    # an emoji after the fallback is still no words of its own
+    emoji = _quote(own=f"<p>{_FALLBACK}\U0001f1fa\U0001f1f8</p>", inner="<p></p>", media=0)
+    assert ts._status_content(emoji) == {"text": "\U0001f1fa\U0001f1f8", "quote_of": "777"}
+    # words of its own after the fallback: kept as sent, as the cache holds them
+    own = _quote(own=f"<p>{_FALLBACK}So true!</p>", media=0)
+    assert ts._status_content(own) == {"text": f"RT: {_LINK} So true!", "quote_of": "777"}
+
+
+def test_bare_fallback_one_level_down():
+    # a ReTruth of a quote post that holds only the fallback carries the quoted words
+    rt = {"id": "3", "content": "", "reblog": _quote(own=f"<p>{_FALLBACK}</p>", media=0)}
+    assert ts._status_content(rt) == {
+        "text": "RT @SecWar: Iran must never have a nuclear weapon",
+        "reblog_of": "2",
+    }
+    # a quote of such a quote post, whose own quote is gone: nothing to carry
+    nested = _quote(inner=f"<p>{_FALLBACK}</p>", media=0)
+    assert ts._status_content(nested) == {"text": "", "quote_of": "777"}
+    assert ts._drop_bare_fallback("RT: https://x.y/1") == ""
+    assert ts._drop_bare_fallback("Retweet this: https://x.y/1") == "Retweet this: https://x.y/1"
+    assert ts._drop_bare_fallback("RT @VP: Peace!") == "RT @VP: Peace!"
+
+
+def test_quote_posts_through_every_caller(monkeypatch):
+    monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
+    t0 = datetime(2026, 4, 10, tzinfo=UTC)
+    statuses = _statuses(2, t0)
+    statuses[1] = {**statuses[1], **_quote(), "id": statuses[1]["id"]}
+    server, _ = _fake_server(statuses)
+    monkeypatch.setattr(ts, "_ts_get_paced", server)
+    got = {p["id"]: p for p in ts.collect_via_public_api("t", date(2026, 4, 1), date(2026, 4, 30))}
+    assert got["1001"]["text"].startswith("RT @SecWar: ") and got["1001"]["quote_of"] == "777"
+    assert "quote_of" not in got["1000"]
+
+    when = "2026-04-10T00:00:00.000Z"
+    status = {**_quote(), "created_at": when}
+    api = type("Api", (), {"pull_statuses": lambda self, u, **kw: iter([status])})
+    monkeypatch.setattr(ts, "_get_truthbrush_api", lambda: api())
+    tb = ts.collect_via_truthbrush("t", date(2026, 4, 1), date(2026, 4, 30))
+    assert tb[0]["text"].startswith("RT @SecWar: ") and tb[0]["quote_of"] == "777"
+
+    rec = ts._reply_record({**status, "account": {"username": "u"}}, parent_id="900")
+    assert rec["text"].startswith("RT @SecWar: ") and rec["quote_of"] == "777"
+
+
 def test_public_api_records_retruth_and_media(monkeypatch):
     monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
     t0 = datetime(2026, 4, 10, tzinfo=UTC)
@@ -293,6 +412,23 @@ def test_paced_get_retries_429(monkeypatch):
     seq = [_Resp(429, headers={"retry-after": "0"}), _Resp(200, {"ok": 1})]
     monkeypatch.setattr(ts, "_ts_get", lambda url, params=None, timeout=None: seq.pop(0))
     assert ts._ts_get_paced("u").status_code == 200
+
+
+def test_paced_get_does_not_wait_after_the_last_429(monkeypatch):
+    monkeypatch.setattr(ts.settings, "TS_PAGE_DELAY_S", 0)
+    monkeypatch.setattr(ts.settings, "TS_MAX_RETRIES", 2)
+    waits = []
+    monkeypatch.setattr(ts.time, "sleep", waits.append)
+    monkeypatch.setattr(ts, "_ts_get", lambda url, params=None, timeout=None: _Resp(429))
+    assert ts._ts_get_paced("u").status_code == 429
+    # 3 tries, a backoff between each, none after the last: the caller stops on it
+    assert [w for w in waits if w] == [ts.settings.TS_DEFAULT_BACKOFF_S] * 2
+
+    waits.clear()
+    monkeypatch.setattr(ts.settings, "TS_AUTH_PAGE_DELAY_S", 0)
+    monkeypatch.setattr(ts.cffi_requests, "get", lambda *a, **k: _Resp(429))
+    assert ts._ts_get_auth_paced("u", None, "tok").status_code == 429
+    assert [w for w in waits if w] == [ts.settings.TS_DEFAULT_BACKOFF_S] * 2
 
 
 def test_anonymous_incremental_interrupt_then_resume(cache, monkeypatch):

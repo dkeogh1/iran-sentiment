@@ -5,6 +5,7 @@ def test_links_and_retweet_prefix_are_not_text():
     assert not has_text("https://t.co/abc")  # X image / video tweet
     assert not has_text("RT @WhiteHouse: https://t.co/abc")  # retweet of one
     assert not has_text("RT @a: !!")
+    assert not has_text("RT: https://truthsocial.com/@x/123")  # Truth Social quote fallback
     assert not has_text("  ") and not has_text(None)
 
 
