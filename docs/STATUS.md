@@ -1,6 +1,6 @@
 # Status
 
-As of 2026-10-05. Update the date and the lines that change after each refresh.
+As of 2026-10-06. Update the date and the lines that change after each refresh.
 
 ## Data
 
@@ -13,8 +13,8 @@ Two layers at different depths. Nothing runs on a schedule.
   sampled at 450. 490 posts have no text (nearly all bare links) and leave
   every series (`src/text_rules.py`). `score_opus` on all 19,115 posts with
   text (2026-10-05; the 3 posts whose answers the backfill relabel could
-  not parse were resubmitted and merged). Haiku topic labels on 21,626 of
-  the 21,853 posts with text (X and Trump's feed); the other 227 are link
+  not parse were resubmitted and merged). Haiku topic labels on 21,574 of
+  the 21,665 posts with text (X and Trump's feed); the other 91 are link
   shares (*Open*).
 - **Retweets** count as the account's messaging (`docs/decisions.md`):
   5,683 of the 17,837 account posts (32%; 70% of admin; @POTUS 789 of 789,
@@ -51,14 +51,16 @@ Two layers at different depths. Nothing runs on a schedule.
 - **Keyword searches**: frozen at May 12, with a gap from about Apr 20 to
   May 5 (7-day recent search only).
 - **Truth Social**: Trump's feed current through 2026-09-30 (anonymous
-  refresh), 4,360 posts from Apr 4 (contiguous), scored with
-  `score_opus_distilled`. Checked against Opus on the feed (2026-10-05,
-  `teacher-check --source trump`, 400 random posts with text): 0.74
-  Pearson and 1.5% sign flips on all 400; on the 59 war posts among them
-  0.61 and 10%, the model's mean 0.03 below Opus's. 1,622 have no text and
-  leave every share and mean: ReTruths whose text the collector dropped
-  before 2026-10-04, and image or video posts (the cache can't tell which);
-  `truthsocial_trump_stance.parquet` still holds their old constant +0.111.
+  refresh), 4,360 posts from Apr 4 (contiguous), 2,550 of them with text,
+  scored with `score_opus_distilled`. Checked against Opus on the feed
+  (`teacher-check --source trump`, 400 random posts with text; 2026-10-05,
+  refilled 2026-10-06): 0.74 Pearson and 1.8% sign flips on all 400; on
+  the 63 war posts among them 0.62 and 11%, the model's mean 0.03 below
+  Opus's (0.379 vs 0.410). The 1,810 without text leave every share and
+  mean: 1,589 images or videos with no caption and 221 quotes of his own
+  posts that have no text (*Trump's posts with no text*, below).
+  `truthsocial_trump_stance.parquet` still holds the old constant +0.111
+  for 1,622 of them; the other 188 have no score.
   98,668 replies to 8 tracked posts, 98,663 unique (`data/raw/truthsocial/replies_*.jsonl`;
   `these_fools` 4,441 and `trump_strait` 11,173 added 2026-09-30, 94.7% and
   99.1% coverage), 92,306 of them with text (the `reply-population`
@@ -76,6 +78,26 @@ Two layers at different depths. Nothing runs on a schedule.
   `score_opus_distilled` was rescored 2026-09-30 at its 256-token
   training length; `score_opus_distilled_v0` keeps the old reply scores
   (`docs/decisions.md`).
+- **Trump's posts with no text** (`ts-fill-text`, 2026-10-06, free,
+  anonymous): these notes had called the 1,622 textless posts ReTruths
+  whose text the collector dropped, plus images and videos. None was a
+  ReTruth: the cache already held 185 ReTruths with their text. Read again
+  by id, the 1,622 and the 198 stored as only Truth Social's quote
+  fallback (`RT: <link>`, which had counted as text and been scored on the
+  link) are 1,589 media-only posts and 231 quote posts (1,820 reads, no
+  errors, none gone). All 231 quote an earlier post of his own, and only
+  10 of those have text: those 10 now carry it, as
+  `RT @realDonaldTrump: ...` with `quote_of`, so their words count twice,
+  and the other 188 fallbacks have no text. Nothing is left to recover.
+  What was made from the old text is in `*_superseded.parquet` (198 feed
+  rows, 87 topic labels, 20 Trump-check labels); the 10 were rescored and
+  topic-labelled, and the check was refilled to 400 (2 of its 20 new
+  labels are those quote posts, relabelled from their new text). New pulls store quote
+  posts the same way (`docs/decisions.md`). His war posts and their means
+  don't move (96/111/122/70 by phase, topic `either`); with 188 fewer
+  posts with text, his war share rises 0.8-2.1 points a phase
+  (33.1/13.8/12.2/12.9% -> 35.2/15.2/13.0/14.0%). X tables and reply
+  estimates are unchanged.
 - **Timeline**: 84 events through 2026-09-15 in `config/timeline.py`;
   `ANALYSIS_END` = 2026-09-18. Sources for the Sep 2026 additions are in
   `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`.
@@ -87,6 +109,10 @@ Two layers at different depths. Nothing runs on a schedule.
   pilot. `analyze --llm` (Haiku, 2,571 posts) is not metered: about $2 at
   Haiku's prices, from the relabel's token counts on the same prompt.
   About $25.40 in all.
+- **Spend, 2026-10-06**: Anthropic by batch, from the results' usage:
+  `topic-label` $0.023 (126 posts, 35 labelled), the Trump-feed check's
+  refill $0.035 (20 posts); about $0.06. No X reads; `ts-fill-text` is
+  free.
 
 ## Where things are
 
@@ -98,8 +124,10 @@ Two layers at different depths. Nothing runs on a schedule.
   synced 2026-09-30 after the reply refresh and the GPU pull, as far as
   these notes record: run `backup` for the 2026-10-04/05 runs (the
   rewritten X raw cache, the relabels, the `*_superseded` archives, the v2
-  and Trump-feed labels, the downloaded batch results) and
-  `data/processed/reply_sample_draws.parquet`.
+  and Trump-feed labels, the downloaded batch results),
+  `data/processed/reply_sample_draws.parquet`, and the 2026-10-06 ones
+  (the rewritten Trump raw cache, `ts_fill_text_journal.jsonl`, the new
+  `*_superseded` rows, the refilled check and the new topic labels).
 - Host backup (restic, homelab-infra): the SanDisk drive is unplugged and no
   host backup has run since 2026-04-23. The host backup script no longer
   needs Timeshift, so the drive can go back in; until then S3 is the only
@@ -125,7 +153,10 @@ Two layers at different depths. Nothing runs on a schedule.
   reverse; `docs/decisions.md`); pushed to dkweb `main`. The audience
   bars' x domain went to [-0.9, 0.9] and the tone-stance scatter's y domain
   to [-0.2, 0.5] so the v2 hold-off bar (ends at 0.83) and intervals (up
-  to +0.46) fit; worth a look on the page.
+  to +0.46) fit; worth a look on the page. `export-web` reran 2026-10-06
+  after `ts-fill-text`: only `trump_phases.json` changed (Trump's posts
+  with text and war shares; the war-post counts and means did not), and
+  the post's Trump prose and caption follow it.
 - **Next X pull: Oct 25-30, 2026, no later than Nov 1.** On Sep 18
   @RealAlexJones's ~3,200-tweet timeline reached back only ~7 weeks, so his
   gap starts opening around Nov 1-6 (@WhiteHouse ~Nov 20, @LauraLoomer early
@@ -159,19 +190,14 @@ Two layers at different depths. Nothing runs on a schedule.
   rerunning `teacher-check` (x) would compare different inputs on those 63.
   The 2026-09-18 report is unaffected, and `teacher-retest` pairs those
   labels with the archived batch labels made from the same cut text.
-- X `collect --force` still replaces an account's cache with what the forced
-  run fetched, capped. Decide on merging by id before any forced backfill.
 - `analyze` restores a prior score only onto the same text (2026-10-04),
   and archives a prior row with a paid score (Haiku's) before rescoring it,
-  but the paid labels are still keyed by id: `x-backfill-text` moves the
-  labels of the posts it changes, while any other re-fetch that changes a
-  post's text (`collect --force`) keeps the old Opus and topic labels.
-- **Free, but uses Truth Social: recover past ReTruth text** for the 1,622
-  textless Trump posts. The collector now keeps a ReTruth's text, but only
-  for posts it fetches; the cached ones need a status lookup the collector
-  doesn't have yet. Some of the 1,622 are image or video posts with no text
-  to recover. `score-posts` (the `score-trump-feed` Job) rescores rows that
-  gain text.
+  but the paid labels are keyed by id. `x-backfill-text`, X `collect
+  --force` (which merges into the cache by id since 2026-10-06) and
+  `ts-fill-text` move the labels of the posts whose text they change; a
+  forced `collect-truth` merges by id but doesn't, so a Trump post whose
+  text it changes keeps its topic label and feed score (`score-posts`
+  rescores only rows that gain text).
 - The mixed-domain distill is still on the v1 reply labels: its training
   rows (`stance_local.reply_label_frame`) and the mixed-vs-posts-only
   comparison (the mixed model ahead on the two unseen posts, 0.658 vs
@@ -179,8 +205,8 @@ Two layers at different depths. Nothing runs on a schedule.
   two posts the order flips (0.553 mixed vs 0.611 posts-only, 267
   replies; gap CI [-0.15, +0.04], replies resampled). Retrain on v2 rows
   only if the mixed model matters again.
-- 227 posts with text are link shares Haiku will not judge (154 Trump's,
-  73 on X, 59 of them Levin's: a link under a word or two such as "Amen"
+- 91 posts with text are link shares Haiku will not judge (43 Trump's,
+  48 on X, 39 of them Levin's: a link under a word or two such as "Amen"
   or "Right on"; it answers that it cannot open URLs and hits
   `max_tokens`). `war_flag` falls back to the keyword pattern for them by
   design. `topic-label` resubmits them on every run (a few cents). Worth

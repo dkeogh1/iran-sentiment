@@ -81,8 +81,8 @@ def war_flag(d: pd.DataFrame, source: str = settings.TOPIC_SOURCE) -> pd.Series:
 def prepare(df: pd.DataFrame, score_col: str, group: str = "tier",
             topic_source: str = settings.TOPIC_SOURCE, phases=PHASES) -> pd.DataFrame:
     """Rows with text and a score inside a phase, tagged with phase / topic /
-    day. Rows without text (has_text: 1,622 of Trump's Truth Social posts,
-    image / video posts and ReTruths whose text the collector used to drop)
+    day. Rows without text (has_text: 1,810 of Trump's Truth Social posts,
+    images or videos with no caption and quotes of his own no-text posts)
     are dropped first, so they leave every share and
     mean instead of counting as off-topic posts with a constant score.
     Pass phases=WHOLE_WAR for one cell per group over the whole window."""

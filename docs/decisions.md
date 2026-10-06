@@ -4,6 +4,59 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-10-06: Truth Social quote posts count as messaging; the textless Trump posts were never ReTruths
+
+- **Decision:** a Truth Social quote post counts as the account's messaging,
+  like a ReTruth. One with no words of its own carries the quoted post's
+  text, stored as `RT @acct: <quoted text>` with `quote_of`; one with words
+  of its own keeps them as sent (after Truth Social's `RT: <link>`
+  fallback) and gains `quote_of`. A bare `RT: <link>` has no text
+  (`src/text_rules.py`). The collector does this for new pulls;
+  `ts-fill-text` re-read by id the cached posts with no words of their own
+  (free, anonymous) and rewrote them the same way.
+- **Why:** quoting a post without comment is the same amplification as a
+  ReTruth (2026-10-04, retweets and ReTruths). Until now the collector
+  ignored `quote`, so a quote with no words was stored empty or as the bare
+  fallback, which counted as text and was scored on a URL.
+- **Correction:** the notes took the 1,622 textless Trump posts for
+  ReTruths whose text the collector dropped, plus images and videos, and
+  the 2026-10-04 retweet entry says the collector had stored ReTruths
+  empty. None was a ReTruth: the cache already held 185 ReTruths with
+  their text. Read again by id (1,820 reads: the 1,622 and 198 stored as
+  only the fallback), they are 1,589 media-only posts (image or video, no
+  caption) and 231 quote posts, all quoting an earlier post of Trump's
+  own; only 10 of those quoted posts have text. Those 10 now carry it, so
+  those words count twice, as they would in a ReTruth of his own post; the
+  other 188 fallbacks have no text. His feed has 2,550 posts with text of
+  4,360 (was 2,738) and 1,810 without (1,589 media-only, 221 quotes of his
+  own posts with no text). What was made from the old text is in
+  `*_superseded.parquet` (198 feed rows, 87 topic labels, 20 Trump-check
+  labels), and the check was refilled to 400: on its 63 war posts (was 59)
+  0.62 Pearson, 11% sign flips, the model's mean 0.03 below Opus's.
+- **Effect:** his war posts and their means don't move (96/111/122/70 by
+  phase, means +0.423/+0.358/+0.302/+0.385, topic `either`). His posts with
+  text per phase fall from 290/804/996/541 to 273/732/938/501, so his war
+  share rises from 33.1/13.8/12.2/12.9% to 35.2/15.2/13.0/14.0% (Haiku label
+  alone: 26.9/9.7/8.2/8.5% to 28.6/10.7/8.7/9.2%). X tables and reply
+  estimates are unchanged.
+- **Rejected:** appending the quoted text to a quote with words of its own
+  (the scorers would judge the quoted author's words as the poster's).
+
+## 2026-10-06: X `collect --force` merges into the cache by id
+
+- **Decision:** a forced X run (`collect --force`, timelines and searches)
+  merges what it fetched into the cache by id: a post it returns replaces
+  its cached version, and the posts it doesn't return stay. Where a post's
+  text changes, its Opus and topic labels move to `*_superseded.parquet`
+  and its `sentiment_all` row is archived and cleared, as `x-backfill-text`
+  does, so `analyze` rescores it and the label runs redo it.
+- **Why:** a forced run is capped, and the timeline reaches back only
+  ~3,200 posts (search ~7 days), so replacing the cache with it dropped
+  paid posts that can't be read again. And the labels are keyed by id, so
+  a re-read that changed a post's text kept labels made from the old text.
+- **Rejected:** replacing the cache with the forced run (the old
+  behaviour); keeping a post's labels across a text change.
+
 ## 2026-10-05: Reply labels v2, made with the parent post, replace v1
 
 - **Decision:** `reply-population`, and with it the published audience
@@ -60,6 +113,10 @@ behind the stance-model entries are in README *Stance-model experiments* and
   single posts agree less well than on X. Each phase has only 9-20 of
   those war posts, too few to check phase by phase.
 - **Rejected:** citing the X holdout's 0.88 for the feed.
+- **Refilled 2026-10-06:** 20 of the 400 labels had been made from a bare
+  quote link. The refilled check: 1.8% sign flips and the model's mean
+  0.007 above Opus's on all 400; on its 63 war posts 0.62 Pearson, 11%
+  flips, 0.379 vs 0.410, 11-22 a phase (2026-10-06).
 
 ## 2026-10-05: Teacher checks run through the Batch API
 
@@ -143,7 +200,8 @@ behind the stance-model entries are in README *Stance-model experiments* and
   holds 96 of them, so `teacher-retest` pairs its labels with the archived
   batch labels made from the same cut text.
 - **Rejected:** `collect --force` over the old windows (re-buys every post,
-  capped, and replaces the cache); keeping the old labels by id (a re-fetch
+  capped, and then replaced the cache; it merges by id since 2026-10-06);
+  keeping the old labels by id (a re-fetch
   must not keep scores made from other text); deleting the superseded labels
   or clearing the Haiku scores without a copy (paid data; clearing alone
   would also have moved the teacher-check sample onto ~400 unlabelled
@@ -168,6 +226,8 @@ behind the stance-model entries are in README *Stance-model experiments* and
 - **Rejected:** dropping retweets, at collection (`exclude=retweets`) or in
   the analysis: that measures authorship, not messaging, and would empty
   @POTUS.
+- **Corrected 2026-10-06:** the cached ReTruths already had their text;
+  Trump's textless posts were images, videos and quote posts (2026-10-06).
 
 ## 2026-10-04: @POTUS stays in the admin tier
 
@@ -198,6 +258,9 @@ behind the stance-model entries are in README *Stance-model experiments* and
   posts moved from 46.3% pro-war / 35.0% anti-war to 47.2% / 37.3%.
 - **Rejected:** counting them as off-topic (the old behaviour); a placeholder
   score (next entry); imputing them from the reply's valence bucket.
+- **Since 2026-10-06:** with his bare quote fallbacks, 1,810 of Trump's
+  posts have no text (none a ReTruth), and his war share is 35/15/13/14%
+  (2026-10-06).
 
 ## 2026-10-04: The distilled scorer no longer scores empty text
 
@@ -218,7 +281,8 @@ behind the stance-model entries are in README *Stance-model experiments* and
 - **Why:** `text` stops at 280 characters, so about 2,000 cached posts were
   stored and labelled cut there (about 14% of war posts; 32% of the
   religious tier's, 25% of pro-war MAGA's). New pulls get the whole post;
-  the cached ones are not backfilled ([STATUS.md](STATUS.md)). X bills per
+  the cached ones were re-read separately (`x-backfill-text`, 2026-10-04
+  above; [STATUS.md](STATUS.md)). X bills per
   resource returned, and how it bills posts returned as expansions is not
   documented, so `expansions=referenced_tweets.id` could add billed reads.
   Without it a retweet's text stays cut at about 140 characters. Measured

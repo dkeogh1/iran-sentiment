@@ -58,7 +58,7 @@ def test():
 # ── collect ─────────────────────────────────────────────────────────
 
 @main.command()
-@click.option("--force", is_flag=True, help="Ignore cached files and re-fetch")
+@click.option("--force", is_flag=True, help="Re-fetch the whole window (paid reads) and merge it into the cache by id")
 @click.option("--no-search", is_flag=True, help="Skip keyword searches")
 @click.option("--estimate", is_flag=True,
               help="Print the per-account plan and maximum cost, then exit (no API calls)")
@@ -433,7 +433,7 @@ def probe_auth_cmd(post_id: str):
 # ── collect-truth ───────────────────────────────────────────────────
 
 @main.command("collect-truth")
-@click.option("--force", is_flag=True, help="Ignore cached files and re-fetch")
+@click.option("--force", is_flag=True, help="Re-fetch the whole window and merge it into the cache by id")
 @click.option("--since", "since_s", default=None,
               help="Override start date (ISO, e.g. 2026-01-01). "
                    "Defaults to settings.COLLECTION_START.")

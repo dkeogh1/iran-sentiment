@@ -88,6 +88,8 @@ python -m src.cli test       # verify X API credentials (free)
 python -m src.cli status     # show what's cached, what's missing
 python -m src.cli collect    # incremental fetch -- appends only new tweets since last run
 python -m src.cli x-backfill-text --estimate  # cached posts cut at 280 chars: reads to re-get them whole
+python -m src.cli ts-fill-text  # re-read by id the cached Truth Social posts with no words (free, anonymous;
+                                #   done 2026-10-06, new pulls store quote posts themselves)
 python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm for Haiku stance)
 python -m src.cli visualize  # regenerate all figures
 python -m src.cli summary    # stats tables (default --score is the stance of record)
@@ -116,7 +118,8 @@ batch's `results_url` and pass the file with `--results-file`.
 config/  settings.py (paths, caps, batch sizes, models, colours), accounts.py (tiers),
          timeline.py (events), tracked_posts.py (Trump posts for reply analysis)
 src/     cli.py (every command), backup.py
-  collectors/     x_collector.py, x_backfill.py (posts cut at 280), truthsocial_collector.py
+  collectors/     x_collector.py, x_backfill.py (posts cut at 280), truthsocial_collector.py,
+                  ts_fill_text.py (Truth Social posts with no words)
   analysis/       sentiment.py (VADER, RoBERTa, LLM stance), event_study.py (replies),
                   relabel.py, topic_label.py (Batch API), inference.py (CIs, shift-share),
                   stance_local.py (GPU experiments)
@@ -176,10 +179,11 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 - The LLM parsers strip ```` ```json ```` fences before `json.loads`
   (`sentiment.py`, `event_study.py`): Haiku wraps its JSON despite the
   prompt. Keep stripping; don't prompt-engineer it away.
-- Retweets and ReTruths count as the account's messaging (stored as
-  `RT @acct: ...`). Posts and replies with no text (`src/text_rules.py`:
-  under 3 characters once links and a leading `RT @x: ` are removed) leave
-  every denominator and are never scored.
+- Retweets, ReTruths and Truth Social quote posts count as the account's
+  messaging (stored as `RT @acct: ...`; a quote with words of its own keeps
+  them). Posts and replies with no text (`src/text_rules.py`: under 3
+  characters once links and a leading `RT @x: ` or `RT: ` are removed)
+  leave every denominator and are never scored.
 - Reply population shares come from `reply-population` (Opus-corrected
   against the v2 reply labels, `settings.REPLY_TEACHER_LABELS_VERSION`), not
   raw `score_opus_distilled`, which runs ~15 points pro-war (63% vs 49% for
@@ -201,8 +205,10 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   newest N and drop the rest.
 - Requests ask for `note_tweet` (full text over 280 characters) and
   `referenced_tweets`, never expansions: X bills per resource returned
-  ([docs/decisions.md](docs/decisions.md)). `collect --force` replaces an
-  account's cache with what the capped run fetched.
+  ([docs/decisions.md](docs/decisions.md)). `collect --force` merges the
+  capped re-read into the cache by id and keeps what it didn't return; a
+  post whose text changed has its labels moved to `*_superseded` and is
+  rescored.
 - X's user timeline returns only an account's latest ~3,200 tweets. Refresh
   heavy accounts at least every ~2 months or the gap is lost for good.
 - Keyword search (`/search/recent`) reaches back only ~7 days.

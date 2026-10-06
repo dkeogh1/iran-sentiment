@@ -20,10 +20,12 @@ schedule.
 replies to 8 Trump posts (three from the April escalation, five from
 the May-September deal-and-collapse cycle) and Trump's own Truth Social
 feed from Apr 4 to Sep 30 (4,360 posts). Posts and replies with no text
-to judge (fewer than 3 characters once links and a leading "RT @x: " are
-removed: 490 X posts, nearly all bare links, 1,622 of Trump's posts,
-6,357 replies) leave every count, share and mean below. Retweets and
-ReTruths count as the account's own messaging (see *Data collection*).
+to judge (fewer than 3 characters once links and a leading "RT @x: " or
+"RT: " are removed: 490 X posts, nearly all bare links, 1,810 of Trump's
+posts, most of them images or videos with no caption, 6,357 replies) leave
+every count, share and mean below. Retweets, ReTruths and quote posts
+with no words of their own count as the account's own messaging (see
+*Data collection*).
 Every X post with text carries four scores:
 VADER (lexicon baseline), RoBERTa
 (`cardiffnlp/twitter-roberta-base-sentiment-latest`, valence), a Claude
@@ -196,32 +198,32 @@ end May 12):
 The X series above samples @POTUS at 789 posts, but @POTUS is the
 official presidential account and all 789 are retweets, 783 of them of
 @WhiteHouse. Trump's Truth Social feed is his own voice: 4,360 posts
-from Apr 4 to Sep 30, 2,738 of them with text (the rest are images,
-videos and ReTruths whose text the collector did not keep before Oct 4;
+from Apr 4 to Sep 30, 2,550 of them with text (the rest are images or
+videos with no caption and quotes of his own posts that have no text;
 they leave the denominator), scored with the Opus-taught distilled model.
 The model reaches 0.88 Pearson with Opus on held-out X posts, but less
 on his feed: on 400 random feed posts with text that Opus labelled with
 the prompt the model learned from (`teacher-check --source trump`), it
-agrees at 0.74 over all of them and 0.61 on the 59 war posts among them.
-On those war posts its mean is within 0.03 of Opus's (+0.40 against
-+0.43), so the levels below are about right on average; each phase holds
-only 9 to 20 of the checked war posts, too few to check phase by phase.
+agrees at 0.74 over all of them and 0.62 on the 63 war posts among them.
+On those war posts its mean is 0.03 below Opus's (+0.38 against
++0.41), so the levels below are about right on average; each phase holds
+only 11 to 22 of the checked war posts, too few to check phase by phase.
 The phases run to Sep 18, where the X data ends.
 
 | Phase | War posts | share of posts | all posts |
 |---|--:|--:|--:|
-| Apr 4 -- Apr 21 | +0.42 [+0.27, +0.55] | 33% | +0.180 |
-| Apr 22 -- Jun 17 | +0.36 [+0.27, +0.44] | 14% | +0.099 |
-| Jun 18 -- Aug 17 | +0.30 [+0.23, +0.37] | 12% | +0.080 |
-| Aug 18 -- Sep 18 | +0.38 [+0.33, +0.45] | 13% | +0.084 |
+| Apr 4 -- Apr 21 | +0.42 [+0.27, +0.55] | 35% | +0.189 |
+| Apr 22 -- Jun 17 | +0.36 [+0.27, +0.44] | 15% | +0.106 |
+| Jun 18 -- Aug 17 | +0.30 [+0.23, +0.37] | 13% | +0.083 |
+| Aug 18 -- Sep 18 | +0.38 [+0.33, +0.45] | 14% | +0.089 |
 
 The intervals overlap in every phase and under every topic definition
 (the strict Haiku labels put all four between +0.42 and +0.52), and the
 direct September-minus-April contrast is -0.04 [-0.19, +0.13] (+0.02
 [-0.12, +0.19] under the strict labels): no measurable change, though a
 drop of up to about 0.2 can't be ruled out. What changed is how much he
-talks about it, a third of his posts in April and 12-14% since, the same
-pattern as the administration's accounts on X.
+talks about it, over a third of his posts in April and 13-15% since, the
+same pattern as the administration's accounts on X.
 
 ### Per-account detail
 
@@ -425,10 +427,11 @@ as positive (+0.13).
   for the May-September refresh, and eight others hit the cap in some
   slices too.
 - Retweets count as the account's own messaging (so do Trump's
-  ReTruths). They are 32% of the X account posts (5,683 of 17,837) and
-  70% of the administration's; @POTUS, the official presidential
-  account, posted nothing but retweets (789, 783 of them of
-  @WhiteHouse). The timeline returns a retweet's text cut to about 140
+  ReTruths, and his quote posts with no words of their own, which carry
+  the quoted text as a ReTruth does). They are 32% of the X account
+  posts (5,683 of 17,837) and 70% of the administration's; @POTUS, the
+  official presidential account, posted nothing but retweets (789, 783
+  of them of @WhiteHouse). The timeline returns a retweet's text cut to about 140
   characters, and the collector does not fetch the original, so
   retweets are scored on that prefix (the Oct 4 re-read below left
   them as they are).
@@ -443,11 +446,22 @@ as positive (+0.13).
   0.05 and raised war shares by up to about 2 points, as the full text
   shows more war content. New collections get the full text.
 - Posts and replies with no text (fewer than 3 characters once links
-  and a leading "RT @x: " are removed, `src/text_rules.py`) are not
-  scored and leave every share and mean: 490 X posts (nearly all bare
-  links), 1,622 of
-  Trump's 4,360 Truth Social posts (images, videos, and ReTruths whose
-  text the collector dropped before Oct 4) and 6,357 replies.
+  and a leading "RT @x: " or "RT: " are removed, `src/text_rules.py`)
+  are not scored and leave every share and mean: 490 X posts (nearly
+  all bare links), 1,810 of Trump's 4,360 Truth Social posts and 6,357
+  replies.
+- On Oct 6 every one of Trump's posts with no words of its own was
+  re-read by id (`ts-fill-text`, free): 1,589 are images or videos with
+  no caption and 231 quote one of his own earlier posts. None is a
+  ReTruth whose text was dropped; the cache's 185 ReTruths have their
+  text. Until then the collector ignored quotes, storing them empty or as
+  Truth Social's bare "RT: <link>" fallback, and the 198 fallbacks had
+  been scored on the link. A quote with no words of its own now carries
+  the quoted text, as a ReTruth does, but only 10 of the 231 quoted posts
+  have text: those 10 gained it and the other 221 have none. That took
+  188 posts out of the denominators (2,738 with text before, 2,550 now),
+  raising Trump's war shares by about 1 to 2 points; his war posts and
+  their means did not change.
 - Keyword searches use `/search/recent`, which only reaches back 7
   days. Searches were refreshed on Apr 16 and May 12 and not since, so
   the search tier covers Feb 1 to May 12 with a gap from roughly Apr 20
@@ -506,10 +520,10 @@ All free, all reproducible from the cached data (`src/analysis/inference.py`):
   definitions of "about the war": a keyword pattern
   (`WAR_TOPIC_PATTERN`, loose: misses unnamed strikes, catches "culture
   war"), a Haiku 4.5 yes/no label on every post (`topic-label`, Batch
-  API, about $3 for 22,197 posts in September and $0.62 for 2,890 in
-  October, mostly the posts re-read in full; strict: drops the Pope's
+  API, about $3 for 22,197 posts in September and $0.62 for 2,890 on
+  Oct 4, mostly the posts re-read in full; strict: drops the Pope's
   war appeals that never name Iran; posts with text it has no label
-  for, 73 on X and 154 in Trump's feed, fall back to the keyword), and
+  for, 48 on X and 43 in Trump's feed, fall back to the keyword), and
   either of the two (the default, 24% of X posts). Keyword and either
   barely differ (at most 0.02 in any X tier-phase cell); the strict
   labels are the real test. Under all three the headline gaps keep
@@ -733,7 +747,11 @@ python -m src.cli run-all       # collect + analyze + visualize + summary (paid 
 
 `collect` is incremental at the per-account level: each rerun fetches
 only tweets newer than the latest cached `created_at` and appends.
-Pass `--force` to re-fetch an account's whole window. To add accounts
+Pass `--force` to re-fetch an account's whole window (paid reads): the
+re-read merges into the cache by id, so cached posts it doesn't return
+(beyond the ~3,200-tweet timeline horizon) stay, and a post whose text
+changed has its Opus and topic labels moved to the `*_superseded`
+archives and is rescored by `analyze`. To add accounts
 or search terms, edit `config/accounts.py` and rerun. `analyze --llm`
 skips posts that already have a stance score, so re-running after a
 collect only spends tokens on new posts.
@@ -801,9 +819,9 @@ docs/figures/             # LLM-stance figures (two are embedded above)
   religious tier's late phases are too sparse to read (see *Robustness
   checks*).
 - Trump's feed is scored by the distilled model, not by Opus. Against
-  Opus on 400 of his posts it agrees at 0.74 Pearson, and at 0.61 on the
-  59 war posts among them, with its war-post mean 0.03 below Opus's;
-  each phase holds 9 to 20 of those war posts, too few to check the
+  Opus on 400 of his posts it agrees at 0.74 Pearson, and at 0.62 on the
+  63 war posts among them, with its war-post mean 0.03 below Opus's;
+  each phase holds 11 to 22 of those war posts, too few to check the
   phases one by one.
 - Nothing is checked against human coders. Opus is the reference for
   every stance number, and its prompt for posts asks for sentiment on a
@@ -840,5 +858,8 @@ labels on 2,890 (both Batch API), about $2 for Haiku stance on 2,571
 of the re-read posts (estimated from token counts, not metered), $2.17
 for the v2 Opus reply labels on 1,157 replies ($2.10 by Batch API plus
 a $0.07 direct pilot) and $0.70 for the Opus check on 400 of Trump's
-posts (Batch API). Truth Social API
-access is free.
+posts (Batch API). On Oct 6 the Anthropic side was about $0.06 (Batch
+API): $0.035 for Opus labels on the 20 posts that refilled the Trump
+check to 400 and $0.023 for Haiku topic labels on 126 posts. Truth Social
+API access is free, including the Oct 6 re-read of 1,820 of Trump's
+posts.

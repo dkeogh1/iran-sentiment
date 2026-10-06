@@ -59,13 +59,14 @@ COLLECTION_END = (
 STANCE_SCORE_COL = "score_opus"
 PLOT_SCORE_COLS = ["score_vader", "score_transformer", "score_llm", "score_opus"]
 # Posts and replies with fewer characters, once links and a leading
-# "RT @x: " are removed (src/text_rules.py), carry no text to judge: image /
-# video only or a ReTruth stored before 2026-10-04 on Truth Social, a bare
-# t.co link on X. They are not scored and leave every share and mean,
-# rather than counting as off-topic. Same cut as the reply sampler's
-# media_only. 1,622 of Trump's 4,360 Truth Social posts fell under it on
-# 2026-09-30 (the distilled model had scored each one a constant +0.111, as
-# it did the image-only replies).
+# "RT @x: " / "RT: " are removed (src/text_rules.py), carry no text to judge:
+# an image or video with no caption, or a quote of a post with no text, on
+# Truth Social; a bare t.co link on X. They are not scored and leave every
+# share and mean, rather than counting as off-topic. Same cut as the reply
+# sampler's media_only. 1,810 of Trump's 4,360 Truth Social posts fall under
+# it (ts-fill-text, 2026-10-06: 1,589 media-only, 221 quotes of his own
+# no-text posts); the distilled model had scored 1,622 of them a constant
+# +0.111 and the 188 bare "RT: <link>" quote fallbacks on the link (~+0.03).
 MIN_TEXT_CHARS = 3
 
 
