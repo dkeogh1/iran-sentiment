@@ -7,6 +7,9 @@ Design:
   - Hard budget caps from config.settings to prevent runaway API spend.
   - Gap-fill slicing: long fetch windows are walked oldest-slice-first with
     the cap shared across slices (see settings.GAP_FILL_SLICE_DAYS).
+  - A forced run merges into the cache by id (merge_by_id): the timeline
+    reaches back only ~3,200 posts and search ~7 days, so what it can't
+    re-read stays.
   - plan_account / estimate_run compute the per-account plan and maximum
     spend WITHOUT touching the API, so the CLI can show and gate the cost.
   - Config-driven: accepts the accounts dict from config.accounts.
@@ -75,9 +78,15 @@ def _search_cache_path(query: str) -> Path:
 
 
 def _save_jsonl(path: Path, records: list[dict]) -> None:
+    """Temp file, fsync, rename: the file holds paid reads, so a run killed
+    mid-write leaves the old one whole."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "w") as f:
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w") as f:
         f.writelines(json.dumps(r) + "\n" for r in records)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
 
 
 def _append_jsonl(path: Path, records: list[dict]) -> None:
@@ -135,6 +144,92 @@ def _with_refs(record: dict, tweet) -> dict:
     if refs:
         record["ref"] = [{"type": r.get("type"), "id": str(r.get("id"))} for r in refs]
     return record
+
+
+# ── Forced runs: merge into the cache ──────────────────────────────
+
+FORCED_SUPERSEDED_REASON = "collect --force: labelled from the text a re-read replaced"
+
+
+def merge_by_id(existing: list[dict], fetched: list[dict]) -> tuple[list[dict], dict]:
+    """
+    A full-window run (`--force`) merged into the cache by id. It never gets
+    every cached post back (the timeline reaches only ~3,200 posts, search ~7
+    days, and the run is capped), and the rest were paid for and can't be
+    read again: they stay. A post it returned replaces its cached record, so
+    the text, metrics and refs X sends now win. Cached posts keep their place
+    in the file; posts new to it are appended in fetch order, as an
+    incremental run appends them.
+
+    Returns (merged, stats): stats counts refreshed, added and kept ids, and
+    `changed` maps each refreshed id whose text differs to its new text.
+    """
+    fresh = {str(r["id"]): r for r in fetched}
+    merged: list[dict] = []
+    refreshed: set[str] = set()
+    kept: set[str] = set()
+    changed: dict[str, str] = {}
+    for r in existing:
+        pid = str(r.get("id"))
+        new = fresh.get(pid)
+        if new is None:
+            merged.append(r)
+            kept.add(pid)
+            continue
+        if (new.get("text") or "") != (r.get("text") or ""):
+            changed[pid] = new.get("text")
+        merged.append(new)
+        refreshed.add(pid)
+    added = [r for pid, r in fresh.items() if pid not in refreshed]
+    merged.extend(added)
+    stats = {"refreshed": len(refreshed), "added": len(added), "kept": len(kept)}
+    return merged, {**stats, "changed": changed}
+
+
+def _supersede_changed(changes: dict[str, str]) -> None:
+    """
+    `analyze` restores a score only onto the text it was made from, but the
+    paid Opus and topic label caches are keyed by id alone. So, as
+    x-backfill-text does before it rewrites the cache: move the labels of the
+    posts whose text changed to their *_superseded archives, then archive
+    their sentiment_all rows (Haiku's score_llm has no other copy) and clear
+    them onto the new text. Called before the cache write: a run killed in
+    between leaves the old text cached with its labels archived, which costs
+    a relabel, never a label left on text it wasn't made from.
+    """
+    if not changes:
+        return
+    from src.collectors import x_backfill as xb  # imports this module
+
+    moved = xb.supersede_labels(set(changes), FORCED_SUPERSEDED_REASON)
+    cleared, archived = xb.clear_scores(changes, FORCED_SUPERSEDED_REASON)
+    logger.info(
+        "%d re-read posts have new text: labels moved to *_superseded %s; "
+        "%d sentiment_all rows cleared (%d archived)",
+        len(changes),
+        {k: v for k, v in moved.items() if v},
+        cleared,
+        archived,
+    )
+
+
+def _save_merged(cache: Path, existing: list[dict], fetched: list[dict], who: str) -> list[dict]:
+    """Merge a full-window run into a non-empty cache (merge_by_id), moving
+    what was made from any text it changed first, and write it."""
+    merged, st = merge_by_id(existing, fetched)
+    _supersede_changed(st["changed"])
+    _save_jsonl(cache, merged)
+    logger.info(
+        "%s: re-read merged into the cache by id: %d refreshed (%d with new text), "
+        "%d added, %d kept that it did not return (total: %d)",
+        who,
+        st["refreshed"],
+        len(st["changed"]),
+        st["added"],
+        st["kept"],
+        len(merged),
+    )
+    return merged
 
 
 # ── User timeline collection ───────────────────────────────────────
@@ -343,8 +438,9 @@ def collect_user(
     across slices.
 
     Behavior when a cache file exists:
-      - force=True   : ignore cache, re-fetch the whole [start, end] window,
-                       overwrite the cache.
+      - force=True   : re-fetch the whole [start, end] window and merge it
+                       into the cache by id (merge_by_id): re-read posts are
+                       refreshed, the rest kept. Returns the merged set.
       - force=False  : incremental -- fetch only tweets created after the
                        latest cached one and append them to the cache.
                        Returns the full merged set so downstream code sees
@@ -432,6 +528,8 @@ def collect_user(
             logger.info("@%s [%s]: no new tweets since last fetch", handle, tier)
         return existing + new_tweets
 
+    if existing:
+        return _save_merged(cache, existing, new_tweets, f"@{handle} [{tier}]{capped}")
     logger.info("@%s [%s]: %d tweets%s", handle, tier, len(new_tweets), capped)
     _save_jsonl(cache, new_tweets)
     return new_tweets
@@ -452,7 +550,8 @@ def collect_search(
     public sentiment proxy rather than historical data.
 
     Behavior matches collect_user: if a cache exists and not force,
-    fetch only tweets newer than the latest cached one and append.
+    fetch only tweets newer than the latest cached one and append; with
+    force, merge what the 7-day search returns into the cache by id.
     """
     cache = _search_cache_path(query)
     existing = _load_jsonl(cache) if cache.exists() else []
@@ -553,6 +652,8 @@ def collect_search(
             logger.info("search '%s': no new tweets since last fetch", query)
         return existing + new_tweets
 
+    if existing:
+        return _save_merged(cache, existing, new_tweets, f"search '{query}'")
     logger.info("search '%s': %d tweets", query, len(new_tweets))
     _save_jsonl(cache, new_tweets)
     return new_tweets

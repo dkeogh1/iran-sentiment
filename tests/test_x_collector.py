@@ -81,7 +81,14 @@ def _stream(start: datetime, days: int, per_day: int):
 
 @pytest.fixture
 def raw_dir(tmp_path, monkeypatch):
+    """The X cache in tmp_path; the processed tree too, which a forced re-read
+    that changes a post's text rewrites (labels and sentiment_all)."""
     monkeypatch.setattr(settings, "X_RAW_DIR", tmp_path)
+    monkeypatch.setattr(settings, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path / "processed")
+    monkeypatch.setattr(
+        settings, "SENTIMENT_OUTPUT", tmp_path / "processed" / "sentiment_all.parquet"
+    )
     monkeypatch.setattr(settings, "ACCOUNT_CAP_OVERRIDES", {})
     return tmp_path
 
@@ -180,6 +187,134 @@ def test_uncapped_slice_fetches_everything(raw_dir, monkeypatch):
     assert len(got) == 63
     assert len({t["id"] for t in got}) == 63  # slices don't overlap
     assert client.calls == 3  # the patched 7-day slices applied
+
+
+# ── forced runs merge into the cache ───────────────────────────────
+
+
+def _cached(pid, ts: datetime, text: str, likes: int = 0) -> dict:
+    return {
+        "id": str(pid),
+        "user": "acct",
+        "tier": "tier",
+        "text": text,
+        "created_at": ts.replace(tzinfo=UTC).isoformat(),
+        "metrics": {"like_count": likes},
+        "lang": "en",
+        "platform": "x",
+    }
+
+
+def _write_cache(path, recs):
+    path.write_text("".join(json.dumps(r) + "\n" for r in recs))
+
+
+def _read_cache(path):
+    return [json.loads(x) for x in path.read_text().splitlines()]
+
+
+def test_force_merges_into_cache_by_id(raw_dir, caplog):
+    """Until 2026-10-05 a forced run replaced the cache with what it fetched.
+    The timeline reaches back only ~3,200 posts and the run is capped, so a
+    heavy account lost paid posts it could not read again. Post 9 stands for
+    those: in the window, but X no longer returns it."""
+    t0 = _parse("2026-06-01T00:00:00Z")
+    cache = raw_dir / "acct.jsonl"
+    _write_cache(
+        cache,
+        [
+            _cached(1, t0, "t1"),  # re-read: same text, new metrics
+            _cached(9, t0 + timedelta(minutes=30), "beyond the horizon"),
+            _cached(2, t0 + timedelta(hours=1), "cut at 280"),  # re-read: new text
+        ],
+    )
+    client = StubClient([(1, t0), (2, t0 + timedelta(hours=1)), (3, t0 + timedelta(hours=2))])
+
+    with caplog.at_level("INFO", logger=xc.logger.name):
+        got = xc.collect_user(
+            client, "acct", "tier", start=t0, end=t0 + timedelta(days=2), force=True
+        )
+
+    # cached posts keep their place, the new one is appended
+    assert [t["id"] for t in got] == ["1", "9", "2", "3"]
+    assert _read_cache(cache) == got
+    by = {t["id"]: t for t in got}
+    assert by["1"]["metrics"] == {"like_count": 1}  # the re-read version wins
+    assert by["2"]["text"] == "t2"
+    assert by["9"]["text"] == "beyond the horizon"  # kept
+    assert not list(raw_dir.glob("*.tmp"))  # written atomically
+    msgs = " ".join(r.getMessage() for r in caplog.records)
+    assert "2 refreshed (1 with new text), 1 added, 1 kept" in msgs
+
+
+def test_force_text_change_moves_paid_labels(raw_dir):
+    """The Opus and topic labels are keyed by id: a re-read that changes a
+    post's text moves them to the *_superseded archives (as x-backfill-text
+    does), and its sentiment_all row is archived and cleared onto the new
+    text. A post re-read with the same text keeps everything."""
+    import pandas as pd
+
+    from src.analysis.topic_label import labels_path
+    from src.superseded import superseded_path
+
+    t0 = _parse("2026-06-01T00:00:00Z")
+    _write_cache(
+        raw_dir / "acct.jsonl", [_cached(1, t0, "t1"), _cached(2, t0 + timedelta(hours=1), "cut")]
+    )
+    proc = settings.PROCESSED_DIR
+    proc.mkdir()
+    teacher = proc / "teacher_labels_claude-opus-5.parquet"
+    pd.DataFrame({"id": ["1", "2"], "score_opus": [0.5, -0.5]}).to_parquet(teacher)
+    pd.DataFrame({"id": ["1", "2"], "about_war": [True, False]}).to_parquet(labels_path())
+    pd.DataFrame(
+        {
+            "id": ["1", "2"],
+            "text": ["t1", "cut"],
+            "score_vader": [0.1, 0.2],
+            "score_llm": [0.3, 0.4],
+        }
+    ).to_parquet(settings.SENTIMENT_OUTPUT)
+
+    client = StubClient([(1, t0), (2, t0 + timedelta(hours=1))])
+    xc.collect_user(client, "acct", "tier", start=t0, end=t0 + timedelta(days=1), force=True)
+
+    for path in (teacher, labels_path()):
+        assert pd.read_parquet(path)["id"].tolist() == ["1"]
+        arch = pd.read_parquet(superseded_path(path))
+        assert arch["id"].tolist() == ["2"]
+        assert (arch["superseded_reason"] == xc.FORCED_SUPERSEDED_REASON).all()
+    sent = pd.read_parquet(settings.SENTIMENT_OUTPUT).set_index("id")
+    assert sent.loc["2", "text"] == "t2" and pd.isna(sent.loc["2", "score_llm"])
+    assert sent.loc["1", "score_llm"] == 0.3
+    arch = pd.read_parquet(superseded_path(settings.SENTIMENT_OUTPUT))
+    assert arch["id"].tolist() == ["2"] and arch["text"].tolist() == ["cut"]
+    assert arch["score_llm"].tolist() == [0.4]
+
+
+def test_force_that_fetches_nothing_keeps_the_cache(raw_dir):
+    """Before the merge, a forced run that got nothing back (X returned no
+    posts in the window) wrote an empty cache."""
+    t0 = _parse("2026-06-01T00:00:00Z")
+    cache = raw_dir / "acct.jsonl"
+    recs = [_cached(1, t0, "kept"), _cached(2, t0 + timedelta(hours=1), "kept too")]
+    _write_cache(cache, recs)
+    got = xc.collect_user(
+        StubClient([]), "acct", "tier", start=t0, end=t0 + timedelta(days=1), force=True
+    )
+    assert got == recs and _read_cache(cache) == recs
+
+
+def test_forced_search_keeps_posts_older_than_its_reach(raw_dir):
+    """/search/recent reaches back ~7 days: a forced search used to drop
+    every cached result older than that."""
+    now = datetime.now(UTC).replace(tzinfo=None)
+    cache = xc._search_cache_path("iran war")
+    _write_cache(cache, [_cached(50, now - timedelta(days=30), "old"), _cached(5, now, "x")])
+    client = StubClient([(5, now - timedelta(days=1)), (6, now - timedelta(hours=1))])
+    got = xc.collect_search(client, "iran war", max_total=10, force=True)
+    assert [t["id"] for t in got] == ["50", "5", "6"]
+    assert got[0]["text"] == "old" and got[1]["text"] == "t5"
+    assert _read_cache(cache) == got
 
 
 def test_skip_when_cache_is_current(raw_dir):
