@@ -4,6 +4,25 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-10-07: The parent-post reply scorer stays an experiment
+
+- **Decision:** `score_opus_distilled` stays the reply scorer of record. The
+  reply scorer that reads each reply with its Trump post (`reply-distill`,
+  variant `ctx`) is not cross-fitted or published.
+- **Why:** leave-one-post-out against the v2 labels it beats the scorer of
+  record where context decides stance (June deal 0.14 -> 0.62 Pearson,
+  ceasefire 0.32 -> 0.70, hold-off 0.54 -> 0.76; pooled 0.58 -> 0.64,
+  seeds 0.63-0.65) and loses some on the hawkish posts (power plant 0.72
+  -> 0.58, strikes 0.77 -> 0.70). The published shares are unbiased either
+  way; a better scorer only narrows `reply-population`'s intervals. On the
+  same held-out predictions the mean intervals would narrow for three
+  posts (deal about -35%, ceasefire -28%, hold-off -17%) and widen for
+  three (+8% to +20%), and the pro / anti share intervals barely move.
+  Not worth a published scorer whose per-post fits aren't kept.
+- **Rejected:** cross-fitting and publishing `score_ctx_crossfit`;
+  picking the scorer per post by which one did better (chosen on the
+  same labels it would be judged by).
+
 ## 2026-10-06: A reply-trained scorer feeds `reply-population` only cross-fit
 
 - **Decision:** the reply-domain scorer (`reply-distill`: the posts-only

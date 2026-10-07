@@ -1,6 +1,6 @@
 # Status
 
-As of 2026-10-06. Update the date and the lines that change after each refresh.
+As of 2026-10-07. Update the date and the lines that change after each refresh.
 
 ## Data
 
@@ -116,9 +116,11 @@ Two layers at different depths. Nothing runs on a schedule.
 
 ## Where things are
 
-- The k8s namespace `iran-sentiment` is deleted again (2026-09-30, after the
-  256-token scoring Jobs; its PVC with it). Models are in `data/models/` on
-  dkbl1 and in the S3 backup.
+- The k8s namespace `iran-sentiment` was revived on 2026-10-06 (image
+  13717d7c504a) for the reply-scorer experiment; the user deletes it now
+  that the experiment is over (its PVC goes with it). Models, including
+  `data/models/reply_ctx_lopo/`, are in `data/models/` on dkbl1 and in the
+  S3 backup.
 - S3 backup first synced 2026-09-25: raw 72 MB and processed 50 MB in
   Standard, models 8.8 GB in Glacier IR, verified object for object. Last
   synced 2026-09-30 after the reply refresh and the GPU pull, as far as
@@ -198,13 +200,12 @@ Two layers at different depths. Nothing runs on a schedule.
   forced `collect-truth` merges by id but doesn't, so a Trump post whose
   text it changes keeps its topic label and feed score (`score-posts`
   rescores only rows that gain text).
-- The mixed-domain distill is still on the v1 reply labels: its training
-  rows (`stance_local.reply_label_frame`) and the mixed-vs-posts-only
-  comparison (the mixed model ahead on the two unseen posts, 0.658 vs
-  0.604 Pearson against v1, gap CI [-0.01, +0.12]). Against v2 on the same
-  two posts the order flips (0.553 mixed vs 0.611 posts-only, 267
-  replies; gap CI [-0.15, +0.04], replies resampled). Retrain on v2 rows
-  only if the mixed model matters again.
+- Reply scorers against the v2 labels, settled 2026-10-07: a scorer that
+  reads each reply with its Trump post beats the scorer of record
+  leave-one-post-out (pooled 0.64 vs 0.58; June deal 0.62 vs 0.14) but
+  would narrow the published intervals only modestly, so it stays an
+  experiment (`docs/decisions.md`). The old mixed model
+  (`score_mixed_distilled`, v1 rows) is history.
 - 91 posts with text are link shares Haiku will not judge (43 Trump's,
   48 on X, 39 of them Levin's: a link under a word or two such as "Amen"
   or "Right on"; it answers that it cannot open URLs and hits

@@ -659,6 +659,39 @@ the gap (-0.15 to +0.04) again crosses zero. `score_mixed_distilled` is
 kept as a column for comparison; `score_opus_distilled` remains the
 scorer of record.
 
+**A reply scorer that sees the parent post (2026-10-07).** Against the v2
+labels the scorer of record reaches 0.58 Pearson on the 1,157 labelled
+replies, but only 0.32 on ceasefire and 0.14 on the June deal: the v2
+labels read a reply against the post it answers, and the scorer never
+sees that post. `reply-distill --lopo` fine-tuned the published model on
+the v2 reply labels, either on the reply alone or on the reply paired with
+its Trump post, holding each post out in turn (8 posts, 2 seeds, about an
+hour on the 3080). On the held-out posts:
+
+| Post | Scorer of record | Reply only | Reply + post |
+|---|---|---|---|
+| All 1,157 (pooled) | 0.58 | 0.63 | 0.64 (seeds 0.63-0.65) |
+| June deal | 0.14 | 0.38 | 0.62 |
+| Ceasefire | 0.32 | 0.55 | 0.70 |
+| Hold-off | 0.54 | 0.72 | 0.76 |
+| Civilisation | 0.74 | 0.64 | 0.72 |
+| Power plant | 0.72 | 0.68 | 0.58 |
+| September strikes | 0.77 | 0.65 | 0.70 |
+| These fools | 0.52 | 0.75 | 0.58 |
+| Hormuz | 0.74 | 0.73 | 0.76 |
+
+Seeing the post fixes the posts where context decides the stance and
+costs a little on the plainly hawkish ones; the sign-flip rate stays at
+15%. It did not replace the scorer of record. The audience shares are
+already unbiased: the Opus correction removes each post's offset, so a
+better scorer only narrows the intervals. Measured on the same held-out
+predictions, a cross-fitted context scorer would narrow the mean intervals
+for the June deal (by about a third), ceasefire (a quarter) and the
+hold-off post (a sixth), widen those for the strikes, civilisation and
+power-plant posts by a tenth to a fifth, and barely move the pro and anti
+shares. That gain did not justify a scorer whose eight per-post fits
+aren't kept. The results are in `data/models/reply_ctx_lopo/`.
+
 **The reply scores came from an overwritten fit (fixed 2026-09-30).**
 `distill --fit-all` and the sweep's final fit both wrote to
 `stance_distilled_final_score_opus/`. The replies were scored with the
