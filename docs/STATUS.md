@@ -116,9 +116,9 @@ Two layers at different depths. Nothing runs on a schedule.
 
 ## Where things are
 
-- The k8s namespace `iran-sentiment` was revived on 2026-10-06 (image
-  13717d7c504a) for the reply-scorer experiment; the user deletes it now
-  that the experiment is over (its PVC goes with it). Models, including
+- The k8s namespace `iran-sentiment` is deleted again (2026-10-07, after
+  the reply-scorer experiment on image 13717d7c504a; its PVC with it).
+  Models, including
   `data/models/reply_ctx_lopo/`, are in `data/models/` on dkbl1 and in the
   S3 backup.
 - S3 backup first synced 2026-09-25: raw 72 MB and processed 50 MB in
