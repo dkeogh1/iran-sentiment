@@ -5,8 +5,18 @@ Design:
   - Per-account caching: each user's tweets go to data/raw/x/<handle>.jsonl
     so reruns skip already-collected accounts.
   - Hard budget caps from config.settings to prevent runaway API spend.
-  - Gap-fill slicing: long fetch windows are walked oldest-slice-first with
-    the cap shared across slices (see settings.GAP_FILL_SLICE_DAYS).
+  - Gap-fill windows: each account's gap is walked oldest first in fixed
+    windows of settings.GAP_FILL_WINDOW_HOURS (35 h, so window ends step
+    through every clock hour and weekday). A sampled account
+    (settings.ACCOUNT_WINDOW_CAPS) keeps the newest <= N posts of every
+    window, with no rollover; any other account is take-all: it reads every
+    post, window after window, until its backstop (ACCOUNT_CAP_OVERRIDES /
+    MAX_TWEETS_PER_USER) runs out and defers the rest to the next run.
+    An incremental run or a first pull appends each window's posts as soon
+    as it is read; a forced run merges into the cache once, at the end (or,
+    if it fails part-way, with what it read before the error propagates).
+    Each window gets a row in settings.X_SAMPLING_DIR once its posts are
+    stored.
   - A forced run merges into the cache by id (merge_by_id): the timeline
     reaches back only ~3,200 posts and search ~7 days, so what it can't
     re-read stays.
@@ -16,8 +26,10 @@ Design:
 """
 
 import fcntl
+import itertools
 import json
 import logging
+import math
 import os
 import re
 from contextlib import contextmanager
@@ -90,9 +102,13 @@ def _save_jsonl(path: Path, records: list[dict]) -> None:
 
 
 def _append_jsonl(path: Path, records: list[dict]) -> None:
+    """Append and fsync: a collect appends each window's paid reads as it goes,
+    so a run killed later keeps them."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a") as f:
         f.writelines(json.dumps(r) + "\n" for r in records)
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def _load_jsonl(path: Path) -> list[dict]:
@@ -242,42 +258,70 @@ def _naive_utc(dt: datetime) -> datetime:
     return dt
 
 
+def _iso(dt: datetime) -> str:
+    """A request time edge: naive UTC, whole seconds, 'Z'."""
+    assert dt.tzinfo is None and dt.microsecond == 0, dt
+    return dt.isoformat() + "Z"
+
+
+def _hm(dt: datetime) -> str:
+    return f"{dt:%Y-%m-%dT%H:%M}"
+
+
+def _created(rec: dict) -> datetime:
+    return datetime.fromisoformat(rec["created_at"])  # 3.11+ reads "Z"
+
+
 def account_cap(handle: str) -> int:
-    """Per-run tweet cap for an account (settings override or default)."""
+    """Per-run backstop for an account (settings override or default)."""
     return settings.ACCOUNT_CAP_OVERRIDES.get(handle, settings.MAX_TWEETS_PER_USER)
 
 
-def plan_slices(
+def _coprime_hours(h: int) -> int:
+    """The first window length >= h hours that shares no factor with 24, so
+    the window ends keep stepping through the clock."""
+    while math.gcd(h % 24, 24) != 1:
+        h += 1
+    return h
+
+
+def plan_windows(
     start: datetime,
     end: datetime,
-    slice_days: int | None = None,
+    hours: int | None = None,
 ) -> list[tuple[datetime, datetime]]:
     """
-    Split [start, end] into contiguous windows of at most `slice_days`
-    (default settings.GAP_FILL_SLICE_DAYS, read per call), OLDEST FIRST.
-    The last slice is short so the final edge is exactly `end`.
+    Split [start, end] into contiguous windows of `hours` (default
+    settings.GAP_FILL_WINDOW_HOURS, read per call), OLDEST FIRST, on whole
+    seconds: start is rounded up and end floored. Every window but the last
+    is exactly `hours` long. A remainder under half a window is merged into
+    the last window (up to 1.5x long); a longer one is its own, shorter,
+    window. The last window ends at `end`. Pure: no I/O.
     """
+    h = hours or settings.GAP_FILL_WINDOW_HOURS
+    length = timedelta(hours=h)
+    if start.microsecond:
+        start = start.replace(microsecond=0) + timedelta(seconds=1)
+    end = end.replace(microsecond=0)
     if end <= start:
         return []
-    step = timedelta(days=slice_days or settings.GAP_FILL_SLICE_DAYS)
-    slices: list[tuple[datetime, datetime]] = []
-    s = start
-    while s < end:
-        e = min(s + step, end)
-        slices.append((s, e))
-        s = e
-    return slices
+    edges = [start]
+    while edges[-1] + length <= end:
+        edges.append(edges[-1] + length)
+    if edges[-1] < end:
+        if end - edges[-1] < length / 2 and len(edges) > 1:
+            edges[-1] = end
+        else:
+            edges.append(end)
+    return list(itertools.pairwise(edges))
 
 
-def split_cap(cap: int, n_slices: int) -> list[int]:
-    """
-    Share `cap` across slices so the list sums to exactly `cap`. The
-    remainder goes to the NEWEST slices (end of the list).
-    """
-    if n_slices <= 0:
-        return []
-    base, extra = divmod(cap, n_slices)
-    return [base + (1 if i >= n_slices - extra else 0) for i in range(n_slices)]
+def _window_cap(w: int, s: datetime, e: datetime, h: int) -> int:
+    """A sampled account's cap for one window: w for a full window, in
+    proportion (rounded half up) for a longer merged tail, never under w."""
+    secs = int((e - s).total_seconds())
+    full = h * 3600
+    return max(w, (2 * w * secs + full) // (2 * full))
 
 
 def plan_account(
@@ -285,19 +329,37 @@ def plan_account(
     start: datetime = settings.COLLECTION_START,
     end: datetime = settings.COLLECTION_END,
     force: bool = False,
+    cap: int | None = None,
 ) -> dict:
     """
     Work out what a collect run would do for one account, from the cache
-    alone (no API call).
+    and settings alone (no API call).
 
-    Returns a dict with: handle, cached (int), incremental (bool),
-    window (tuple | None -- None means nothing to fetch), slices, caps
-    (per slice, sums to cap), cap, max_reads, max_cost_usd, skip_reason.
+    `cap` overrides the per-run backstop (ACCOUNT_CAP_OVERRIDES /
+    MAX_TWEETS_PER_USER). An account in settings.ACCOUNT_WINDOW_CAPS is
+    sampled (mode "sample"): every window gets its own cap, w for a full
+    window, and the windows are lengthened (to the next length coprime with
+    24) only when the caps would add up to more than the backstop. Any other
+    account is take-all (mode "take_all"): caps is None and the backstop is
+    the run's maximum, read greedily window after window.
+
+    A forced plan for a sampled account covers the whole [start, end] at
+    one density. When that lengthens the windows and the cache stops at
+    least half a window before `end`, the account is skipped: the uncached
+    tail would be sampled more thinly than an incremental run samples it,
+    and the cursor would then move past it for good.
+
+    Returns a dict with: handle, cached (int), incremental (bool), window
+    ((start, end) or None when skipped), slices (the windows), caps (per
+    window, or None for take-all), cap (the backstop), max_reads,
+    skip_reason, mode, window_cap (w or None), hours, lookups (1, or 0 when
+    skipped) and max_cost_usd (reads plus the user lookup).
     """
     cache = _account_cache_path(handle)
     existing = _load_jsonl(cache) if cache.exists() else []
     incremental = bool(existing) and not force
     skip_reason = None
+    start, end = _naive_utc(start), _naive_utc(end)
 
     if incremental:
         latest = _latest_created_at(existing)
@@ -309,21 +371,72 @@ def plan_account(
             if start >= end:
                 skip_reason = "already past window end"
 
-    slices = [] if skip_reason else plan_slices(start, end)
-    cap = account_cap(handle)
-    caps = split_cap(cap, len(slices))
-    max_reads = sum(caps)
+    backstop = cap if cap is not None else account_cap(handle)
+    w = settings.ACCOUNT_WINDOW_CAPS.get(handle)
+    floor = settings.X_MIN_READS_PER_REQUEST
+    if w is not None and w < floor:
+        raise ValueError(
+            f"ACCOUNT_WINDOW_CAPS[{handle!r}] = {w} is under X's {floor}-post request minimum"
+        )
+    if skip_reason is None and backstop < floor:
+        skip_reason = f"cap {backstop} is under X's {floor}-post request minimum"
+
+    h = settings.GAP_FILL_WINDOW_HOURS
+    windows: list[tuple[datetime, datetime]] = []
+    caps: list[int] | None = None if w is None else []
+    if skip_reason is None and w is not None:
+        gap_h = (end - start).total_seconds() / 3600
+        if gap_h < h / 2:
+            # The cursor does not move, so nothing is lost.
+            skip_reason = "gap shorter than half a window; left for the next run"
+        else:
+            if w * gap_h / h > backstop:
+                h = _coprime_hours(max(h, math.ceil(w * gap_h / backstop)))
+            while True:
+                windows = plan_windows(start, end, h)
+                caps = [_window_cap(w, s, e, h) for s, e in windows]
+                if sum(caps) <= backstop or len(windows) == 1:
+                    break
+                h = _coprime_hours(h + 1)
+            if sum(caps) > backstop:  # a single window over the backstop
+                caps = [backstop]
+            latest = _latest_created_at(existing) if force else None
+            if latest is not None and h > settings.GAP_FILL_WINDOW_HOURS:
+                cursor = _naive_utc(latest + timedelta(seconds=1))
+                if (end - cursor).total_seconds() / 3600 >= settings.GAP_FILL_WINDOW_HOURS / 2:
+                    skip_reason = (
+                        f"cache ends {_hm(cursor)}: run an incremental collect before "
+                        f"--force (its {h} h windows would sample the uncached tail more "
+                        "thinly, for good)"
+                    )
+    elif skip_reason is None:
+        windows = plan_windows(start, end, h)
+    if skip_reason is None and not windows:
+        skip_reason = "nothing to fetch (empty window)"
+
+    if skip_reason:
+        windows, max_reads, lookups = [], 0, 0
+        caps = None if w is None else []
+    else:
+        max_reads = sum(caps) if caps is not None else backstop
+        lookups = 1
     return {
         "handle": handle,
         "cached": len(existing),
         "incremental": incremental,
         "window": None if skip_reason else (start, end),
-        "slices": slices,
+        "slices": windows,
         "caps": caps,
-        "cap": cap,
+        "cap": backstop,
         "max_reads": max_reads,
-        "max_cost_usd": max_reads * settings.X_READ_COST_USD,
+        "max_cost_usd": (
+            max_reads * settings.X_READ_COST_USD + lookups * settings.X_USER_READ_COST_USD
+        ),
         "skip_reason": skip_reason,
+        "mode": "take_all" if w is None else "sample",
+        "window_cap": w,
+        "hours": h,
+        "lookups": lookups,
     }
 
 
@@ -336,7 +449,8 @@ def estimate_run(
     Plan a whole `collect` run without calling the API.
 
     Returns {"accounts": [plan, ...], "searches": [{query, max_reads,
-    max_cost_usd}], "max_reads": int, "max_cost_usd": float}.
+    max_cost_usd}], "max_reads": int, "lookups": int, "max_cost_usd": float}.
+    max_cost_usd counts the reads and one user lookup per account fetched.
     Search terms always count their full cap: /search/recent only reaches
     back 7 days, so a stale cache does not reduce what a refresh can read.
     """
@@ -359,8 +473,27 @@ def estimate_run(
         "accounts": plans,
         "searches": searches,
         "max_reads": max_reads,
-        "max_cost_usd": max_reads * settings.X_READ_COST_USD,
+        "lookups": sum(p["lookups"] for p in plans),
+        "max_cost_usd": (
+            sum(p["max_cost_usd"] for p in plans) + sum(s["max_cost_usd"] for s in searches)
+        ),
     }
+
+
+def _timeline_record(tweet, handle: str, tier: str) -> dict:
+    return _with_refs(
+        {
+            "id": str(tweet.id),
+            "user": handle,
+            "tier": tier,
+            "text": _full_text(tweet),
+            "created_at": tweet.created_at.isoformat(),
+            "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
+            "lang": tweet.lang,
+            "platform": "x",
+        },
+        tweet,
+    )
 
 
 def _fetch_window(
@@ -369,58 +502,126 @@ def _fetch_window(
     handle: str,
     tier: str,
     start: datetime,
-    end: datetime,
+    end_time: datetime,
     cap: int,
 ) -> tuple[list[dict], bool]:
     """
-    Pull up to `cap` tweets from one user in [start, end]. The API returns
-    newest-first, so a cap hit keeps the newest tweets in the window.
-    Returns (tweets, capped).
+    Pull up to `cap` tweets from one user in [start, end_time]. The API
+    returns newest-first, so a cap hit keeps the newest tweets in the
+    window. No request asks for fewer than X_MIN_READS_PER_REQUEST (X's
+    minimum, billed even when fewer are wanted), so the loop stops once
+    fewer than that are left to take; it also stops after
+    X_MAX_PAGES_PER_WINDOW pages. Every post returned is kept, because
+    each was billed.
+
+    Returns (tweets, truncated): truncated means more posts were left when
+    the loop stopped (cap reached, request floor or page guard). A window
+    filled exactly, with no next page, is not truncated.
     """
     out: list[dict] = []
-    pagination_token = None
-    if cap <= 0:
-        return out, False
-
-    while len(out) < cap:
-        remaining = cap - len(out)
-        per_page = min(100, remaining)
-
+    token = None
+    pages = 0
+    while (
+        cap - len(out) >= settings.X_MIN_READS_PER_REQUEST
+        and pages < settings.X_MAX_PAGES_PER_WINDOW
+    ):
+        max_results = min(100, cap - len(out))
         resp = client.get_users_tweets(
             id=user_id,
-            start_time=start.isoformat() + "Z",
-            end_time=end.isoformat() + "Z",
-            max_results=max(5, per_page),  # API requires min 5
-            pagination_token=pagination_token,
+            start_time=_iso(start),
+            end_time=_iso(end_time),
+            max_results=max_results,
+            pagination_token=token,
             tweet_fields=_TWEET_FIELDS,
         )
-
-        if resp.data:
-            for tweet in resp.data:
-                if len(out) >= cap:
-                    break
-                out.append(
-                    _with_refs(
-                        {
-                            "id": str(tweet.id),
-                            "user": handle,
-                            "tier": tier,
-                            "text": _full_text(tweet),
-                            "created_at": tweet.created_at.isoformat(),
-                            "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
-                            "lang": tweet.lang,
-                            "platform": "x",
-                        },
-                        tweet,
-                    )
-                )
-
-        if resp.meta and resp.meta.get("next_token") and len(out) < cap:
-            pagination_token = resp.meta["next_token"]
-        else:
+        pages += 1
+        data = resp.data or []
+        if len(data) > max_results:
+            logger.warning(
+                "@%s: asked for %d posts, got %d -- kept them all (billed)",
+                handle,
+                max_results,
+                len(data),
+            )
+        out.extend(_timeline_record(t, handle, tier) for t in data)
+        token = (resp.meta or {}).get("next_token")
+        if not token:
             break
+    if token is not None and pages >= settings.X_MAX_PAGES_PER_WINDOW:
+        logger.warning(
+            "@%s: window %s..%s stopped at the %d-page guard with posts left",
+            handle,
+            _hm(start),
+            _hm(end_time),
+            settings.X_MAX_PAGES_PER_WINDOW,
+        )
+    return out, token is not None
 
-    return out, len(out) >= cap
+
+def _kept_span_hours(row: dict) -> float | None:
+    if not row["got"]:
+        return None
+    span = datetime.fromisoformat(row["newest_kept"]) - datetime.fromisoformat(row["oldest_kept"])
+    return span.total_seconds() / 3600
+
+
+def _estimated_posts(row: dict, s: datetime, e: datetime) -> float:
+    """How many posts a walked window held: its count when it was read
+    whole; for a truncated one, the rate of its kept posts (the newest)
+    over the whole window, never under what it got."""
+    span = _kept_span_hours(row)
+    if not row["truncated"] or row["got"] < 2 or not span:
+        return row["got"]
+    return max(row["got"], (row["got"] - 1) / span * (e - s).total_seconds() / 3600)
+
+
+def _warn_empty_windows(
+    handle: str, windows: list[tuple[datetime, datetime]], walked: list[dict], hours: int
+) -> None:
+    """
+    (a) Leading windows that returned nothing are most likely past the
+    ~3,200-post timeline horizon when the windows after them hold an
+    estimated half of it or more (_estimated_posts): one warning. Before
+    fewer posts, an empty start is just a quiet one.
+    (b) Any other empty window next to a dense truncated window (kept span
+    under hours/4) is more likely a failed fetch than a silent account, and
+    nothing revisits it: the cursor is the newest post.
+    """
+    lead = 0
+    while lead < len(walked) and walked[lead]["got"] == 0:
+        lead += 1
+    after = sum(_estimated_posts(r, *windows[i]) for i, r in enumerate(walked) if i >= lead)
+    horizon = 0 < lead < len(walked) and after >= settings.X_TIMELINE_HORIZON_POSTS / 2
+    if horizon:
+        logger.warning(
+            "@%s: first %d window(s) %s..%s returned 0 posts, and the windows after them hold "
+            "an estimated ~%d -- likely past the ~%d-post timeline horizon (lost; empty "
+            "responses are free)",
+            handle,
+            lead,
+            _hm(windows[0][0]),
+            _hm(windows[lead - 1][1]),
+            round(after),
+            settings.X_TIMELINE_HORIZON_POSTS,
+        )
+
+    def dense_truncated(row: dict) -> bool:
+        span = _kept_span_hours(row)
+        return row["truncated"] and span is not None and span < hours / 4
+
+    for i, row in enumerate(walked):
+        if row["got"] or (horizon and i < lead):
+            continue
+        near = [walked[j] for j in (i - 1, i + 1) if 0 <= j < len(walked)]
+        if any(dense_truncated(r) for r in near):
+            logger.warning(
+                "@%s: window %s..%s returned 0 posts next to a dense truncated window -- "
+                "possible fetch failure; later runs start after the newest post and will "
+                "not fetch this window again",
+                handle,
+                _hm(windows[i][0]),
+                _hm(windows[i][1]),
+            )
 
 
 def collect_user(
@@ -433,42 +634,69 @@ def collect_user(
     force: bool = False,
 ) -> list[dict]:
     """
-    Pull tweets from a user's timeline with a hard cap, walking the window
-    oldest-slice-first (settings.GAP_FILL_SLICE_DAYS) with the cap shared
-    across slices.
+    Pull tweets from a user's timeline, walking the gap oldest first in
+    settings.GAP_FILL_WINDOW_HOURS windows (plan_account). A sampled account
+    (settings.ACCOUNT_WINDOW_CAPS) keeps the newest <= cap posts of every
+    window, with no rollover from quiet windows; any other account is
+    take-all, reading every post window after window until its backstop
+    runs out, when the windows left are deferred to the next run. Window
+    edges are shared seconds ([s, e] then [e, ...]) and posts are deduped by
+    id before they are stored, so no second is missed whether X treats
+    end_time as inclusive or not.
 
     Behavior when a cache file exists:
       - force=True   : re-fetch the whole [start, end] window and merge it
                        into the cache by id (merge_by_id): re-read posts are
-                       refreshed, the rest kept. Returns the merged set.
+                       refreshed, the rest kept. Returns the merged set. The
+                       merge is written once, at the end; a run that fails
+                       part-way merges what it read before the error
+                       propagates. (An unparseable cache is merged the same
+                       way.)
       - force=False  : incremental -- fetch only tweets created after the
-                       latest cached one and append them to the cache.
-                       Returns the full merged set so downstream code sees
-                       both old and new.
+                       latest cached one, appending each window's new posts
+                       as soon as it is read, so a killed run resumes from a
+                       window boundary. Returns the full merged set so
+                       downstream code sees both old and new.
+    With no cache (a first pull), each window is appended as it is read, as
+    in an incremental run, so a failed first pull resumes incrementally.
 
-    `max_tweets` overrides the per-run cap for this call only; by default
-    the cap comes from settings.ACCOUNT_CAP_OVERRIDES / MAX_TWEETS_PER_USER.
+    `max_tweets` overrides the per-run backstop for this call only; by
+    default it comes from settings.ACCOUNT_CAP_OVERRIDES / MAX_TWEETS_PER_USER.
+    Every window walked gets a row in settings.X_SAMPLING_DIR, written once
+    its posts are in the cache.
+
+    Why the plan's maximum (max_reads plus lookups) is never exceeded:
+      - sample mode: posts returned <= requested <= cap_i in each window, so
+        the total <= sum(caps) = max_reads;
+      - take-all mode: each request asks for <= the backstop still left,
+        counted on every post returned (duplicates too), so the total <=
+        the backstop;
+      - exactly one user lookup per planned account, none when skipped;
+      - the planner is pure: it reads only the cache and settings.
     """
     cache = _account_cache_path(handle)
     existing = _load_jsonl(cache) if cache.exists() else []
 
-    plan = plan_account(handle, start=start, end=end, force=force)
-    if max_tweets is not None:
-        plan["caps"] = split_cap(max_tweets, len(plan["slices"]))
-        plan["cap"] = max_tweets
-
+    plan = plan_account(handle, start=start, end=end, force=force, cap=max_tweets)
     if plan["skip_reason"]:
-        logger.info("@%s: %s -- skipping", handle, plan["skip_reason"])
+        (logger.warning if force else logger.info)(
+            "@%s: %s -- skipping", handle, plan["skip_reason"]
+        )
         return existing
     incremental = plan["incremental"]
+    windows = plan["slices"]
+    sample = plan["mode"] == "sample"
+    how = f"sample {plan['window_cap']}/window" if sample else f"take-all, backstop {plan['cap']}"
     if incremental:
         logger.info(
-            "@%s: incremental from %s (cached: %d, %d slice(s), cap %d)",
+            "@%s: incremental from %s (cached: %d, %s, %d window(s) of %d h, max %d reads)",
             handle,
             plan["window"][0].isoformat(),
             len(existing),
-            len(plan["slices"]),
-            plan["cap"],
+            how,
+            len(windows),
+            plan["hours"],
+            plan["max_reads"],
         )
 
     try:
@@ -481,47 +709,113 @@ def collect_user(
         logger.warning("@%s: not found", handle)
         return existing
 
+    run_end = windows[-1][1]
+    manifest = settings.X_SAMPLING_DIR / f"windows_{run_end:%Y-%m-%d}.jsonl"
+    # An incremental run or a first pull appends each window as it is read.
+    # A merge (--force, or an unparseable cache) writes the cache once, so its
+    # manifest rows wait for that write: a row always means its posts are in.
+    append = incremental or not existing
+    seen = {str(r.get("id")) for r in existing} if incremental else set()
+    remaining = plan["max_reads"]
     new_tweets: list[dict] = []
-    walked: list[tuple[datetime, datetime, int, int, bool]] = []  # s, e, cap, got, capped
-    for (s, e), cap in zip(plan["slices"], plan["caps"]):
-        got, capped = _fetch_window(client, user.data.id, handle, tier, s, e, cap)
-        walked.append((s, e, cap, len(got), capped))
-        new_tweets.extend(got)
-        logger.info(
-            "@%s: slice %s..%s -> %d%s",
-            handle,
-            s.date(),
-            e.date(),
-            len(got),
-            " (CAPPED)" if capped else "",
-        )
-
-    # An empty slice next to a capped one is more likely a failed fetch than
-    # a silent account, and nothing revisits it: the cursor is the newest post.
-    # A slice whose share of the cap is 0 made no request, so cannot fail.
-    for i, (s, e, cap, n, _) in enumerate(walked):
-        if n == 0 and cap > 0 and any(walked[j][4] for j in (i - 1, i + 1) if 0 <= j < len(walked)):
-            logger.warning(
-                "@%s: slice %s..%s returned 0 posts next to a capped slice -- "
-                "possible fetch failure; later runs start after the newest "
-                "post and will not fetch this window again",
+    walked: list[dict] = []
+    try:
+        for i, (s, e) in enumerate(windows):
+            if sample:
+                cap_i = plan["caps"][i]
+            else:
+                if remaining < settings.X_MIN_READS_PER_REQUEST:
+                    break
+                cap_i = remaining
+            got, truncated = _fetch_window(client, user.data.id, handle, tier, s, e, cap_i)
+            remaining -= len(got)  # raw count, duplicates too: the maximum stays strict
+            new = []
+            for r in got:
+                if r["id"] not in seen:
+                    seen.add(r["id"])
+                    new.append(r)
+            new_tweets.extend(new)
+            by_time = sorted(got, key=_created)
+            row = {
+                "run_end": _iso(run_end),
+                "handle": handle,
+                "tier": tier,
+                "mode": plan["mode"],
+                "hours": plan["hours"],
+                "window_start": _iso(s),
+                "window_end": _iso(e),
+                "cap": cap_i,
+                "got": len(got),
+                "new": len(new),
+                "truncated": truncated,
+                "oldest_kept": by_time[0]["created_at"] if by_time else None,
+                "newest_kept": by_time[-1]["created_at"] if by_time else None,
+            }
+            if append:
+                if new:
+                    _append_jsonl(cache, new)  # per window: a killed run resumes from here
+                _append_jsonl(manifest, [row])
+            walked.append(row)
+            logger.info(
+                "@%s: window %s..%s cap %d -> %d%s",
                 handle,
-                s,
-                e,
+                _hm(s),
+                _hm(e),
+                cap_i,
+                len(got),
+                " (TRUNCATED)" if truncated else "",
             )
+    except BaseException:
+        if not append:  # keep the billed reads of the windows already walked
+            logger.error(
+                "@%s: failed after %d of %d windows -- merging the %d posts read so far "
+                "into the cache before the error propagates",
+                handle,
+                len(walked),
+                len(windows),
+                len(new_tweets),
+            )
+            if new_tweets:
+                _save_merged(cache, existing, new_tweets, f"@{handle} [{tier}] (partial)")
+            if walked:
+                _append_jsonl(manifest, walked)
+        raise
 
-    any_capped = any(c for *_, c in walked)
-    capped = " (CAPPED)" if any_capped else ""
+    # Take-all: the backstop ran out. A window cut by it keeps its newest
+    # posts, and the cursor (the newest stored post) moves past the rest;
+    # windows not reached are read by the next run.
+    if not sample and walked and remaining < settings.X_MIN_READS_PER_REQUEST:
+        notes = []
+        if walked[-1]["truncated"]:
+            cs, ce = windows[len(walked) - 1]
+            notes.append(
+                f"window {_hm(cs)}..{_hm(ce)} keeps only its newest posts, the rest are not "
+                "read again"
+            )
+        if len(walked) < len(windows):
+            notes.append(
+                f"windows from {_hm(windows[len(walked)][0])} on not read, deferred to the next run"
+            )
+        if notes:
+            logger.error(
+                "@%s: backstop %d reached; %s (add the account to ACCOUNT_WINDOW_CAPS if this "
+                "recurs)",
+                handle,
+                plan["cap"],
+                "; ".join(notes),
+            )
+    _warn_empty_windows(handle, windows, walked, plan["hours"])
+
+    flag = " (TRUNCATED)" if any(r["truncated"] for r in walked) else ""
 
     if incremental:
         if new_tweets:
-            _append_jsonl(cache, new_tweets)
             logger.info(
                 "@%s [%s]: +%d new tweets%s (total: %d)",
                 handle,
                 tier,
                 len(new_tweets),
-                capped,
+                flag,
                 len(existing) + len(new_tweets),
             )
         else:
@@ -529,13 +823,34 @@ def collect_user(
         return existing + new_tweets
 
     if existing:
-        return _save_merged(cache, existing, new_tweets, f"@{handle} [{tier}]{capped}")
-    logger.info("@%s [%s]: %d tweets%s", handle, tier, len(new_tweets), capped)
-    _save_jsonl(cache, new_tweets)
+        merged = _save_merged(cache, existing, new_tweets, f"@{handle} [{tier}]{flag}")
+        if walked:
+            _append_jsonl(manifest, walked)
+        return merged
+    if not cache.exists():  # `status` tells a collected account from one never collected
+        _save_jsonl(cache, [])
+    logger.info("@%s [%s]: %d tweets%s", handle, tier, len(new_tweets), flag)
     return new_tweets
 
 
 # ── Keyword search collection ──────────────────────────────────────
+
+
+def _search_record(tweet, query: str) -> dict:
+    return _with_refs(
+        {
+            "id": str(tweet.id),
+            "author_id": str(tweet.author_id),
+            "user": f"search:{query}",
+            "tier": "search",
+            "text": _full_text(tweet),
+            "created_at": tweet.created_at.isoformat(),
+            "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
+            "lang": tweet.lang,
+            "platform": "x",
+        },
+        tweet,
+    )
 
 
 def collect_search(
@@ -595,49 +910,37 @@ def collect_search(
         else:
             incremental = False
 
+    # No request asks for more than what is left of max_total (the plan
+    # counts max_total per term) or for under X's 10-post minimum, so a
+    # search never reads more than max_total; every post returned was billed
+    # and is kept. Empty pages that keep a next_token stop at a page guard.
     new_tweets: list[dict] = []
-    pagination_token = None
-
-    while len(new_tweets) < max_total:
-        remaining = max_total - len(new_tweets)
-        per_page = min(100, remaining)
-
-        kwargs = dict(
-            query=query,
-            max_results=max(10, per_page),
-            next_token=pagination_token,
-            tweet_fields=[*_TWEET_FIELDS, "author_id"],
-        )
+    token = None
+    pages = 0
+    while (
+        max_total - len(new_tweets) >= settings.X_MIN_SEARCH_READS_PER_REQUEST
+        and pages < settings.X_MAX_PAGES_PER_SEARCH
+    ):
+        kwargs = {
+            "query": query,
+            "max_results": min(100, max_total - len(new_tweets)),
+            "next_token": token,
+            "tweet_fields": [*_TWEET_FIELDS, "author_id"],
+        }
         if start_time is not None:
             kwargs["start_time"] = start_time.isoformat() + "Z"
-
         resp = client.search_recent_tweets(**kwargs)
-
-        if resp.data:
-            for tweet in resp.data:
-                if len(new_tweets) >= max_total:
-                    break
-                new_tweets.append(
-                    _with_refs(
-                        {
-                            "id": str(tweet.id),
-                            "author_id": str(tweet.author_id),
-                            "user": f"search:{query}",
-                            "tier": "search",
-                            "text": _full_text(tweet),
-                            "created_at": tweet.created_at.isoformat(),
-                            "metrics": dict(tweet.public_metrics) if tweet.public_metrics else {},
-                            "lang": tweet.lang,
-                            "platform": "x",
-                        },
-                        tweet,
-                    )
-                )
-
-        if resp.meta and resp.meta.get("next_token") and len(new_tweets) < max_total:
-            pagination_token = resp.meta["next_token"]
-        else:
+        pages += 1
+        new_tweets.extend(_search_record(t, query) for t in resp.data or [])
+        token = (resp.meta or {}).get("next_token")
+        if not token:
             break
+    if token is not None and pages >= settings.X_MAX_PAGES_PER_SEARCH:
+        logger.warning(
+            "search '%s': stopped at the %d-page guard with posts left",
+            query,
+            settings.X_MAX_PAGES_PER_SEARCH,
+        )
 
     if incremental:
         if new_tweets:

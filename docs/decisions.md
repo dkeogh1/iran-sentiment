@@ -4,6 +4,71 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-10-31: X gaps are walked in 35-hour windows; heavy accounts are sampled per window
+
+- **Decision:** `collect` walks each account's gap oldest first, from its
+  cursor, in fixed 35-hour windows (`GAP_FILL_WINDOW_HOURS`). The 11
+  accounts in `ACCOUNT_WINDOW_CAPS` keep the newest <= 5 posts of every
+  window, with no rollover: 48 per 14 days, the May-Sep density. Every
+  other account is take-all: it reads every post, window after window, up
+  to its backstop (`ACCOUNT_CAP_OVERRIDES` / `MAX_TWEETS_PER_USER`), and
+  defers the windows it can't afford to the next run. No request asks for
+  fewer than 5 posts (X's minimum, billed anyway); a window stops after 20
+  pages; in an incremental run or a first pull each window's posts are
+  appended as soon as it is read (a `--force` merge is written at the end,
+  or with what it read when it fails); each window gets a row in
+  `data/raw/x_sampling/` once its posts are stored; the plan maximum counts
+  the $0.010 user lookup per account and is strict (a search stops once
+  fewer than its 10-post minimum are left); `collect --only` narrows a run.
+- **Why:** the 14-day split (2026-09-16) gave every slice an equal share of
+  the cap, and the endpoint is newest-first, so a heavy account's capped
+  slice kept only the newest ~0.9-1.6 days of each fortnight. The slices
+  ended on the same weekday and hour, so those blocks were 72-78% Saturday
+  and Sunday posts, and alternate weeks were empty. A 35-hour window
+  (35 = 11 mod 24, coprime with 24) moves its end 7 hours through the week
+  each time: every 24 windows (exactly 5 weeks) end once at every clock hour
+  and 3-4 times on every weekday. Whole-day lengths lock the weekday and
+  hour; 36 h only alternates two hours. A per-window cap fixes the density
+  at about 48 per 14 days over a gap of two weeks or more (within ~5%):
+  a run's last window still gets 5 when it is only 17.5-35 h long, so a
+  gap under 35 h is one window of 5, up to twice as dense, and sampled
+  accounts should not be rerun within a few days. The planner lengthens
+  the windows (to the next length coprime with 24) only when the caps
+  would exceed the backstop. For a run at ~14:00 UTC on Nov 1 the plan is
+  31 windows and at most 155 posts per sampled account (about 48.8 per 14
+  days): 4,705 reads + 17 lookups, about $23.70. (At 00:00 UTC it is 30
+  windows, 151 per sampled account, 4,661 reads, about $23.47.)
+- **Forced runs on sampled accounts:** a forced plan covers Feb 1 to now
+  at one density, so with a 450 backstop its windows grow to ~73 h. On a
+  cache that stops half a window or more before now, that would sample
+  the uncached tail at about half the incremental density and then move
+  the cursor past it for good, so the planner skips the account until an
+  incremental run has caught it up.
+- **Window edges:** X's docs do not settle whether `end_time` is
+  inclusive, so windows share their edge second (`[s, e]` then `[e, ...]`)
+  and posts are deduped by id before they are stored. No second can be
+  missed either way; at worst a post exactly on an edge second is bought
+  twice. The take-all backstop counts every post returned, duplicates
+  too, so the maximum stays strict.
+- **Caveat:** phase-4 contrasts for the sampled accounts mix this design
+  change with real change (their May-Sep blocks were weekend-heavy at fixed
+  hours); check them against the take-all accounts before publishing.
+- **Rejected:**
+  - Rollover for sampled accounts (a quiet window's unused cap passed on).
+    In both design-review replays it would give the mid-rate accounts
+    (@POTUS, @StateDept, @RealCandaceO, @PeteHegseth, @VaticanNews) 7-15%
+    more posts at the same war share and stance bias (within ~0.01), but it
+    makes later windows denser (tilt ~1.0-1.3x), moves the share lost past
+    the ~3,200-post horizon into later windows, and makes the inclusion
+    rule depend on the run. min(n_w, 5) per window is a plain stratified
+    sample, and the per-window manifest supports volume weights later.
+  - 41-hour windows with rollover: the tail left unread, uneven weekdays,
+    caps resized per run.
+  - G/n slices with rolling shares: the length can land on 36 h.
+  - Allocating reads by volume from the counts endpoint: paid; maybe later.
+  - Repairing a torn last cache line after a crash: deferred. Appends now
+    flush and fsync.
+
 ## 2026-10-07: The parent-post reply scorer stays an experiment
 
 - **Decision:** `score_opus_distilled` stays the reply scorer of record. The
@@ -464,6 +529,8 @@ behind the stance-model entries are in README *Stance-model experiments* and
 - **Why:** the timeline endpoint is newest-first, so one capped fetch over a
   multi-month gap keeps the newest N and silently drops the rest.
 - **Rejected:** one capped fetch per account per run.
+- **Superseded** on 2026-10-31: 35-hour windows with per-window caps replace
+  the 14-day slices and their equal shares.
 
 ## 2026-04-20: LLM stance for the religious tier; CPU guardrails for RoBERTa
 

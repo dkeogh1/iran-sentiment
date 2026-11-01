@@ -43,7 +43,7 @@ def main():
 
 @main.command()
 def test():
-    """Sanity-check the X API credentials."""
+    """Sanity-check the X API credentials (one User lookup, ~$0.010)."""
     from src.collectors.x_collector import get_client
 
     client = get_client()
@@ -57,22 +57,67 @@ def test():
 
 # ── collect ─────────────────────────────────────────────────────────
 
+
+def _only_accounts(ctx, param, value: str | None) -> dict[str, list[str]]:
+    """--only: X_ACCOUNTS cut to the comma-separated handles (any case, a
+    leading @ allowed), tiers kept, empty tiers dropped. Only a missing
+    --only means every account: an empty value (`--only "$UNSET"`) is
+    refused, never widened to a full paid run."""
+    if value is None:
+        return X_ACCOUNTS
+    known = {h.lower(): h for hs in X_ACCOUNTS.values() for h in hs}
+    wanted = [w for w in (h.strip().lstrip("@").lower() for h in value.split(",")) if w]
+    if not wanted:
+        raise click.BadParameter(f"no handles given ({value!r})")
+    unknown = [h for h in wanted if h not in known]
+    if unknown:
+        raise click.BadParameter(f"not in config/accounts.py: {', '.join(unknown)}")
+    keep = {known[h] for h in wanted}
+    return {
+        t: [h for h in hs if h in keep]
+        for t, hs in X_ACCOUNTS.items()
+        if any(h in keep for h in hs)
+    }
+
+
 @main.command()
-@click.option("--force", is_flag=True, help="Re-fetch the whole window (paid reads) and merge it into the cache by id")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Re-fetch the whole window (paid reads) and merge it into the cache by id",
+)
 @click.option("--no-search", is_flag=True, help="Skip keyword searches")
-@click.option("--estimate", is_flag=True,
-              help="Print the per-account plan and maximum cost, then exit (no API calls)")
+@click.option(
+    "--estimate",
+    is_flag=True,
+    help="Print the per-account plan and maximum cost, then exit (no API calls)",
+)
 @click.option("--yes", is_flag=True, help="Skip the confirmation prompt")
-def collect(force: bool, no_search: bool, estimate: bool, yes: bool):
+@click.option(
+    "--only",
+    "accounts",
+    metavar="HANDLES",
+    callback=_only_accounts,
+    help="Comma-separated handles from config/accounts.py: plan and collect only "
+    "these (searches still run unless --no-search)",
+)
+def collect(
+    force: bool,
+    no_search: bool,
+    estimate: bool,
+    yes: bool,
+    accounts: dict[str, list[str]] | None = None,
+):
     """Collect tweets from all configured X accounts (caches per-account).
 
     Incremental: each account fetches only tweets newer than its cache,
-    walked oldest-slice-first so a cap hit costs a slice its older days
-    instead of dropping months. The plan below is a MAXIMUM -- accounts that posted
-    less than their cap cost less.
+    walked oldest first in GAP_FILL_WINDOW_HOURS windows; sampled accounts
+    keep the newest ACCOUNT_WINDOW_CAPS posts per window, others read
+    everything up to their cap. The plan below is a MAXIMUM -- accounts
+    that posted less than their cap cost less.
     """
     with _x_cache_lock(estimate):
-        _collect(force, no_search, estimate, yes)
+        _collect(force, no_search, estimate, yes, X_ACCOUNTS if accounts is None else accounts)
 
 
 @contextlib.contextmanager
@@ -91,22 +136,46 @@ def _x_cache_lock(estimate: bool):
         yield
 
 
-def _collect(force: bool, no_search: bool, estimate: bool, yes: bool):
+def _collect(
+    force: bool, no_search: bool, estimate: bool, yes: bool, accounts: dict[str, list[str]]
+):
     from src.collectors.x_collector import collect_all, estimate_run
 
-    plan = estimate_run(X_ACCOUNTS, None if no_search else SEARCH_TERMS, force=force)
+    plan = estimate_run(accounts, None if no_search else SEARCH_TERMS, force=force)
 
-    click.echo(f"\n{'account':<18}{'cached':>7}{'from':>12}{'slices':>7}{'cap':>6}{'max $':>8}")
+    click.echo(
+        f"\n  {'account':<23}{'cached':>7}{'from':>18}{'mode':>8}{'h':>5}{'windows':>9}"
+        f"{'cap/win':>9}{'per14d':>8}{'max reads':>11}{'max $':>8}"
+    )
     for p in plan["accounts"]:
+        label = f"@{p['handle']}"
         if p["skip_reason"]:
-            click.echo(f"  @{p['handle']:<16}{p['cached']:>7}  {p['skip_reason']}")
+            click.echo(f"  {label:<23}{p['cached']:>7}  {p['skip_reason']}")
             continue
-        click.echo(f"  @{p['handle']:<16}{p['cached']:>7}{p['window'][0].date().isoformat():>12}"
-                   f"{len(p['slices']):>7}{p['cap']:>6}{p['max_cost_usd']:>8.2f}")
+        start, end = p["window"]
+        if p["mode"] == "sample":
+            gap_h = (end - start).total_seconds() / 3600
+            mode, per_win = "sample", str(p["window_cap"])
+            per14d = f"{p['max_reads'] * 336 / gap_h:.1f}"
+        else:
+            mode, per_win, per14d = "all", "all", "-"
+        frm = start.strftime("%Y-%m-%d %H:%M")
+        click.echo(
+            f"  {label:<23}{p['cached']:>7}{frm:>18}{mode:>8}{p['hours']:>5}"
+            f"{len(p['slices']):>9}{per_win:>9}{per14d:>8}{p['max_reads']:>11}"
+            f"{p['max_cost_usd']:>8.2f}"
+        )
     for s in plan["searches"]:
-        click.echo(f"  search:{s['query']:<28}{'7d':>12}{1:>7}{s['max_reads']:>6}{s['max_cost_usd']:>8.2f}")
-    click.echo(f"\nMaximum this run: {plan['max_reads']} reads ≈ ${plan['max_cost_usd']:.2f}"
-               f"  (budget settings.X_RUN_BUDGET_USD = ${settings.X_RUN_BUDGET_USD:.2f})")
+        label = f"search:{s['query']}"
+        click.echo(
+            f"  {label:<23}{'':>7}{'last 7d':>18}{'search':>8}{'':>5}{'':>9}{'':>9}"
+            f"{'':>8}{s['max_reads']:>11}{s['max_cost_usd']:>8.2f}"
+        )
+    click.echo(
+        f"\nMaximum this run: {plan['max_reads']} reads + {plan['lookups']} user lookups "
+        f"≈ ${plan['max_cost_usd']:.2f}"
+        f"  (budget settings.X_RUN_BUDGET_USD = ${settings.X_RUN_BUDGET_USD:.2f})"
+    )
 
     if estimate:
         return
@@ -114,10 +183,11 @@ def _collect(force: bool, no_search: bool, estimate: bool, yes: bool):
     if plan["max_cost_usd"] > settings.X_RUN_BUDGET_USD:
         click.secho(
             f"Refusing: plan maximum ${plan['max_cost_usd']:.2f} exceeds X_RUN_BUDGET_USD "
-            f"${settings.X_RUN_BUDGET_USD:.2f}. Lower MAX_TWEETS_PER_USER / add "
-            f"ACCOUNT_CAP_OVERRIDES, trim config/accounts.py, use --no-search, or raise "
-            f"the budget deliberately in config/settings.py.",
-            fg="red")
+            f"${settings.X_RUN_BUDGET_USD:.2f}. Lower MAX_TWEETS_PER_USER / "
+            f"ACCOUNT_CAP_OVERRIDES / ACCOUNT_WINDOW_CAPS, trim config/accounts.py, use "
+            f"--only or --no-search, or raise the budget deliberately in config/settings.py.",
+            fg="red",
+        )
         raise SystemExit(1)
 
     if not yes and not click.confirm("Proceed?", default=False):
@@ -125,7 +195,7 @@ def _collect(force: bool, no_search: bool, estimate: bool, yes: bool):
         return
 
     summary = collect_all(
-        X_ACCOUNTS,
+        accounts,
         search_terms=None if no_search else SEARCH_TERMS,
         force=force,
     )

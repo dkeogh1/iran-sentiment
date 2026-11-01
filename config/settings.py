@@ -21,6 +21,11 @@ PROCESSED_DIR = DATA_DIR / "processed"
 FIGURES_DIR = PROCESSED_DIR / "figures"
 
 X_RAW_DIR = RAW_DIR / "x"
+# One row per `collect` window (x_collector.collect_user): its cap, what it
+# got and whether more was left. It must stay outside X_RAW_DIR, because
+# load_all_cached, `status` and x_backfill glob X_RAW_DIR/*.jsonl; `backup`
+# syncs raw/ recursively, so it is backed up.
+X_SAMPLING_DIR = RAW_DIR / "x_sampling"
 TRUTH_SOCIAL_RAW_DIR = RAW_DIR / "truthsocial"
 
 # Checkpoints for resumable analysis
@@ -111,22 +116,52 @@ EVENT_LABEL_MIN_IMPORTANCE = 4   # raised from 3 on 2026-09-18: the window now s
 # X charges ~$0.005/read on pay-as-you-go. These caps guard against a
 # single prolific account (e.g. @marklevinshow posts 35+ times/day)
 # blowing through the budget.
-MAX_TWEETS_PER_USER = 500       # ≈ $2.50 cap per user
-MAX_TWEETS_PER_SEARCH = 150     # ≈ $0.75 cap per search term
+MAX_TWEETS_PER_USER = 500  # ≈ $2.50 cap per user: the backstop for take-all accounts
+MAX_TWEETS_PER_SEARCH = 150  # ≈ $0.75 cap per search term
+# GET /2/tweets/search/recent has a max_results minimum of 10: a search
+# stops once fewer than that are left of its cap, so the cap stays strict.
+X_MIN_SEARCH_READS_PER_REQUEST = 10
+# A guard against empty search pages that still carry a next_token.
+X_MAX_PAGES_PER_SEARCH = 20
 X_READ_COST_USD = 0.005
+# The get_user lookup (a User read) that resolves each fetched account's id:
+# once per account per run, counted in the plan maximum (none for an account
+# the plan skips). `test` makes one too, so it is not free either.
+X_USER_READ_COST_USD = 0.010
 
-# Per-account overrides of MAX_TWEETS_PER_USER for a run. The point is to
-# SAMPLE high-volume accounts (Levin, Loomer, Jones post 35+/day) rather
-# than let the cap silently truncate them. Empty = every account uses the
-# default cap.
+# Sampled accounts: each keeps the newest <= N posts of every
+# GAP_FILL_WINDOW_HOURS window, with no rollover (a quiet window's unused
+# reads are not passed on). 5 per 35 h is 48 per 14 days, the May-Sep
+# density (45-50 per two-week slice). The exception is a run's last window:
+# when it is 17.5-35 h long it still gets 5, up to twice as dense. Over a
+# gap of two weeks or more that is within ~5%, but a gap under 35 h is
+# nothing but that window (a daily rerun would oversample by ~half), so
+# don't rerun sampled accounts within a few days. Listed: the five accounts
+# sampled at 450 on 2026-09-18 and the six that hit slice caps in 6-9
+# slices then (collect_2026-09-18.log; @mtgreenee and @Pontifex hit one
+# each and stay take-all). Accounts not listed are take-all: every post in
+# the gap, up to their backstop (ACCOUNT_CAP_OVERRIDES /
+# MAX_TWEETS_PER_USER).
+ACCOUNT_WINDOW_CAPS: dict[str, int] = {
+    "LauraLoomer": 5,
+    "marklevinshow": 5,
+    "RealAlexJones": 5,
+    "BarakRavid": 5,
+    "StateDept": 5,
+    "POTUS": 5,
+    "PeteHegseth": 5,
+    "VP": 5,
+    "VaticanNews": 5,
+    "RealCandaceO": 5,
+    "WhiteHouse": 5,
+}
+
+# Per-account overrides of MAX_TWEETS_PER_USER: a per-run backstop. For a
+# sampled account it binds only on a gap over about four months
+# (450 / 5 per window x 35 h = 131 days), when the planner lengthens the
+# windows to fit; density comes from ACCOUNT_WINDOW_CAPS. (Until 2026-10-31
+# these were the per-run sample sizes, shared evenly across 14-day slices.)
 ACCOUNT_CAP_OVERRIDES: dict[str, int] = {
-    # 2026-09-18 May 10 -> Sep 18 refresh: the five accounts projected far
-    # over the cap are sampled at ~450 (spread across ~10 two-week slices).
-    # The rest ran at 500, but split_cap gives every slice an equal share,
-    # so a busy fortnight is cut there too: 8 more accounts hit a slice cap
-    # (collect_2026-09-18.log: @POTUS, @PeteHegseth, @VP, @VaticanNews in 9
-    # slices, @RealCandaceO 7, @WhiteHouse 6, @mtgreenee and @Pontifex 1).
-    # A capped slice keeps its newest posts.
     "LauraLoomer": 450,
     "marklevinshow": 450,
     "RealAlexJones": 450,
@@ -196,16 +231,30 @@ TS_FILL_MAX_CONSECUTIVE_ERRORS = 3
 TS_FILL_EST_REQUEST_S = 0.5
 
 
-# ── Gap-fill slicing ───────────────────────────────────────────────
+# ── Gap-fill windows ───────────────────────────────────────────────
 # The X timeline endpoint returns newest-first. One capped fetch over a
 # long gap would keep the newest N tweets, drop everything older, and then
 # mark the account current -- a permanent hole (bitten after the May 10 ->
 # Sep gap: 9 of 17 accounts were over the cap). collect_user instead walks
-# the gap oldest-slice-first in windows of this many days, giving each
-# slice an even share of the account's cap, so a cap hit costs a slice its
-# older days (the endpoint is newest-first: a capped slice keeps its last
-# day or two) instead of deleting months.
-GAP_FILL_SLICE_DAYS = 14
+# each account's gap oldest first, from its cursor, in windows of this many
+# hours. 35 = 11 (mod 24) shares no factor with 24, and 24 windows make
+# exactly 5 weeks, so over every 24 windows the window ends sit 7 h apart
+# through the week: every clock hour once, 3-4 ends on each weekday. A
+# whole-day length locks the weekday and hour of every end, which is the
+# May-Sep fault (14-day slices that kept each fortnight's newest day or
+# so, mostly a weekend); 36 h only alternates two hours. The planner
+# lengthens the windows (to the next length coprime with 24) only when an
+# account's backstop is too small for its gap.
+GAP_FILL_WINDOW_HOURS = 35
+# GET /2/users/:id/tweets has a max_results minimum of 5: a smaller request
+# still returns, and bills, up to 5. No request asks for fewer.
+X_MIN_READS_PER_REQUEST = 5
+# A guard against empty pages that still carry a next_token.
+X_MAX_PAGES_PER_WINDOW = 20
+# The user timeline reaches back only about this many posts. Leading
+# windows that come back empty are reported as past it only when the
+# windows after them hold an estimated half of it or more.
+X_TIMELINE_HORIZON_POSTS = 3200
 
 
 # ── Stance-model experiments (GPU Jobs on dkbl2, see k8s/README.md) ─

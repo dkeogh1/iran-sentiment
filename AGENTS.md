@@ -84,7 +84,7 @@ ruff check <paths> && ruff format <paths>
 Everything goes through one Click CLI, `python -m src.cli <command>`:
 
 ```bash
-python -m src.cli test       # verify X API credentials (free)
+python -m src.cli test       # verify X API credentials (one User read, $0.010)
 python -m src.cli status     # show what's cached, what's missing
 python -m src.cli collect    # incremental fetch -- appends only new tweets since last run
 python -m src.cli x-backfill-text --estimate  # cached posts cut at 280 chars: reads to re-get them whole
@@ -200,14 +200,56 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 
 ### X collection and budget
 
-- Caps: `MAX_TWEETS_PER_USER` is a hard cap; sample prolific accounts with
-  `ACCOUNT_CAP_OVERRIDES`. A real `collect` refuses to start when its maximum
-  exceeds `X_RUN_BUDGET_USD` (`config/settings.py`).
+- Budget: a real `collect` refuses to start when its maximum exceeds
+  `X_RUN_BUDGET_USD` (`config/settings.py`). The maximum counts the reads
+  ($0.005 each) and one user lookup per account fetched
+  (`X_USER_READ_COST_USD`, $0.010; none for a skipped account). `test`
+  makes one lookup too, so it is not free. The maximum is strict: a
+  search stops once fewer than X's 10-post minimum are left of its
+  `MAX_TWEETS_PER_SEARCH`.
 - `collect` is incremental per account (only tweets newer than the cached
-  `created_at`). Long gaps are walked oldest-slice-first in
-  `GAP_FILL_SLICE_DAYS` windows with the cap shared across slices: the timeline
-  endpoint is newest-first, so one capped fetch over a long gap would keep the
-  newest N and drop the rest.
+  `created_at`). Each gap is walked oldest first, from the account's
+  cursor, in fixed `GAP_FILL_WINDOW_HOURS` (35 h) windows, whose ends step
+  through every clock hour and weekday: the timeline endpoint is
+  newest-first, so one capped fetch over a long gap would keep the newest N
+  and drop the rest.
+  - Sampled accounts (`ACCOUNT_WINDOW_CAPS`, 5 per window, about 48 per 14
+    days) keep the newest <= N posts of every window, with no rollover: a
+    quiet window's unused reads are not passed on. The planner lengthens
+    the windows only when the caps would add up to more than the account's
+    backstop (`ACCOUNT_CAP_OVERRIDES`, else `MAX_TWEETS_PER_USER`). A run's
+    last window still gets 5 when it is only 17.5-35 h long (a shorter gap
+    waits for the next run), so a gap under 35 h is up to twice as dense:
+    don't rerun sampled accounts within a few days.
+  - `collect --force` skips a sampled account whose cache stops half a
+    window or more before now when the forced plan lengthens its windows
+    (it plans the whole collection window at one density, which would
+    sample the uncached tail thinly for good): run an incremental `collect`
+    first.
+  - Every other account is take-all: it reads each window whole until its
+    backstop runs out, then defers the windows left to the next run (an
+    ERROR names them; if it recurs, add the account to
+    `ACCOUNT_WINDOW_CAPS`).
+  - A window logged `TRUNCATED` had more posts than it kept: by design for
+    a sampled account; for a take-all one, the window's older posts are not
+    read again. Warnings flag leading empty windows when the windows after
+    them hold an estimated 1,600+ posts (`X_TIMELINE_HORIZON_POSTS` / 2;
+    likely past the ~3,200-post horizon), and an empty window next to a
+    dense truncated one (possible fetch failure).
+  - Windows share their edge second and posts are deduped by id. No
+    request asks for fewer than 5 posts (X's minimum, billed anyway) and a
+    window stops after `X_MAX_PAGES_PER_WINDOW` pages.
+  - In an incremental run or a first pull, each window's new posts are
+    appended (fsync) as soon as it is read, so a killed run resumes from a
+    window boundary. A `--force` merge is written once, at the end, or with
+    what it read when it fails part-way. Each window gets a row (cap, got,
+    new, truncated, kept span) in
+    `data/raw/x_sampling/windows_<run end date>.jsonl` (`X_SAMPLING_DIR`,
+    outside the `data/raw/x/*.jsonl` glob) once its posts are stored, for
+    per-window volume weights.
+  - `collect --only a,b` plans and collects only those handles; searches
+    still run unless `--no-search`. An empty `--only` is refused, not read
+    as every account.
 - Requests ask for `note_tweet` (full text over 280 characters) and
   `referenced_tweets`, never expansions: X bills per resource returned
   ([docs/decisions.md](docs/decisions.md)). `collect --force` merges the
