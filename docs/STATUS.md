@@ -124,9 +124,12 @@ Two layers at different depths. Nothing runs on a schedule.
   posts with text, his war share rises 0.8-2.1 points a phase
   (33.1/13.8/12.2/12.9% -> 35.2/15.2/13.0/14.0%). X tables and reply
   estimates are unchanged.
-- **Timeline**: 138 events through 2026-10-31 in `config/timeline.py`;
-  `ANALYSIS_END` = 2026-09-18 and `PHASES` end there until the phase-5
-  decision (*Open*). Sources: `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`
+- **Timeline**: 138 events through 2026-10-31 in `config/timeline.py`.
+  The analysis is frozen at the Nov 1 pull (2026-11-02, the user's call):
+  `ANALYSIS_END` = 2026-11-01 and a fifth phase, "midterm hold"
+  (Sep 19 -> Nov 1), ending before the Nov 3 midterms. `phases`,
+  `visualize` and `export-web` reran on five phases (dkweb JSONs written,
+  not yet committed there). Sources: `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`
   and `docs/timeline_candidates_2026-09-16_to_2026-10-31.json`.
 - **Spend, 2026-10-04/05** (approved runs): X ≈ $14.90 for the backfill
   reads (2,980 returned at $0.005). Anthropic, measured from the batch
@@ -192,8 +195,9 @@ Two layers at different depths. Nothing runs on a schedule.
   up. Size an archive fill (`search/all`, same 35 h window grid) from
   `x-counts --report`: @WhiteHouse Feb 1 -> Nov 1, the horizon holes, the
   late starts and the empty windows; it needs an `x-archive fill` command.
-  Decide phase 5 ("midterm hold", Sep 19 -> Nov 1) before `phases`,
-  `visualize`, `export-web`. The Claude credit jobs (Trump's feed on Opus,
+  README and the dkweb post are being updated to five phases. Phase 5
+  lacks most of @WhiteHouse, and its sampled accounts use the 35 h design,
+  so its contrasts with phase 4 mix design and real change. The Claude credit jobs (Trump's feed on Opus,
   reply prompt and sample checks, a stance-and-topic prompt, Opus 5.5 as a
   second rater) are being built; each is a paid run to estimate and ask.
   The timeline route stays the forward pull; the horizon matters less now
