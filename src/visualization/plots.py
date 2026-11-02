@@ -453,7 +453,8 @@ def plot_account_war_heatmap(
     mean = mean.loc[mean[whole].sort_values(ascending=False, na_position="last").index]
     tier = t.drop_duplicates("group").set_index("group")["tier"]
     rows = [f"@{u}  ({settings.WEB_TIER_LABELS.get(tier[u], tier[u])})" for u in mean.index]
-    ticks = [f"{label}\n{s:%b %-d}–{e:%b %-d}" for label, s, e in PHASES]
+    # One line per word pair: five phase columns plus the whole war overlap otherwise.
+    ticks = [f"{label.replace(', ', ',\n')}\n{s:%b %-d}–{e:%b %-d}" for label, s, e in PHASES]
     ticks.append(f"{whole}\n{inf.WHOLE_WAR[0][1]:%b %-d}–{inf.WHOLE_WAR[0][2]:%b %-d}")
 
     cmap, norm = stance_cmap(), Normalize(-1, 1)
