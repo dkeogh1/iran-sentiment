@@ -452,8 +452,9 @@ TRUMP_TEACHER_CHECK_N = 400
 # Raised from 500 on purpose (2026-11-02) so `teacher-check --source trump
 # --all` can put his whole feed on score_opus: 3,222 posts with text after
 # the Nov 1 pull, 400 already labelled by the check (reused, never re-sent),
-# so 2,822 to do; 3,300 covers every post with text, with room for ~80 new
-# ones, and still refuses anything past the feed.
+# so 2,822 to do. The cap is checked against each run's posts still to
+# label (labelled ones are never re-sent), so it bounds one run at 3,300
+# calls (about $6 by Batch), not the feed's total.
 TRUMP_TEACHER_CHECK_MAX_CALLS = 3300
 TEACHER_SAMPLE_SEED = 42           # --limit pilot order and the Trump sample
 # Reply labels beyond v2 (`reply-label`, src/analysis/reply_labels.py): v2b

@@ -54,7 +54,12 @@ def maga_weekly(d: pd.DataFrame, score: str) -> list[dict]:
     and a missing week is a gap, not a join). Windows with fewer than
     WEB_MIN_WINDOW_POSTS war posts are dropped."""
     w = d[d["on_topic"] & d["tier"].isin(settings.WEB_WEEKLY_TIERS)].copy()
-    w["week"] = pd.to_datetime(w["created_at"], utc=True).dt.tz_localize(None).dt.to_period("W-SUN").dt.start_time
+    w["week"] = (
+        pd.to_datetime(w["created_at"], utc=True)
+        .dt.tz_localize(None)
+        .dt.to_period("W-SUN")
+        .dt.start_time
+    )
     rows = []
     for tier, g in w.groupby("tier"):
         wk = g.groupby("week")[score].agg(["sum", "count"])
@@ -64,9 +69,16 @@ def maga_weekly(d: pd.DataFrame, score: str) -> list[dict]:
             n_win = int(roll.loc[week, "count"])
             if n_win < settings.WEB_MIN_WINDOW_POSTS:
                 continue
-            rows.append({"week": week.date().isoformat(), "tier": settings.WEB_TIER_LABELS.get(tier, tier),
-                         "stance": _r(r["sum"] / r["count"]) if r["count"] else None, "n": int(r["count"]),
-                         "smooth": _r(roll.loc[week, "sum"] / n_win), "n_window": n_win})
+            rows.append(
+                {
+                    "week": week.date().isoformat(),
+                    "tier": settings.WEB_TIER_LABELS.get(tier, tier),
+                    "stance": _r(r["sum"] / r["count"]) if r["count"] else None,
+                    "n": int(r["count"]),
+                    "smooth": _r(roll.loc[week, "sum"] / n_win),
+                    "n_window": n_win,
+                }
+            )
     return rows
 
 
@@ -79,10 +91,18 @@ def accounts(df: pd.DataFrame, score: str) -> list[dict]:
     for user, r in st.iterrows():
         if r["n_on"] < settings.WEB_MIN_ACCOUNT_POSTS:
             continue
-        rows.append({"account": ACCOUNT_NAMES.get(user, f"@{user}"), "handle": user,
-                     "tier": settings.WEB_TIER_LABELS.get(tier[user], tier[user]),
-                     "stance": _r(r["mean_on"]), "lo": _r(r["mean_on_lo"]), "hi": _r(r["mean_on_hi"]),
-                     "valence": _r(rob.get(user)), "n": int(r["n_on"])})
+        rows.append(
+            {
+                "account": ACCOUNT_NAMES.get(user, f"@{user}"),
+                "handle": user,
+                "tier": settings.WEB_TIER_LABELS.get(tier[user], tier[user]),
+                "stance": _r(r["mean_on"]),
+                "lo": _r(r["mean_on_lo"]),
+                "hi": _r(r["mean_on_hi"]),
+                "valence": _r(rob.get(user)),
+                "n": int(r["n_on"]),
+            }
+        )
     return sorted(rows, key=lambda x: x["stance"])
 
 
@@ -90,17 +110,26 @@ def decomposition(d: pd.DataFrame, score: str) -> list[dict]:
     boot = inf.bootstrap_cells(d, score)
     c = inf.phase_contrasts(boot)
     c = c[c["phase"] == PHASES[-1][0]]
-    parts = [("share_effect", "Talked about the war less (or more)"),
-             ("on_topic_effect", "Changed its stance on the war"),
-             ("off_topic_effect", "Everything else it posted")]
+    parts = [
+        ("share_effect", "Talked about the war less (or more)"),
+        ("on_topic_effect", "Changed its stance on the war"),
+        ("off_topic_effect", "Everything else it posted"),
+    ]
     rows = []
     for _, r in c.iterrows():
         if r["group"] not in settings.WEB_TIER_LABELS:
             continue
         for key, label in parts:
-            rows.append({"tier": settings.WEB_TIER_LABELS[r["group"]], "part": label,
-                         "value": _r(r[key]), "lo": _r(r[f"{key}_lo"]), "hi": _r(r[f"{key}_hi"]),
-                         "total": _r(r["all"])})
+            rows.append(
+                {
+                    "tier": settings.WEB_TIER_LABELS[r["group"]],
+                    "part": label,
+                    "value": _r(r[key]),
+                    "lo": _r(r[f"{key}_lo"]),
+                    "hi": _r(r[f"{key}_hi"]),
+                    "total": _r(r["all"]),
+                }
+            )
     return rows
 
 
@@ -133,12 +162,23 @@ def trump_phases(score: str | None = None) -> list[dict]:
     st = inf.phase_stats(inf.bootstrap_cells(d, score))
     days = pd.to_datetime(df["created_at"], utc=True).dt.date
     first, last = days.min(), days.max()
-    ticks = {label: f"{max(start, first):%b %-d}–{min(end, last):%b %-d}\n{label}"
-             for label, start, end in PHASES}
-    return [{"phase": str(r["phase"]), "tick": ticks[str(r["phase"])],
-             "stance": _r(r["mean_on"]), "lo": _r(r["mean_on_lo"]), "hi": _r(r["mean_on_hi"]),
-             "share": _r(r["share"]), "n_war": int(r["n_on"]), "n": int(r["n"])}
-            for _, r in st.iterrows()]
+    ticks = {
+        label: f"{max(start, first):%b %-d}–{min(end, last):%b %-d}\n{label}"
+        for label, start, end in PHASES
+    }
+    return [
+        {
+            "phase": str(r["phase"]),
+            "tick": ticks[str(r["phase"])],
+            "stance": _r(r["mean_on"]),
+            "lo": _r(r["mean_on_lo"]),
+            "hi": _r(r["mean_on_hi"]),
+            "share": _r(r["share"]),
+            "n_war": int(r["n_on"]),
+            "n": int(r["n"]),
+        }
+        for _, r in st.iterrows()
+    ]
 
 
 def _log_reply_basis(rp: pd.DataFrame) -> None:
@@ -177,27 +217,43 @@ def replies() -> list[dict]:
     labelled_fresh), and the log says the same in all (_log_reply_basis)."""
     rp = inf.reply_population()
     _log_reply_basis(rp)
-    val = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT,
-                          columns=["id", "tracked_slug", "text", "score_transformer"])
+    val = pd.read_parquet(
+        settings.REPLY_SENTIMENT_OUTPUT, columns=["id", "tracked_slug", "text", "score_transformer"]
+    )
     val = val[~val["id"].astype(str).duplicated() & inf.has_text(val["text"])]
     val = val.groupby("tracked_slug")["score_transformer"].mean()
     posts = {p.slug: p for p in TRACKED_POSTS}
     rows = []
     for _, r in rp[rp["post"] != "ALL"].iterrows():
         if r[["assisted_mean", "assisted_pro", "assisted_anti"]].isna().any():
-            logger.warning("export-web: %s left out of replies.json: %.0f%% of its replies are in "
-                           "a valence bucket with no Opus-labelled draw",
-                           r["post"], 100 * (1 - r["coverage"]))
+            logger.warning(
+                "export-web: %s left out of replies.json: %.0f%% of its replies are in "
+                "a valence bucket with no Opus-labelled draw",
+                r["post"],
+                100 * (1 - r["coverage"]),
+            )
             continue
         p = posts[r["post"]]
         pro, anti = r["assisted_pro"], r["assisted_anti"]
-        rows.append({"post": settings.WEB_POST_LABELS.get(r["post"], p.label), "slug": r["post"],
-                     "date": p.event_date.isoformat(), "replies": int(r["n_replies"]),
-                     "anti": _r(anti), "neutral": _r(1 - pro - anti), "pro": _r(pro),
-                     "stance": _r(r["assisted_mean"]), "lo": _r(r["assisted_mean_lo"]),
-                     "hi": _r(r["assisted_mean_hi"]), "valence": _r(val.get(r["post"])),
-                     "labelled": int(r["n_labelled"]),
-                     "labelled_fresh": int(r.get("n_labelled_fresh", 0))})
+        # Shares to 4 decimals: the chart labels them in whole percent, and a share
+        # cut to 3 that ends in 5 (0.4548 -> 0.455) rounds up a point there.
+        rows.append(
+            {
+                "post": settings.WEB_POST_LABELS.get(r["post"], p.label),
+                "slug": r["post"],
+                "date": p.event_date.isoformat(),
+                "replies": int(r["n_replies"]),
+                "anti": _r(anti, 4),
+                "neutral": _r(1 - pro - anti, 4),
+                "pro": _r(pro, 4),
+                "stance": _r(r["assisted_mean"]),
+                "lo": _r(r["assisted_mean_lo"]),
+                "hi": _r(r["assisted_mean_hi"]),
+                "valence": _r(val.get(r["post"])),
+                "labelled": int(r["n_labelled"]),
+                "labelled_fresh": int(r.get("n_labelled_fresh", 0)),
+            }
+        )
     return sorted(rows, key=lambda x: x["date"])
 
 

@@ -16,17 +16,34 @@ Two layers at different depths. Nothing runs on a schedule.
   lot, and replies count toward the 3,200). Its 1,903 new posts with text
   have RoBERTa scores and `score_opus` (2026-11-02; 2 unparseable answers
   resubmitted and merged), and Haiku topic labels with Trump's 672 new posts
-  (2,570 of 2,666 labelled; the 96 failures are link shares, *Open*). Before it: the May 10 -> Sep 18 refresh read 5,631 tweets for ~$28,
+  (2,570 of 2,666 labelled; the 96 failures are link shares but one, *Open*). Before it: the May 10 -> Sep 18 refresh read 5,631 tweets for ~$28,
   with the five heaviest accounts (Loomer, Levin, Jones, Ravid, StateDept)
-  sampled at 450. 490 posts have no text (nearly all bare links) and leave
+  sampled at 450. 536 account posts have no text (nearly all bare links) and leave
   every series (`src/text_rules.py`). `score_opus` on all 19,115 posts with
   text (2026-10-05; the 3 posts whose answers the backfill relabel could
-  not parse were resubmitted and merged). Haiku topic labels on 21,574 of
-  the 21,665 posts with text (X and Trump's feed); the other 91 are link
-  shares (*Open*).
+  not parse were resubmitted and merged). Haiku topic labels on 24,144 of
+  the 24,240 posts with text (X accounts 19,197 of 19,250, keyword search
+  1,768 of 1,768, Trump 3,179 of 3,222); the other 96 are link shares
+  but one (*Open*). Since 2026-11-02 they feed only the comparison flags
+  (`--topic either|llm`).
+- **Opus topic class on every post** (`post-label`, the stance-topic prompt
+  on claude-opus-5; the war-post flag of record since 2026-11-02): 22,472
+  labels, all 19,250 X account posts with text (search rows out) and all
+  3,222 of Trump's. 6,425 come from `--job stance-topic` (the 4,925
+  keyword-or-Haiku candidates, X 4,479 and Trump 446, plus the 1,500-post
+  random arm frozen in `post_random_draws.parquet`), 16,047 from the census
+  (`--job stance-topic-census`, X 13,271 and Trump 2,776, in 6 parts). 4,582
+  X and 368 Trump posts are `iran_war`; no earlier filter flagged 1,313 and
+  32 of them. All in `post_labels_stance-topic_claude-opus-5.parquet`; its
+  stance column (`score_opus_stance`) is a robustness check, not a series.
+- **Alternate raters** (robustness checks, never a series;
+  `docs/decisions.md`): Opus 5.5 on the 4,925 candidates (`score_opus55`,
+  `post_labels_rater_claude-opus-5-5.parquet`) and on the 1,157 v2 replies
+  (`reply-label --job v2-rater`); stance-topic without the handle on 1,957
+  paired X candidates (`post_nohandle_draws.parquet`, frozen).
 - **Retweets** count as the account's messaging (`docs/decisions.md`):
-  5,683 of the 17,837 account posts (32%; 70% of admin; @POTUS 789 of 789,
-  783 of them @WhiteHouse's), stored cut at about 140 characters.
+  6,217 of the 19,786 account posts (31%; 68% of admin; @POTUS 914 of 914,
+  900 of them @WhiteHouse's), stored cut at about 140 characters.
 - **Posts over 280 characters** are whole. Requests ask for `note_tweet`
   since 2026-10-04, and `x-backfill-text` re-read the 2,981 cached
   originals that looked cut at 280 (2026-10-04): 2,980 came back, 2,571 of
@@ -77,12 +94,17 @@ Two layers at different depths. Nothing runs on a schedule.
   May 5 (7-day recent search only).
 - **Truth Social**: Trump's feed current through 2026-10-31 (anonymous
   refresh, 1,016 new posts), 5,376 posts from Apr 4 (contiguous), 3,222 of
-  them with text, scored with `score_opus_distilled` (the 672 new posts with
-  text on dkbl1's CPU, 2026-11-02, thread-capped). Checked against Opus on the feed
-  (`teacher-check --source trump`, 400 random posts with text; 2026-10-05,
-  refilled 2026-10-06): 0.74 Pearson and 1.8% sign flips on all 400; on
-  the 63 war posts among them 0.62 and 11%, the model's mean 0.03 below
-  Opus's (0.379 vs 0.410). The 1,810 without text leave every share and
+  them with text. His stance of record is `score_opus` since 2026-11-02
+  (Opus 5 on llm_prompt, the X tiers' model and prompt):
+  `teacher-check --source trump --all` labelled 3,221 of the 3,222 (the
+  check's 400 reused, 2,821 by batch; 1 unparseable answer, *Open*) and
+  `--merge` wrote them onto `truthsocial_trump_stance.parquet`.
+  `score-posts` rewrites that parquet without them: merge again after it.
+  `score_opus_distilled` (the 672 new posts with text on dkbl1's CPU,
+  2026-11-02, thread-capped) stays for comparison: against Opus on the
+  3,221, 0.778 Pearson and 1.2% sign flips; on his 367 war posts (topic
+  opus) 0.739, and it reads the collapse phase 0.079 below Opus. The 1,810
+  without text leave every share and
   mean: 1,589 images or videos with no caption and 221 quotes of his own
   posts that have no text (*Trump's posts with no text*, below).
   `truthsocial_trump_stance.parquet` still holds the old constant +0.111
@@ -93,13 +115,21 @@ Two layers at different depths. Nothing runs on a schedule.
   estimand), scored with RoBERTa, `score_opus_distilled` and
   `score_mixed_distilled`, plus a 1,292-row Haiku stance sample (1 error to
   retry) and Opus labels on the 1,157 sampled replies with text. The
-  published labels are v2 (2026-10-05, `reply-teacher-check --v2`): made
+  label set of record is v2 (2026-10-05, `reply-teacher-check --v2`): made
   from the whole reply and the Trump post it answers
-  (`docs/decisions.md`). `reply-population` weights the 1,071 random draws
-  among them (`settings.REPLY_TEACHER_LABELS_VERSION`) and writes
-  `reply_population_score_opus_distilled_v2.csv`; the 1,200 draws are
-  frozen in `data/processed/reply_sample_draws.parquet`. The v1 labels
-  (1,225; 423 made from text cut to 100 characters, none with the parent
+  (`docs/decisions.md`). Since 2026-11-02 `reply-population` pools the
+  1,071 random draws among them with 8,000 fresh draws
+  (`reply_sample_draws_fresh.parquet`, frozen; 7,995 labelled by
+  `reply-label --job v2-fresh`, 5 already had v2 labels): 9,071 labelled
+  draws, written to `reply_population_score_opus_distilled_v2.csv`. The
+  first 1,200 draws are frozen in `data/processed/reply_sample_draws.parquet`.
+  The same 1,157 replies also carry v2b (v2 without the praise rule,
+  reported beside v2), cat-v2 (Opus reply categories made with the parent
+  post; Haiku's categories in `stance_sample.parquet` stay as history) and
+  Opus 5.5 (above). Every batch that carried replies was deleted on the API
+  at its collect. `reply-loyalty` (free) gives the loyalty gradient on the
+  pooled draws (60,852 repliers). The v1 labels (1,225; 423 made from
+  text cut to 100 characters, none with the parent
   post) and their last run, the unsuffixed CSV, are kept as history.
   `score_opus_distilled` was rescored 2026-09-30 at its 256-token
   training length; `score_opus_distilled_v0` keeps the old reply scores
@@ -128,8 +158,10 @@ Two layers at different depths. Nothing runs on a schedule.
   The analysis is frozen at the Nov 1 pull (2026-11-02, the user's call):
   `ANALYSIS_END` = 2026-11-01 and a fifth phase, "midterm hold"
   (Sep 19 -> Nov 1), ending before the Nov 3 midterms. `phases`,
-  `visualize` and `export-web` reran on five phases (dkweb JSONs written,
-  not yet committed there). Sources: `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`
+  `visualize` and `export-web` reran on five phases, then again on
+  2026-11-02 under the new definitions (below): the `data/processed/` CSVs
+  and figures, the README's two embedded figures and the dkweb JSONs
+  (on the blog branch, *Open*). Sources: `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`
   and `docs/timeline_candidates_2026-09-16_to_2026-10-31.json`.
 - **Spend, 2026-10-04/05** (approved runs): X ≈ $14.90 for the backfill
   reads (2,980 returned at $0.005). Anthropic, measured from the batch
@@ -151,6 +183,33 @@ Two layers at different depths. Nothing runs on a schedule.
   `topic-label` $0.49 (2,666), about $3.39, drawn from the plan's API credit. Anthropic API spend
   from 2026-11 is covered by a monthly promotional credit on the user's
   Claude plan (expires each cycle, no rollover).
+- **Spend, 2026-11-02, the Claude label jobs** (approved runs; Anthropic
+  only, billed usage from each collect and pilot, logs in
+  `data/processed/credit_logs_2026-11-02/`; batch prices, except the three
+  pilots run direct at full price: stance-topic $0.14, Opus 5.5 on posts
+  $0.17, no-handle $0.13; pilots included in each job's figure):
+  Trump's feed on Opus $5.07 (2,822 calls), v2b $2.24 (1,157), cat-v2
+  $2.87, fresh reply draws $17.06 (7,995), stance-topic $8.77, Opus 5.5 on
+  posts and replies $10.59, no-handle $4.21, the census $22.63 (16,047
+  calls in 6 parts). $73.42 in all. No X reads.
+
+## Definitions of record
+
+Since 2026-11-02, the user's calls (`docs/decisions.md`):
+
+- **War posts**: Opus's topic class (`settings.TOPIC_SOURCE = "opus"`),
+  which every X account post and Trump post with text now has; a post
+  without a current label would count by the old either flag, with a
+  warning. `--topic
+  either|llm|keyword` stay for comparison.
+- **Stance**: `score_opus` on X (unchanged) and on Trump's feed
+  (`settings.TRUMP_STANCE_SCORE_COL`).
+- **Replies**: v2 labels on the first and fresh draws pooled (9,071;
+  `REPLY_POPULATION_FRESH_DRAWS`), with v2b beside them where the praise
+  rule matters.
+- Reported beside them, never a series: Opus 5.5 (`score_opus55`,
+  v2-rater), `score_opus_stance`, the no-handle subsample, cat-v2 and the
+  loyalty gradient.
 
 ## Where things are
 
@@ -160,8 +219,9 @@ Two layers at different depths. Nothing runs on a schedule.
   `data/models/reply_ctx_lopo/`, are in `data/models/` on dkbl1 and in the
   S3 backup.
 - S3 backup first synced 2026-09-25 (models 8.8 GB in Glacier IR, the
-  rest Standard). Last synced 2026-11-02 after the X pull, the probe, the
-  counts, the Trump scoring and the merged labels.
+  rest Standard). Last synced 2026-11-02 after the Claude label jobs, the
+  census and the outputs rerun under the new definitions (label files,
+  batch state, credit logs, derived CSVs and figures).
 - Host backup (restic, homelab-infra): the SanDisk drive is unplugged and no
   host backup has run since 2026-04-23. The host backup script no longer
   needs Timeshift, so the drive can go back in; until then S3 is the only
@@ -169,46 +229,41 @@ Two layers at different depths. Nothing runs on a schedule.
 - Batch state files in `data/processed/`: `relabel_batch.json` (`relabel
   status|collect|merge|resubmit`), `topic_batch.json`,
   `teacher_batch_reply_v2.json` and `teacher_batch_trump.json` (`--batch
-  status|collect`). The downloaded results sit beside them as
-  `*_results_<date>.jsonl`. The Batch API keeps results for 29 days.
-- `main` is pushed.
+  status|collect`), `teacher_batch_post_<job>.json` (`post-label`) and
+  `teacher_batch_reply_<job>.json` (`reply-label`). The downloaded results
+  and earlier batches' state sit beside them. The Batch API keeps results
+  for 29 days. Label files: `post_labels_<job>_<model>.parquet`,
+  `teacher_labels_replies_<set>_<model>.parquet`,
+  `teacher_check_trump_claude-opus-5.parquet`.
 
 ## Open
 
-- The dkweb post `iran-war-stance` (7 Observable Plot charts, the stance
-  colour tokens) merged to dkweb `main` on 2026-10-04 and deploys with it,
-  behind Cloudflare Access until launch. Branch builds did run; the Sep 30
-  "no preview" note predated the build finishing. The reply-scatter labels
-  for the two new posts still need a visual check on the deployed page or
-  `npm run preview` on 127.0.0.1 over an SSH tunnel. `export-web` reran
-  2026-10-05 after the backfill and the v2 reply labels: `accounts`,
-  `decomposition`, `maga_weekly` and `replies` JSONs changed and the
-  post's prose was updated to them (the June deal and hold-off readings
-  reverse; `docs/decisions.md`); pushed to dkweb `main`. The audience
-  bars' x domain went to [-0.9, 0.9] and the tone-stance scatter's y domain
-  to [-0.2, 0.5] so the v2 hold-off bar (ends at 0.83) and intervals (up
-  to +0.46) fit; worth a look on the page. `export-web` reran 2026-10-06
-  after `ts-fill-text`: only `trump_phases.json` changed (Trump's posts
-  with text and war shares; the war-post counts and means did not), and
-  the post's Trump prose and caption follow it.
-- **Next (2026-11-02):** labels for the Nov 1 pull are merged and backed
-  up. Size an archive fill (`search/all`, same 35 h window grid) from
-  `x-counts --report`: @WhiteHouse Feb 1 -> Nov 1, the horizon holes, the
-  late starts and the empty windows; it needs an `x-archive fill` command.
-  README and the dkweb post are being updated to five phases. Phase 5
-  lacks most of @WhiteHouse, and its sampled accounts use the 35 h design,
-  so its contrasts with phase 4 mix design and real change. The Claude credit jobs (Trump's feed on Opus,
-  reply prompt and sample checks, a stance-and-topic prompt, Opus 5.5 as a
-  second rater) are being built; each is a paid run to estimate and ask.
-  The timeline route stays the forward pull; the horizon matters less now
-  that the archive works.
-- **The Anthropic SDK's batch results stream breaks on this host** (httpx
-  `ReadError`, "Bad file descriptor"): all four collects on 2026-10-04/05
-  (`topic-label`, `relabel`, both teacher checks) failed on it. Workaround:
-  read the batch (`GET /v1/messages/batches/<id>`, API key header),
-  download its `results_url` to a file, and pass that to `collect
-  --results-file` (`relabel`, `topic-label`, `--batch collect`). Worth
-  making `collect` fall back to the download itself.
+- **The dkweb post** `iran-war-stance` is on dkweb `main` (merged
+  2026-10-04), behind Cloudflare Access until launch. Branch
+  `iran-post-midterm-hold` (pushed: data to Nov 1, a midterm-hold section,
+  five-phase charts, then on 2026-11-02 the export under the new
+  definitions and the prose brought to it; `npm run build` passes) awaits
+  the user's merge to `main`. Under the Opus flag @Pontifex (14 war posts)
+  and @USCCB (15) fall under `WEB_MIN_ACCOUNT_POSTS` (20), so the account
+  charts show 15 accounts, not 17; the post says why the Pope is left out.
+  Its frontmatter date is still 2026-09-23 (the user's call). Still worth a
+  look on the page: the reply-scatter labels and the audience bars'
+  domains.
+- **Next:** the X archive fill is still unbuilt: `search/all` on the same
+  35 h window grid, sized from `x-counts --report`, for @WhiteHouse Feb 1
+  -> Nov 1, the horizon holes, the late starts and the empty windows; it
+  needs an `x-archive fill` command. Meanwhile the analysis stays frozen at
+  Nov 1 (`ANALYSIS_END`). Phase 5 lacks most of @WhiteHouse, and its
+  sampled accounts use the 35 h design, so its contrasts with phase 4 mix
+  design and real change. The timeline route stays the forward pull; the
+  horizon matters less now that the archive works. Filled posts need the
+  labels in *What a refresh needs*.
+- 1 of Trump's 3,222 posts with text has no `score_opus`: its answer in
+  the whole-feed batch was unparseable. It is one of his 368 `iran_war`
+  posts, so his war-post table rests on 367 (export-web leaves it out with
+  a warning). Resending it is one call, under a cent (`teacher-check
+  --source trump --all --estimate`, `--batch submit|collect`, `--merge`):
+  a paid run, ask first.
 - The X teacher check needs no new labels after the backfill (0 of its 497
   to do), but 63 of its posts were backfilled: their direct Opus labels saw
   the cut text, while `sentiment_all` now holds full-text Haiku scores, so
@@ -229,14 +284,38 @@ Two layers at different depths. Nothing runs on a schedule.
   would narrow the published intervals only modestly, so it stays an
   experiment (`docs/decisions.md`). The old mixed model
   (`score_mixed_distilled`, v1 rows) is history.
-- 91 posts with text are link shares Haiku will not judge (43 Trump's,
-  48 on X, 39 of them Levin's: a link under a word or two such as "Amen"
-  or "Right on"; it answers that it cannot open URLs and hits
-  `max_tokens`). `war_flag` falls back to the keyword pattern for them by
-  design. `topic-label` resubmits them on every run (a few cents). Worth
-  recording them as unjudgeable.
+- 96 posts with text have no Haiku topic label (43 Trump's, 53 on X, 34
+  of them Levin's). All but one are link shares Haiku will not judge (a
+  link under a word or two such as "Amen" or "Right on"; it answers that
+  it cannot open URLs and hits `max_tokens`); the other is a one-line
+  retweet with no link. Each has an Opus topic class, so only the comparison flags
+  (`either`, `llm`) count them, by the keyword pattern. `topic-label` stops
+  sending a post after three no-verdict answers on its text
+  (`topic_unjudgeable.parquet`, not written yet; `topic-label unjudgeable
+  --results-file` records past batches, free).
 - 5 duplicate reply ids in the April reply files (3 `civilisation_dies`,
   2 `power_plant_day`); `reply-population` and `export-web` drop the
   copies.
 - In `config/tracked_posts.py` but not collected: `armada` (Jan 28, before
   the window) and `epstein_hoax` (2025, a control).
+
+## What a refresh needs
+
+The order is in AGENTS.md *Running things*. Nothing new enters a series
+while `ANALYSIS_END` stays at Nov 1 (the user's call). Beyond `relabel` and
+`topic-label`, since 2026-11-02:
+
+- **Opus topic labels for new posts** (paid, *Ask first*): `post-label
+  estimate|submit|status|collect --job stance-topic` for new
+  keyword-or-Haiku candidates, then `--job stance-topic-census` for the
+  rest (it sends any post with text that has no label on its current text,
+  candidates included). Until then a post counts by the either flag and
+  `phases` warns with the count. Both jobs' caps bound the whole run, so
+  little room is left: stance-topic has used 6,425 calls and $8.77 of 7,000
+  and $30, the census 16,047 and $22.63 of 17,000 and $28. Past about 1,500
+  new posts (575 + 953 calls), the caps need raising, the user's call.
+- **Trump's stance**: after `score-posts`, `teacher-check --source trump
+  --all --estimate`, `--batch submit|status|collect`, then `--merge`
+  (again after any later `score-posts`).
+- **Replies**: nothing. The draws are frozen; a new tracked post would
+  need its own draws and labels.

@@ -93,6 +93,23 @@ def test_replies_skips_uncovered_posts(tmp_path, monkeypatch, caplog):
     assert "deal_complete left out" in caplog.text
 
 
+def test_reply_shares_keep_four_decimals(tmp_path, monkeypatch):
+    """The chart labels shares in whole percent: 0.4548 must not reach it as
+    0.455, which Math.round labels 46%."""
+    monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
+    pd.DataFrame(
+        {"id": ["1"], "tracked_slug": ["ceasefire"], "text": ["no war"], "score_transformer": [0.2]}
+    ).to_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    est = {"assisted_mean": 0.1, "assisted_mean_lo": 0.0, "assisted_mean_hi": 0.2}
+    est |= {"assisted_pro": 0.35, "assisted_anti": 0.4548}
+    rp = pd.DataFrame(
+        [{"post": "ceasefire", "n_replies": 1, "coverage": 1.0, "n_labelled": 1, **est}]
+    )
+    monkeypatch.setattr(we.inf, "reply_population", lambda: rp)
+    row = we.replies()[0]
+    assert (row["anti"], row["pro"], row["neutral"]) == (0.4548, 0.35, 0.1952)
+
+
 def test_replies_says_when_fresh_draws_are_pooled(tmp_path, monkeypatch, caplog):
     """The pooled first + fresh draws are the published basis (2026-11-02):
     an export says how many draws of each it rests on, each record carries
