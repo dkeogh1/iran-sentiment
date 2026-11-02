@@ -119,7 +119,7 @@ def _cache(data):
             _rec(3, "levin", _cut(280, "end.")),
             _rec(7, "levin", "short post"),
             _rec(8, "levin", "RT @x: " + "y" * 273),
-            _rec(9, "levin", _cut(279), created="2026-09-20T00:00:00+00:00"),
+            _rec(9, "levin", _cut(279), created="2026-11-05T00:00:00+00:00"),
         ],
     )
     _write(raw / "Pontifex.jsonl", [_rec(4, "Pontifex", _cut(278), tier="religious_authority")])
