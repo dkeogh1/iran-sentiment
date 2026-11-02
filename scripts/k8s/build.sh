@@ -5,7 +5,7 @@
 #   scripts/k8s/build.sh          # tag = git sha (-dirty.<stamp> if the tree has changes)
 #   scripts/k8s/build.sh mytag
 set -euo pipefail
-BUILDKIT_VERSION="${BUILDKIT_VERSION:-v0.33.0}"   # must match homelab-infra buildkit.yaml
+BUILDKIT_VERSION="${BUILDKIT_VERSION:-v0.33.1}"   # must match homelab-infra buildkit.yaml
 BUILD_NS="${BUILD_NS:-build}"
 PUSH_REPO="${PUSH_REPO:-registry.registry.svc.cluster.local:5000/iran-sentiment}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$REPO"
