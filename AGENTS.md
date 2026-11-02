@@ -17,6 +17,12 @@ Hand these to the user, with the estimate, instead of running them:
     `python -m src.cli collect --estimate` (cache only, no API calls) and ask
     for the current X credit balance. Same for `x-backfill-text` (one read
     per cached post cut at 280 characters; `--estimate`).
+  - `x-counts` (X counts/all, $0.010 per request, 31 days per request:
+    about $1.53 for every account over Feb-Nov at first, a range already
+    cached is free) and `x-archive probe` (two search/all pages plus two
+    counts/all requests, at most $0.12; a finished probe is reused free):
+    both have `--estimate` (no API call, no credentials). `x-counts --report`
+    is free.
   - `relabel submit|resubmit` and `topic-label submit` (Anthropic Batch API):
     `relabel estimate` / `topic-label estimate` print the cost.
   - `analyze --llm`, `stance`, `teacher-check`, `reply-teacher-check` (direct
@@ -88,6 +94,9 @@ python -m src.cli test       # verify X API credentials (one User read, $0.010)
 python -m src.cli status     # show what's cached, what's missing
 python -m src.cli collect    # incremental fetch -- appends only new tweets since last run
 python -m src.cli x-backfill-text --estimate  # cached posts cut at 280 chars: reads to re-get them whole
+python -m src.cli x-counts --estimate  # X's own per-hour post counts per account (counts/all), cached
+python -m src.cli x-counts --report    # free: X's count vs what each collect window got, and by month
+python -m src.cli x-archive probe --estimate  # does full-archive search work here, retweets included?
 python -m src.cli ts-fill-text  # re-read by id the cached Truth Social posts with no words (free, anonymous;
                                 #   done 2026-10-06, new pulls store quote posts themselves)
 python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm for Haiku stance)
@@ -119,12 +128,14 @@ config/  settings.py (paths, caps, batch sizes, models, colours), accounts.py (t
          timeline.py (events), tracked_posts.py (Trump posts for reply analysis)
 src/     cli.py (every command), backup.py
   collectors/     x_collector.py, x_backfill.py (posts cut at 280), truthsocial_collector.py,
-                  ts_fill_text.py (Truth Social posts with no words)
+                  ts_fill_text.py (Truth Social posts with no words), x_counts.py (counts/all
+                  and its report), x_archive.py (search/all probe)
   analysis/       sentiment.py (VADER, RoBERTa, LLM stance), event_study.py (replies),
                   relabel.py, topic_label.py (Batch API), inference.py (CIs, shift-share),
                   stance_local.py (GPU experiments)
   visualization/  plots.py, web_export.py
-data/    raw/x/<handle>.jsonl, raw/truthsocial/, processed/sentiment_all.parquet,
+data/    raw/x/<handle>.jsonl, raw/x_sampling/ (collect windows), raw/x_counts/,
+         raw/x_archive/, raw/truthsocial/, processed/sentiment_all.parquet,
          processed/reply_sentiment.parquet, models/   (gitignored)
 k8s/, scripts/k8s/   GPU experiment Jobs
 ```
@@ -250,6 +261,38 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   - `collect --only a,b` plans and collects only those handles; searches
     still run unless `--no-search`. An empty `--only` is refused, not read
     as every account.
+- X's own counts tell a silent window from a failed fetch. `x-counts`
+  caches counts/all per query and granularity in `data/raw/x_counts/`
+  (`from:<handle>` per account, `--terms`, `--query`; hour buckets by
+  default), writing each page as it arrives: a covered range is skipped, a
+  killed run resumes, `--force` refetches. The cache key ignores the case
+  of `from:` handles. A stretch X answers short of its 31-day paging is
+  recorded only as far as its buckets reach (a WARNING; the next run plans
+  the rest), never as zeros. A 403, a 401 (check the token) or a
+  usage-capped 429 stops the run with no further request; any other 429
+  waits per the rate-limit header, at most `X_429_MAX_RETRIES` times.
+  `x-counts --report` (free) prints, per
+  manifest window, cap, got, held (cached now) and X's count (`lo-hi` when
+  the window's edges cut hour buckets), with a verdict: `silent` (X counts
+  0), `complete` (got everything X counts), `sampled ok` (got the cap, X
+  counts more), `edge` (inside the edge-bucket range), `short` (under X's
+  count and the cap, not zero: deleted since?), `FETCH SHORTFALL` (got
+  less than min(cap, count) where X counts at least the cap, or got 0
+  where X counts posts), `not counted`. Then X's count against the cache
+  by month (`~` marks a month only partly counted). X's counts may leave
+  out native retweets (unverified): a `+` (got more than X counts) is
+  itself evidence; `--query 'from:<handle> is:retweet'` adds the `X RT`
+  column.
+- `x-archive probe` asks search/all (full archive) for one whole UTC day
+  of @PeteHegseth in February and one in the uncapped Sep 13 slice, where
+  the cache holds every post, and compares id for id; it also counts his
+  posts per day with and without `is:retweet`. Its verdict (`no archive
+  access`, `archive works, retweets dropped`, `archive works incl.
+  retweets`, `archive misses older posts`, `inconclusive`) decides whether
+  an archive fill is worth building. Only a 403 is a result: a 401, a
+  usage cap or a counts step that stops short leaves the probe unfinished,
+  and a rerun resumes it. Result and posts in `data/raw/x_archive/`; a
+  finished probe is reused unless `--force`.
 - Requests ask for `note_tweet` (full text over 280 characters) and
   `referenced_tweets`, never expansions: X bills per resource returned
   ([docs/decisions.md](docs/decisions.md)). `collect --force` merges the
@@ -315,7 +358,7 @@ rate-capped, resumable process.
 `terraform/iran-sentiment-backups.tf`: no `--delete`, writer without
 `DeleteObject`, versioned bucket. It needs `IRAN_BACKUP_S3_BUCKET` and the AWS
 keys in `.env`. Run it after every paid `collect`, `x-backfill-text`,
-`relabel` or `topic-label`.
+`x-counts`, `x-archive probe`, `relabel` or `topic-label`.
 The host's restic drive is often unplugged, so S3 is the copy to count on.
 
 ### Blog charts (dkweb)

@@ -4,6 +4,8 @@ CLI entrypoint for the iran-sentiment pipeline.
 Commands:
   test            Verify X API credentials with a tiny request
   collect         Collect tweets from all configured X accounts + searches
+  x-counts        X's own post counts per query (counts/all); --report is free
+  x-archive probe Does full-archive search work here, with retweets? (paid, tiny)
   collect-truth   Collect Truth Social posts from configured accounts
   collect-replies Collect Truth Social replies for tracked Trump posts
   analyze         Run sentiment scoring on cached raw data
@@ -291,6 +293,273 @@ def _x_backfill_text(estimate: bool, limit: int | None, yes: bool):
                    f"relabel estimate|submit|status|collect|merge, topic-label "
                    f"estimate|submit|status|collect, phases, export-web, backup.")
     if failed:
+        raise SystemExit(1)
+
+
+# ── x-counts ────────────────────────────────────────────────────────
+
+_UTC_FORMATS = ["%Y-%m-%d", "%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"]
+
+
+@main.command("x-counts")
+@click.option(
+    "--only",
+    "accounts",
+    metavar="HANDLES",
+    callback=_only_accounts,
+    help="Comma-separated handles from config/accounts.py: count (or report) only these",
+)
+@click.option("--no-accounts", is_flag=True, help="Skip the from:<handle> queries")
+@click.option("--terms", is_flag=True, help="Also count the SEARCH_TERMS")
+@click.option(
+    "--query", "raw_query", default=None, help="One raw query more, e.g. 'from:VP is:retweet'"
+)
+@click.option(
+    "--start",
+    type=click.DateTime(_UTC_FORMATS),
+    default=None,
+    help="UTC (default COLLECTION_START)",
+)
+@click.option("--end", type=click.DateTime(_UTC_FORMATS), default=None, help="UTC (default now)")
+@click.option(
+    "--granularity",
+    type=click.Choice(["minute", "hour", "day"]),
+    default=None,
+    help="Bucket size (default X_COUNTS_GRANULARITY, hour)",
+)
+@click.option("--force", is_flag=True, help="Refetch ranges already cached")
+@click.option(
+    "--estimate", is_flag=True, help="Print the requests and cost, then exit (no API call)"
+)
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt")
+@click.option(
+    "--report",
+    is_flag=True,
+    help="Free: the cached counts against the collect windows and the X cache",
+)
+@click.option(
+    "--manifest",
+    "manifests",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="With --report: these x_sampling manifests (default every windows_*.jsonl)",
+)
+def x_counts_cmd(
+    accounts,
+    no_accounts,
+    terms,
+    raw_query,
+    start,
+    end,
+    granularity,
+    force,
+    estimate,
+    yes,
+    report,
+    manifests,
+):
+    """X's own post counts per query (GET /2/tweets/counts/all: $0.010 a
+    request, up to 31 days a request at any granularity), cached in
+    data/raw/x_counts/. A range already cached at the same granularity is
+    not fetched again unless --force. --report reads them, free: X's count
+    against what each collect window got, and against the cache by month."""
+    accounts = X_ACCOUNTS if accounts is None else accounts
+    granularity = granularity or settings.X_COUNTS_GRANULARITY
+    start = start or settings.COLLECTION_START
+    end = end or settings.COLLECTION_END
+    if report:
+        flags = {
+            "--force": force,
+            "--estimate": estimate,
+            "--yes": yes,
+            "--terms": terms,
+            "--query": raw_query,
+            "--no-accounts": no_accounts,
+        }
+        bad = [f for f, on in flags.items() if on]
+        if bad:
+            raise click.UsageError(f"--report reads the cache only: drop {', '.join(bad)}")
+        from src.collectors import x_counts as xcn
+
+        for line in xcn.report_lines(accounts, manifests or None, start, end, granularity):
+            click.echo(line)
+        return
+    if manifests:
+        raise click.UsageError("--manifest goes with --report")
+    with _x_cache_lock(estimate):
+        _x_counts(
+            None if no_accounts else accounts,
+            terms,
+            raw_query,
+            start,
+            end,
+            granularity,
+            force,
+            estimate,
+            yes,
+        )
+
+
+def _x_counts(accounts, terms, raw_query, start, end, granularity, force, estimate, yes):
+    from src.collectors import x_counts as xcn
+
+    queries = xcn.build_queries(accounts, SEARCH_TERMS if terms else None, raw_query)
+    if not queries:
+        raise click.UsageError("nothing to count: --no-accounts needs --terms or --query")
+    plan = xcn.plan_run(queries, start, end, granularity, force=force)
+    click.echo("")
+    for line in xcn.plan_lines(plan):
+        click.echo(line)
+    if estimate:
+        return
+    if plan["pages"] > settings.X_COUNTS_MAX_REQUESTS:
+        click.secho(
+            f"Refusing: {plan['pages']} requests is over X_COUNTS_MAX_REQUESTS; use "
+            f"--only or a shorter range, or raise the cap deliberately in "
+            f"config/settings.py.",
+            fg="red",
+        )
+        raise SystemExit(1)
+    if plan["max_cost_usd"] > settings.X_RUN_BUDGET_USD:
+        click.secho(
+            f"Refusing: maximum ${plan['max_cost_usd']:.2f} exceeds X_RUN_BUDGET_USD "
+            f"${settings.X_RUN_BUDGET_USD:.2f}.",
+            fg="red",
+        )
+        raise SystemExit(1)
+    if not plan["pages"]:
+        click.echo("Nothing to fetch: every range is cached (--force refetches).")
+        return
+    if not yes and not click.confirm("Proceed?", default=False):
+        click.echo("Aborted.")
+        return
+    import requests
+    import tweepy
+
+    cap = xcn.RequestCap(plan["max_requests"], settings.X_COUNTS_REQUEST_DELAY_S)
+    failed = None
+    try:
+        client = xcn.get_client()
+        for p in plan["queries"]:
+            if not p["pages"]:
+                continue
+            r = xcn.fetch_query(client, p, cap)
+            note = "" if r["complete"] else f" -- INCOMPLETE: {r['stopped']}"
+            click.echo(
+                f"  {r['query']}: {r['requests']} requests, {r['total']} posts counted{note}"
+            )
+    except xcn.XRefused as e:
+        failed = f"{e}. No further requests were made{e.hint}"
+    except xcn.RunCapReached as e:
+        failed = f"{e}; the pages before it are cached, rerun to fetch the rest"
+    except (tweepy.errors.TweepyException, requests.exceptions.RequestException) as e:
+        failed = f"{e}; the pages before it are cached, rerun to fetch the rest"
+    click.echo(
+        f"\n{cap.used} requests ≈ ${cap.used * settings.X_COUNTS_ALL_COST_USD:.2f}. "
+        f"Next: x-counts --report (free), backup."
+    )
+    if failed:
+        click.secho(f"Stopped: {failed}.", fg="red")
+        raise SystemExit(1)
+
+
+# ── x-archive ───────────────────────────────────────────────────────
+
+
+@main.group("x-archive")
+def x_archive():
+    """X full-archive search (GET /2/tweets/search/all). Only `probe` so far:
+    a fill waits for what the probe finds."""
+
+
+@x_archive.command("probe")
+@click.option(
+    "--estimate",
+    is_flag=True,
+    help="Print the probe days and the maximum, then exit (no API call)",
+)
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Run again although a finished probe is saved (its files are set aside)",
+)
+def x_archive_probe_cmd(estimate: bool, yes: bool, force: bool):
+    """Ask search/all for two whole UTC days of X_ARCHIVE_PROBE_HANDLE that
+    the cache holds whole (Feb and Sep, retweets and originals both) and
+    compare id for id; count the account's posts per day with and without
+    is:retweet (counts/all). At most $0.12. A finished probe is saved and
+    reused, free, unless --force."""
+    with _x_cache_lock(estimate):
+        _x_archive_probe(estimate, yes, force)
+
+
+def _x_archive_probe(estimate: bool, yes: bool, force: bool):
+    from src.collectors import x_archive as xa
+    from src.collectors import x_counts as xcn
+
+    try:
+        p = xa.plan_probe(force=force)
+    except xa.NoProbeWindow as e:
+        click.secho(f"Refusing: {e}.", fg="red")
+        raise SystemExit(1) from None
+    click.echo(f"\nProbe days for @{p['handle']} (whole UTC days the cache holds whole):")
+    for line in xa.window_lines(p["windows"]):
+        click.echo(line)
+    if p["reuse"]:
+        click.echo(
+            f"\nA finished probe is saved ({xa.state_path(p['handle']).name}): no call; "
+            f"--force runs it again."
+        )
+        for line in xa.report_lines(p["state"]):
+            click.echo(line)
+        return
+    counts = p["requests"] - len(p["searches"])
+    click.echo(
+        f"\nThis run: {len(p['searches'])} search/all requests (up to {p['max_reads']} "
+        f"posts at ${settings.X_READ_COST_USD} each) + {counts} counts/all requests at "
+        f"${settings.X_COUNTS_ALL_COST_USD:.3f}: at most ${p['max_cost_usd']:.2f} "
+        f"(budget X_RUN_BUDGET_USD = ${settings.X_RUN_BUDGET_USD:.2f})"
+    )
+    if estimate:
+        return
+    if p["max_cost_usd"] > settings.X_RUN_BUDGET_USD:
+        click.secho(
+            f"Refusing: ${p['max_cost_usd']:.2f} exceeds X_RUN_BUDGET_USD "
+            f"${settings.X_RUN_BUDGET_USD:.2f}.",
+            fg="red",
+        )
+        raise SystemExit(1)
+    if p["requests"] and not yes and not click.confirm("Proceed?", default=False):
+        click.echo("Aborted.")
+        return
+    import requests
+    import tweepy
+
+    try:
+        state = xa.run_probe(xcn.get_client() if p["requests"] else None, p)
+    except xcn.XRefused as e:  # a 403 is a result inside run_probe; this is 401 / usage cap
+        click.secho(
+            f"\nProbe stopped: {e}. No further requests were made{e.hint}. The steps "
+            "done are saved; rerun to resume.",
+            fg="red",
+        )
+        raise SystemExit(1) from None
+    except (
+        tweepy.errors.TweepyException,
+        requests.exceptions.RequestException,
+        xcn.RunCapReached,
+    ) as e:
+        click.secho(f"\nProbe stopped: {e}. The steps done are saved; rerun to resume.", fg="red")
+        raise SystemExit(1) from None
+    for line in xa.report_lines(state):
+        click.echo(line)
+    if not state["complete"]:
+        click.secho(
+            "\nProbe unfinished: a counts step did not cover its range (above). The steps "
+            "done are saved; rerun to resume (--estimate shows what is left).",
+            fg="red",
+        )
         raise SystemExit(1)
 
 

@@ -4,6 +4,48 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-01: X's own counts before any full-archive fill
+
+- **Decision:** before any archive fill is bought for the X holes, fetch
+  X's own post counts (`x-counts`: counts/all, $0.010 a request, 31 days a
+  request at any granularity, so about $1.53 for every account over
+  Feb-Nov in hour buckets) and run a tiny full-archive probe (`x-archive
+  probe`, at most $0.12).
+- **Why:** the 2026-11-01 collect logged ~22 windows that returned 0 posts
+  next to dense truncated ones ("possible fetch failure"), and @WhiteHouse
+  kept 25 posts in 31 windows (281 cached for April, 15 since Oct 1). The
+  timeline can't say whether those windows were silent or failed, and the
+  cursor has moved past them. Per-hour counts can, window by window
+  (`x-counts --report`), and the monthly table shows the late starts and
+  the May-Jul holes. Counts are billed per request, not per post.
+- **What the probe decides:** search/all is the only way back past the
+  ~3,200-post timeline horizon, but one docs page still calls the archive
+  endpoints Enterprise-only (a forum report shows a 403
+  client-not-enrolled), and the search index may drop native retweets from
+  from: queries, which we count as messaging (2026-10-04). The probe asks
+  for two whole UTC days of @PeteHegseth the cache holds whole (February,
+  take-all; the uncapped Sep 13 slice), retweets and originals both, one
+  page each, compares id for id, and counts his posts per day with and
+  without `is:retweet`. `no archive access` ends the archive idea;
+  `retweets dropped` makes a fill originals-only, which changes what an
+  account's messaging means; `archive works incl. retweets` lets a fill be
+  planned at $0.005 a post; `misses older posts` limits it to recent
+  months. The `is:retweet` count also says whether the report's verdicts
+  compare like with like.
+- **Design:** only a 403 is a result (saved for the probe); a 401 (bad
+  token) or a usage-capped 429 stops the run unfinished, and no further
+  request is made either way; any other 429 waits a bounded number of
+  times. A stretch X answers short of its documented 31-day paging is
+  recorded only as far as its buckets reach, so the cache never holds
+  false zeros. The counts cache key ignores the case of `from:` handles.
+  Both caches sit outside the `data/raw/x/*.jsonl` glob; both commands
+  take the collect lock, and their estimates make no call.
+- **Rejected:** buying a fill on the strength of the docs, which contradict
+  each other on access and say nothing reliable on retweets;
+  `counts/recent` (7 days only); minute buckets (same price, 60 times the
+  rows; the report gives a `lo-hi` range where hour buckets cut a window's
+  edges).
+
 ## 2026-10-31: X gaps are walked in 35-hour windows; heavy accounts are sampled per window
 
 - **Decision:** `collect` walks each account's gap oldest first, from its

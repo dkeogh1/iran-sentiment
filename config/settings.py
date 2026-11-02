@@ -26,6 +26,11 @@ X_RAW_DIR = RAW_DIR / "x"
 # load_all_cached, `status` and x_backfill glob X_RAW_DIR/*.jsonl; `backup`
 # syncs raw/ recursively, so it is backed up.
 X_SAMPLING_DIR = RAW_DIR / "x_sampling"
+# X's own post counts per query (`x-counts`, one JSON file per query and
+# granularity) and the full-archive probe (`x-archive probe`: its result and
+# the posts it returned). Both outside X_RAW_DIR for the same reason.
+X_COUNTS_DIR = RAW_DIR / "x_counts"
+X_ARCHIVE_DIR = RAW_DIR / "x_archive"
 TRUTH_SOCIAL_RAW_DIR = RAW_DIR / "truthsocial"
 
 # Checkpoints for resumable analysis
@@ -255,6 +260,57 @@ X_MAX_PAGES_PER_WINDOW = 20
 # windows that come back empty are reported as past it only when the
 # windows after them hold an estimated half of it or more.
 X_TIMELINE_HORIZON_POSTS = 3200
+
+
+# ── X post counts and the full-archive probe ───────────────────────
+# GET /2/tweets/counts/all (`x-counts`, src/collectors/x_counts.py): X's own
+# count of the posts matching a query, per minute, hour or day, to tell a
+# silent window from a failed fetch. Pay-per-use price (docs, 2026-11-01):
+# $0.010 per request, whatever it returns. One response covers up to 31 days
+# at any granularity, so the planner counts ceil(days / 31) requests per
+# query (Feb 1 - Nov 1 is 9); a query may make X_COUNTS_PAGE_SLACK more
+# before it stops, in case X pages more finely than that.
+X_COUNTS_ALL_COST_USD = 0.010
+X_COUNTS_DAYS_PER_PAGE = 31
+X_COUNTS_PAGE_SLACK = 1
+X_COUNTS_GRANULARITY = "hour"
+# A run refuses to start with more requests planned than this, and stops at
+# it (the slack can only add one per query). 17 accounts x 9 = 153.
+X_COUNTS_MAX_REQUESTS = 300
+# counts/all allows 300 requests per 15 minutes; one a second stays clear.
+X_COUNTS_REQUEST_DELAY_S = 1.0
+# A 429 on counts/all or search/all waits until x-rate-limit-reset (clamped
+# to X_429_MAX_BACKOFF_S), or X_429_DEFAULT_BACKOFF_S without the header,
+# at most X_429_MAX_RETRIES times per request; then the run stops. tweepy's
+# own wait (collect) retries without limit.
+X_429_DEFAULT_BACKOFF_S = 60
+X_429_MAX_BACKOFF_S = 960
+X_429_MAX_RETRIES = 3
+
+# Full-archive probe (`x-archive probe`, src/collectors/x_archive.py): before
+# any archive fill is bought, two GET /2/tweets/search/all calls (one page
+# of max_results 10, $0.005 per post returned) on whole UTC days where the
+# cache holds every post of the probe account, compared id for id, plus two
+# counts/all calls (day granularity) for the account with and without
+# is:retweet. Maximum $0.12. search/all allows one request a second.
+X_ARCHIVE_PROBE_HANDLE = "PeteHegseth"
+# (label, start, end), UTC, of the stretches the cache holds whole:
+# February was collected take-all; the Sep 13 slice of the 2026-09-18
+# collect was uncapped (that collect wrote the cache at 01:48 UTC on Sep
+# 18). A probe day must also end before the account's first sampled
+# `collect` window in the x_sampling manifests (Sep 17 20:59 for Hegseth).
+X_ARCHIVE_PROBE_STRETCHES = [
+    ("feb", "2026-02-01T00:00Z", "2026-03-01T00:00Z"),
+    ("sep", "2026-09-13T00:00Z", "2026-09-18T01:48Z"),
+]
+X_ARCHIVE_PROBE_MIN_POSTS = 6
+X_ARCHIVE_PROBE_MAX_POSTS = 10  # one page of max_results 10 holds the day
+X_ARCHIVE_PROBE_COUNTS_RANGE = ("2026-02-01T00:00Z", "2026-03-03T00:00Z")
+X_ARCHIVE_SEARCH_MAX_RESULTS = 10  # search/all's minimum
+X_ARCHIVE_SEARCH_DELAY_S = 1.1
+# Verdict thresholds: the share of the cached posts a probe day gets back.
+X_ARCHIVE_PROBE_RECALL_OK = 0.8
+X_ARCHIVE_PROBE_RECALL_LOW = 0.5
 
 
 # ── Stance-model experiments (GPU Jobs on dkbl2, see k8s/README.md) ─

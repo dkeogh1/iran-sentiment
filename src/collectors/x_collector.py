@@ -46,12 +46,14 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-def get_client() -> tweepy.Client:
-    """Build a tweepy client from the X_BEARER_TOKEN env var."""
+def get_client(wait_on_rate_limit: bool = True) -> tweepy.Client:
+    """Build a tweepy client from the X_BEARER_TOKEN env var. tweepy's own
+    429 wait retries without limit; x-counts and x-archive pass False and
+    back off themselves, a bounded number of times."""
     token = os.environ.get("X_BEARER_TOKEN")
     if not token:
         raise RuntimeError("X_BEARER_TOKEN not set — add it to .env")
-    return tweepy.Client(bearer_token=token, wait_on_rate_limit=True)
+    return tweepy.Client(bearer_token=token, wait_on_rate_limit=wait_on_rate_limit)
 
 
 class CacheBusy(RuntimeError):
@@ -64,8 +66,9 @@ def cache_lock():
     One paid writer of the raw X cache at a time: `collect` and
     `x-backfill-text` both plan from the cache, buy reads and rewrite these
     files, so two at once would buy the same reads or lose appended records.
-    Raises CacheBusy at once rather than wait. The lock file sits in the
-    data root, outside what `backup` syncs.
+    `x-counts` and `x-archive` take it too, so one paid X run goes at a
+    time. Raises CacheBusy at once rather than wait. The lock file sits in
+    the data root, outside what `backup` syncs.
     """
     path = settings.DATA_DIR / ".x_cache.lock"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -73,7 +76,9 @@ def cache_lock():
         try:
             fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            raise CacheBusy("another collect or x-backfill-text is running") from None
+            raise CacheBusy(
+                "another collect or x-backfill-text (or x-counts / x-archive) is running"
+            ) from None
         yield
 
 
