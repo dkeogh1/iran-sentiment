@@ -20,7 +20,10 @@ BLOG_CSS = Path.home() / "repos" / "dkweb" / "src" / "styles" / "global.css"
 
 @pytest.fixture(autouse=True)
 def _no_topic_labels(tmp_path, monkeypatch):
-    # No topic labels in PROCESSED_DIR: the war flag falls back to the keyword pattern.
+    # No topic labels in PROCESSED_DIR: under the either flag the war flag
+    # falls back to the keyword pattern (the opus flag of record needs the
+    # stance-topic label file; test_war_figures_take_the_opus_flag has one).
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "either")
     monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
     monkeypatch.setattr(settings, "FIGURES_DIR", tmp_path / "figures")
     yield
@@ -192,3 +195,57 @@ def test_generate_all_writes_war_figures():
     written = {p.name for p in plots.generate_all(_posts(), score_cols=["score_opus"])}
     assert {"tier_war_weekly_score_opus.png", "account_war_phases_score_opus.png"} <= written
     assert all((settings.FIGURES_DIR / n).stat().st_size > 0 for n in written)
+
+
+def _stance_topic_labels(df: pd.DataFrame, topic) -> None:
+    """A stance-topic label file in PROCESSED_DIR: topic(row) per post with
+    text (None: no label), made from the text each post has now."""
+    from src.analysis import post_labels as pl
+
+    rows = [
+        {
+            "id": r["id"],
+            "input_chars": len(r["text"]),
+            "topic": t,
+            "score_teacher": 0.5 if t == "iran_war" else np.nan,
+            "label_teacher": None,
+            "prompt_version": pl.STANCE_TOPIC_PROMPT_VERSION,
+        }
+        for _, r in df.iterrows()
+        if (t := topic(r)) is not None
+    ]
+    pd.DataFrame(rows).to_parquet(pl.labels_path("stance-topic", "claude-opus-5"), index=False)
+
+
+def test_war_figures_take_the_opus_flag(monkeypatch, caplog):
+    """Under the flag of record the war posts are Opus's iran_war class,
+    whatever the keyword says: here the aide's golf posts are, its strike
+    posts are not. Every war figure reads it, and says so."""
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "opus")
+    df = _posts()
+    _stance_topic_labels(
+        df, lambda r: "iran_war" if r["user"] != "aide" or "golf" in r["text"] else "not_war"
+    )
+    d = inf.prepare(df, "score_opus")
+    aide = d[d["user"] == "aide"]
+    assert aide.loc[aide["on_topic"], "text"].eq("Great golf").all() and aide["on_topic"].any()
+    assert d.loc[d["user"] != "aide", "on_topic"].all()
+    assert "Opus" in plots._method_note("score_opus")
+    fig = plots.plot_tier_war_weekly(df)
+    assert "Claude Opus 5's topic class" in fig.texts[1].get_text()
+    blog = pd.DataFrame(we.maga_weekly(d, "score_opus"))
+    assert {"Pro-war MAGA", "Anti-war MAGA"} <= set(blog["tier"])
+    # A post with no current label counts by the either flag, with a count.
+    _stance_topic_labels(df, lambda r: None if r["user"] == "rare" else "iran_war")
+    with caplog.at_level("WARNING"):
+        d = inf.prepare(df, "score_opus")
+    assert d.loc[d["user"] == "rare", "on_topic"].all()  # "Iran ceasefire talks": keyword
+    assert "13 of" in caplog.text and "no current stance-topic label" in caplog.text
+
+
+def test_war_figures_fail_loudly_without_the_opus_labels(monkeypatch):
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "opus")
+    with pytest.raises(FileNotFoundError, match="stance-topic-census"):
+        plots.plot_tier_war_weekly(_posts())
+    with pytest.raises(ValueError, match="no topic source"):
+        inf.war_flag(_posts(), "haiku")

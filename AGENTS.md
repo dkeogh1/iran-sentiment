@@ -77,8 +77,8 @@ Hand these to the user, with the estimate, instead of running them:
     brings back the PVC's `teacher_check_*` files, so push sends them too
     (since 2026-11-02): never pull from a PVC that was not pushed after the
     last host-side `--all` collect, or its older label cache replaces
-    dkbl1's (`sync-data.sh verify` lists what would change). Switching Trump's stance of record off
-    `score_opus_distilled` (`_phase_frame`) is the user's call.
+    dkbl1's (`sync-data.sh verify` lists what would change). Trump's stance
+    of record is score_opus since 2026-11-02 (`settings.TRUMP_STANCE_SCORE_COL`).
   - `post-label pilot|submit --job stance-topic|rater|stance-topic-nohandle`
     (src/analysis/post_labels.py): `post-label estimate` makes no call and
     writes nothing. `pilot` (direct, `--n` 50 by default, at most
@@ -96,6 +96,21 @@ Hand these to the user, with the estimate, instead of running them:
     plus the next batch at its ceiling (no cache hits, output at the pilot's
     p95): no `--limit` split gets past them; a pilot refuses too.
     `status|collect|report` are free.
+  - `post-label submit --job stance-topic-census`: stance-topic's prompt,
+    model, label file and columns on every other post with text (X
+    accounts and Trump's feed), so the topic flag of record rests on an
+    Opus label everywhere (~16,000 calls; the user approved about $22 on
+    2026-11-02). `post-label estimate --job stance-topic-census` makes no
+    call and prints the calls by set, the expected cost and the ceiling
+    against `POST_CENSUS_MAX_CALLS` / `POST_CENSUS_MAX_USD`. The $28 cap
+    sits ~25% over the approval, below the no-cache-hit ceiling (~$57):
+    send the census in `--limit` parts (~3,000 calls, collected between
+    parts; each is gated on billed spend so far plus its own ceiling), and
+    a part the cap refuses goes back to the user. It
+    takes no pilot (stance-topic's pilot and collected batch measure its
+    output); `--limit N` sends a first part. It and stance-topic refuse to send
+    while the other's batch is open. `status|collect` are free; its report
+    is stance-topic's (`post-label report --job stance-topic`).
 - **The user's Truth Social account.** `ts-login` (the security code goes to
   the user), `collect-replies`, and `collect-truth` unless `--anonymous`. Free,
   but rate-limited and tied to the account.
@@ -165,14 +180,16 @@ python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm
 python -m src.cli visualize  # regenerate all figures
 python -m src.cli summary    # stats tables (default --score is the stance of record)
 python -m src.cli phases     # tier x phase stance with CIs, split into war posts / topic share
-                             #   [--source x|trump] [--by tier|user] [--topic llm|keyword|either|opus]
+                             #   [--source x|trump] [--by tier|user] [--topic opus|either|llm|keyword]
                              #   [--score score_opus_stance|score_opus55|...] (post-label columns)
 python -m src.cli reply-population  # reply audience's Opus stance per post, direct and corrected (free)
                                     #   [--labels v1|v2|v2b] [--first-draws]; v2 pools the fresh draws
 python -m src.cli reply-label report --job v2b  # v2 vs v2b, paired on the first draws (free)
+python -m src.cli reply-loyalty     # Opus stance by replier loyalty tier, high - low (free)
 python -m src.cli reply-fresh-sample  # draw and record the fresh reply sample (free; --dry-run)
 python -m src.cli reply-label estimate --job v2b|cat-v2|v2-fresh|v2-rater [--post SLUG]  # no API call
 python -m src.cli post-label estimate --job stance-topic|rater|stance-topic-nohandle  # no API call
+python -m src.cli post-label estimate --job stance-topic-census  # the census: no API call
 python -m src.cli post-label report --job stance-topic  # rater agreement, filter misses (free)
 python -m src.cli topic-label unjudgeable --results-file F  # record Haiku's no-verdict posts (free)
 python -m src.cli teacher-retest    # Opus label test-retest on 497 posts (free)
@@ -185,7 +202,9 @@ free (`collect-truth`, `collect-replies`, `event-study`); then
 `collect --estimate` and `collect`, refreshing heavy accounts before the
 timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
 `collect` -> `merge` for the new posts; `topic-label estimate|submit|status|collect`;
-`phases`, `visualize`, `export-web`; `backup`.
+`post-label estimate|submit|status|collect --job stance-topic` for new war
+candidates, then `--job stance-topic-census` for the rest (the topic flag of
+record); `phases`, `visualize`, `export-web`; `backup`.
 
 A batch `collect` (`relabel`, `topic-label`, `--batch collect`, `reply-label
 collect`) streams results through the SDK, which breaks on this host (httpx
@@ -255,10 +274,15 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   `event-study` on replies falls back to RoBERTa (`score_transformer`), and
   its critical / supportive shares stay `label_transformer` even with
   `--score`.
+  Trump's feed has its own default, `settings.TRUMP_STANCE_SCORE_COL`
+  (score_opus since 2026-11-02, from `teacher-check --source trump
+  --merge`): `phases --source trump` and export-web's trump_phases read it,
+  and a post without it is left out with a count, never imputed.
   `score_opus_distilled` (DeBERTa distilled from the Opus labels, run at its
-  256-token training length) is the reply scorer of record for replies and
-  Trump's feed; `score_opus_distilled_v0` keeps the pre-2026-09-30 reply
-  scores from an overwritten fit and never joins a series. Never overwrite
+  256-token training length) is the reply scorer of record for replies (and
+  stays on Trump's feed for `--score`); `score_opus_distilled_v0` keeps the
+  pre-2026-09-30 reply scores from an overwritten fit and never joins a
+  series. Never overwrite
   a `data/models/stance_distilled_final*` dir: the data holds its scores.
   Other columns: `score_vader`, `score_transformer`
   (RoBERTa valence, a quick look only), `score_llm` (Haiku). Anything
@@ -266,9 +290,18 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   one series; a new scorer gets its own column or rescores the whole set.
 - **Report war-post stance, not the all-post mean.** The prompt makes Opus give
   off-topic posts ("Deport them!", "Amen") a stance from the author, so a
-  tier's all-post mean moves with its war share. The about-the-war flag is the
-  Haiku label from `topic-label` (`TOPIC_SOURCE = "either"` also accepts the
-  keyword `WAR_TOPIC_PATTERN`, which alone misses about half the war posts).
+  tier's all-post mean moves with its war share. The about-the-war flag of
+  record is Opus's topic class (`TOPIC_SOURCE = "opus"`, since 2026-11-02):
+  a post is a war post when its current `post-label` stance-topic label
+  (any set: candidates, random arm, census) says `iran_war`; a post with no
+  label made from its text now counts by the either flag, with a warning
+  that counts them (the census leaves ~0), and no label file at all is an
+  error. Every `inference.war_flag` reader takes it (`phases`, `visualize`,
+  `export-web`, the Trump check's report, the x-backfill war counts); a new
+  reader must too, or fail loudly. `--topic either` (the keyword
+  `WAR_TOPIC_PATTERN` OR the Haiku label from `topic-label`), `llm` and
+  `keyword` stay for comparison: the either flag missed ~29% of the
+  Iran-war X posts and took in ~1,300 that are not.
 - **Faith-based voices need LLM stance.** VADER and RoBERTa sign-flip religious
   anti-war rhetoric ("peace", "mercy" read as positive). Never report a
   valence score for `religious_authority` or any future faith-based tier
@@ -300,7 +333,17 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   the paired v2 - v2b difference). A post's fresh draws join only once
   nearly all are labelled (`REPLY_FRESH_POOL_MIN_SHARE`): until its batch
   is collected the labelled ones are reused flipper labels. The reply
-  bootstrap CIs carry the finite-population correction.
+  bootstrap CIs carry the finite-population correction. The published
+  reply figures are the pooled first + fresh draws (9,071; the user's call,
+  2026-11-02): v2 is the label set of record, v2b reported beside it.
+- `reply-loyalty` (inference.reply_loyalty, free) is the loyalty gradient:
+  the Opus stance of low-, medium- and high-loyalty repliers and high minus
+  low per post, pooled and within posts, on reply-population's sample,
+  weights and intervals. A replier's tier takes the account's age on
+  `settings.LOYALTY_REFERENCE_DATE` (fixed, so tiers do not move with the
+  run date); event-study's loyalty table still uses the run date. A tier
+  is per reply (that reply's account snapshot): a replier whose bio
+  differs between replies is in two, and the output counts them.
 - A model's relabel columns are `score_<tag>` with a tag no other model has
   (`settings.MODEL_TAGS`: claude-opus-5 `opus`, claude-opus-5-5 `opus55`,
   claude-fable-5-1 `fable51`); `relabel merge` refuses a column
@@ -314,21 +357,24 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   the rater job refuses claude-opus-5 and Haiku, whose `score_<tag>` are
   existing series), `score_opus_stance_nohandle` / `topic_opus_nohandle`.
   They are never written into sentiment_all.parquet or the Trump feed:
-  `phases --score <col>` joins them from the label file onto the frame's
-  war candidates (keyword OR Haiku) when the post's text is the one
-  labelled (`post_labels.attach`), and `phases --topic opus` counts a
-  candidate as a war post when its stance-topic label says `iran_war`. On
-  such a column `phases` reports the war-post columns only (the all-post,
-  share and share-effect figures are NaN in its CSVs: the column holds
-  candidates only). The random unflagged posts only measure what the
-  filters miss and never join a series; the no-handle arm is a paired
-  subsample for its report only (its ALL row weights each tier by its pool
-  over its pairs). A label made from a text the post no longer has is
+  `phases --score <col>` joins them from the label file onto every post the
+  file labels when the post's text is the one labelled
+  (`post_labels.attach`), and the topic flag of record reads `topic_opus`
+  the same way. The stance-topic labels of every set join a series: the
+  candidates, the random arm (since 2026-11-02) and the census
+  (`stance-topic-census` writes stance-topic's file and columns); the
+  rater's cover the candidates only, and `phases` counts the war posts
+  without one. On such a column `phases` reports the war-post columns only
+  (the all-post, share and share-effect figures are NaN in its CSVs: the
+  column holds only the posts its job labels). The no-handle arm is a
+  paired subsample for its report only (its ALL row weights each tier by
+  its pool over its pairs). A label made from a text the post no longer has is
   never used, and the post is labelled again (the old label moves to the
   cache's `*_superseded` archive; x-backfill-text, `collect --force` and
   ts-fill-text move these caches' labels there too, as for relabel's).
   None of these goes into `STANCE_SCORE_COL` or `PLOT_SCORE_COLS`; making
-  one a definition of record is the user's call, with a decisions.md entry.
+  one a definition of record is the user's call, with a decisions.md entry
+  (`topic_opus` is the topic flag of record since 2026-11-02).
   The random posts (`post_random_draws.parquet`) and the no-handle subsample
   (`post_nohandle_draws.parquet`) are frozen by the first pilot or submit:
   never redraw.

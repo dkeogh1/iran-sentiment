@@ -15,6 +15,7 @@ Commands:
   stance          LLM stance classification on a stratified reply sample
   reply-label     Opus reply labels by job (v2b, cat-v2, v2-fresh), Batch API (paid)
   reply-fresh-sample  Draw and freeze the fresh random reply sample (free)
+  reply-loyalty   Opus stance by replier loyalty tier, high minus low (free)
   status          Report what's been collected and what's missing
   run-all         Full pipeline: collect → analyze → visualize → summary
 """
@@ -1810,14 +1811,15 @@ def _fmt_ci(r, k: str) -> str:
 
 
 def _phase_frame(source: str, score: str | None):
-    """(frame, score column, group column) for `phases`: the X accounts or
-    Trump's own Truth Social feed. A column the frame lacks that a
+    """(frame, score column, group column) for `phases`: the X accounts
+    (settings.STANCE_SCORE_COL by default) or Trump's own Truth Social feed
+    (settings.TRUMP_STANCE_SCORE_COL). A column the frame lacks that a
     post-label job writes (score_opus_stance, score_opus55, ...) is joined
-    from its label file onto the war candidates (post_labels.attach)."""
+    from its label file onto the posts it labels (post_labels.attach)."""
     if source == "trump":
         df, col, group = (
             pd.read_parquet(settings.TRUMP_FEED_STANCE),
-            score or "score_opus_distilled",
+            score or settings.TRUMP_STANCE_SCORE_COL,
             "user",
         )
     else:
@@ -1841,6 +1843,22 @@ def _phase_frame(source: str, score: str | None):
     return df, col, group
 
 
+def _war_posts_without(df, score: str, topic_source: str) -> int:
+    """Posts with text in the phases (search rows out) that --topic flags as
+    war posts but that have no `score`: a post-label column on fewer posts
+    than the flag (the rater's labels are on the either candidates, the
+    flag of record reaches the census's)."""
+    from src.analysis import inference as inf
+
+    d = df[inf.has_text(df["text"])]
+    if "user" in d:
+        d = d[~d["user"].astype(str).str.startswith("search:")]
+    d = d[inf.assign_phase(d["created_at"]).notna()]
+    if d.empty:
+        return 0
+    return int((inf.war_flag(d, topic_source) & d[score].isna()).sum())
+
+
 def _score_coverage(df, score: str) -> tuple[int, int]:
     """(posts with text in the phases, of them with a `score`), search rows out."""
     from src.analysis import inference as inf
@@ -1860,11 +1878,12 @@ def _score_coverage(df, score: str) -> tuple[int, int]:
 @click.option(
     "--topic",
     "topic_source",
-    type=click.Choice(["llm", "keyword", "either", "opus"]),
-    default=settings.TOPIC_SOURCE,
-    show_default=True,
-    help="About-the-war flag: Haiku labels (strict), keyword pattern (loose), either, "
-    "or opus (an either post whose Opus stance-topic label says iran_war)",
+    type=click.Choice(["opus", "either", "llm", "keyword"]),
+    default=lambda: settings.TOPIC_SOURCE,
+    show_default="settings.TOPIC_SOURCE, opus",
+    help="About-the-war flag: opus (the flag of record: Opus's stance-topic class says "
+    "iran_war; a post with no label counts by either), llm (Haiku labels, strict), keyword "
+    "(the pattern, loose), or either (Haiku OR the pattern)",
 )
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
 def phases(source: str, group: str, score: str | None, topic_source: str, n_boot: int):
@@ -1876,8 +1895,8 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
 
     df, score, default_group = _phase_frame(source, score)
     group = default_group or group
-    # A post-label column holds the war candidates only: every all-post and
-    # share figure would be a figure over the candidates under the same name.
+    # A post-label column holds only the posts its job labels: every all-post
+    # and share figure would be a figure over those under the same name.
     owner = column_owner(score)
     war_only = owner is not None
     # A stance-topic score is null off the Iran war, so its war posts are the
@@ -1886,12 +1905,13 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
     n_text, n_scored = _score_coverage(df, score)
     if n_scored < n_text:
         why = (
-            " (its job scores only the war candidates its Opus topic class calls iran_war: "
-            "only the war-post columns are reported)"
+            " (its job scores only the posts its Opus topic class calls iran_war: only the "
+            "war-post columns are reported)"
             if topic_scored
-            else " (its job labels war candidates only: only the war-post columns are reported)"
+            else " (its job labels the war candidates only: only the war-post columns are "
+            "reported)"
             if war_only
-            else ""
+            else " (left out, not imputed)"
         )
         click.secho(
             f"{score} covers {n_scored} of {n_text} posts with text in the phases: the "
@@ -1900,6 +1920,14 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
         )
     try:
         d = inf.prepare(df, score, group=group, topic_source=topic_source)
+        if war_only:
+            unscored = _war_posts_without(df, score, topic_source)
+            if unscored:
+                click.secho(
+                    f"{unscored} war posts by --topic {topic_source} have no {score}: they "
+                    "are left out of its war means",
+                    fg="yellow",
+                )
     except FileNotFoundError as e:  # --topic opus before any stance-topic label
         click.secho(str(e), fg="red")
         sys.exit(1)
@@ -1916,20 +1944,23 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
 
     chk = inf.topic_filter_check(d, score)
     if war_only:
-        which = " Opus classes iran_war" if topic_scored else ""
+        which = " (Opus classes them iran_war)" if topic_scored else ""
         click.echo(
-            f"\n{len(d)} war candidates{which} with {score}, topic={topic_source}: "
+            f"\n{len(d)} posts with {score}{which}, topic={topic_source}: "
             f"{chk['on_topic_share']:.0%} of them are war posts by that flag; the all-post, "
             "share and share-effect columns are left blank (NaN in the CSVs)"
         )
         if topic_scored and topic_source != "opus":
             src = " --source trump" if source == "trump" else ""
-            ref = "score_opus" if source == "trump" else settings.STANCE_SCORE_COL
+            ref = settings.STANCE_SCORE_COL
+            if source == "trump":
+                ref = settings.TRUMP_STANCE_SCORE_COL
             click.secho(
                 f"{score} is null wherever Opus's topic class is not iran_war, so these war "
                 f"posts are the {topic_source} flag AND Opus iran_war, not the {topic_source} "
                 f"flag alone: set it against `phases{src} --score {ref} --topic opus` (the "
-                "same war set once every candidate is labelled), not the default phases",
+                "same war set once every post is labelled), not a --topic "
+                f"{topic_source} phases",
                 fg="yellow",
             )
         click.echo(f"\n{'group':22s}{'phase':22s}{'n':>6s}{'war':>6s}  {'war posts only':24s}")
@@ -2025,6 +2056,72 @@ def reply_population_cmd(col: str, n_boot: int, labels_version: str, first_draws
             f"{r['post']:20s}{r['n_labelled']:>6d}{r['n_labelled_fresh']:>6d}  "
             f"{_fmt_ci(r, 'opus_mean'):24s}{_fmt_share(r, 'opus_pro'):18s}"
             f"{_fmt_share(r, 'opus_anti'):18s}{_fmt_share(r, 'opus_neutral')}"
+        )
+
+
+@main.command("reply-loyalty")
+@click.option("--col", default="score_opus_distilled", show_default=True,
+              help="The scored reply column that defines the population, as reply-population")
+@click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
+@click.option(
+    "--labels",
+    "labels_version",
+    type=click.Choice(["v1", "v2", "v2b"]),
+    default=settings.REPLY_TEACHER_LABELS_VERSION,
+    show_default=True,
+    help="Reply label set (v2 pools the fresh draws' labels)",
+)
+@click.option("--first-draws", is_flag=True, help="Only the first random draws")
+def reply_loyalty_cmd(col: str, n_boot: int, labels_version: str, first_draws: bool):
+    """Do loyal-looking repliers back the war more? The Opus stance of low-,
+    medium- and high-loyalty repliers (bio keywords plus account age on
+    settings.LOYALTY_REFERENCE_DATE) and high minus low, per tracked post,
+    pooled, and within posts (averaged by post size), design-weighted with
+    bootstrap CIs as reply-population. Free: no API. Aggregates only."""
+    from src.analysis.inference import LOYALTY_TIERS, reply_loyalty
+
+    try:
+        rows, n = reply_loyalty(
+            col=col,
+            n_boot=n_boot,
+            labels_version=labels_version,
+            fresh=False if first_draws else None,
+        )
+    except FileNotFoundError as e:
+        click.secho(str(e), fg="yellow")
+        sys.exit(1)
+    suffix = f"_{labels_version}" + ("_first_draws" if first_draws else "")
+    rows.to_csv(settings.PROCESSED_DIR / f"reply_loyalty{suffix}.csv", index=False)
+    draws = "first + fresh draws pooled" if n["pooled_fresh"] else "first draws"
+    click.echo(
+        f"Opus labels: {n['labels']} ({draws}); loyalty tiers with account age on {n['as_of']}"
+    )
+    click.echo(
+        f"{n['n_replies']} replies with text from {n['repliers']} repliers; "
+        f"{n['n_labelled']} labelled draws"
+    )
+    for t in (*LOYALTY_TIERS, "unknown"):
+        click.echo(
+            f"  {t:8s} {n[f'repliers_{t}']:>6d} repliers  {n[f'replies_{t}']:>6d} replies  "
+            f"{n[f'labelled_{t}']:>5d} labelled"
+        )
+    if n["repliers_multi_tier"]:
+        click.echo(
+            f"  (a tier is per reply, from its account snapshot: {n['repliers_multi_tier']} "
+            "repliers fall in more than one, so the tier counts add to more than the repliers)"
+        )
+    click.echo(
+        f"\n{'post':20s}{'high lab':>9s}  {'low':22s}{'medium':22s}{'high':22s}{'high - low'}"
+    )
+    for _, r in rows.iterrows():
+        if r["post"] == "within posts":
+            note = "(each post's own gap, averaged by post size)"
+            click.echo(f"\n{'within posts':31s}{note:66s}{_fmt_ci(r, 'high_minus_low')}")
+            continue
+        click.echo(
+            f"{r['post']:20s}{int(r['labelled_high']):>9d}  {_fmt_ci(r, 'mean_low'):22s}"
+            f"{_fmt_ci(r, 'mean_medium'):22s}{_fmt_ci(r, 'mean_high'):22s}"
+            f"{_fmt_ci(r, 'high_minus_low')}"
         )
 
 
@@ -2504,6 +2601,7 @@ POST_LABEL_JOBS = (
     "stance-topic",
     "rater",
     "stance-topic-nohandle",
+    "stance-topic-census",
 )  # post_labels.JOBS (a test checks)
 
 
@@ -2524,7 +2622,7 @@ def _fmt_post_estimate(est: dict) -> list[str]:
         (
             f"post-label {est['job']} ({est['prompt_version']}, {est['model']}, effort "
             f"{est['effort']}, max_tokens {est['max_tokens']}): columns "
-            f"{', '.join(est['columns'].values())}"
+            f"{', '.join(est['columns'].values())} in {est['labels_file']}"
         ),
         (
             f"posts{pv}: {est['posts']}; {est['labelled']} labelled by this prompt and model; "
@@ -2553,7 +2651,18 @@ def _fmt_post_estimate(est: dict) -> list[str]:
             f"{est['run_calls']} calls, ceiling ${est['run_usd_ceiling']:.2f}"
         )
     if est["pilot"]:
-        lines.append(_fmt_post_pilot(est["pilot"]))
+        who = f"{est['measured_by']}'s " if est.get("measured_by") else ""
+        lines.append(who + _fmt_post_pilot(est["pilot"]))
+    b = est.get("measure_batch")
+    if b:
+        lines.append(
+            f"{b['job']}'s collected batches ({b['batches']}): {b['calls']} calls, input "
+            f"{b['input_tokens_billed'] / b['calls']:.0f} tokens a call ({b['input_scale']:.3f} "
+            f"x the estimate's; cache reads {b['cache_read_tokens']:,}, writes "
+            f"{b['cache_write_tokens']:,}), output {b['output_mean']:.1f} a call (p95 "
+            f"{b['output_p95'] or float('nan'):.0f}); stop reasons {b['stop_reasons']}; "
+            f"${b['usd_batch']:.2f} billed"
+        )
     return lines
 
 
@@ -2569,7 +2678,8 @@ def _fmt_post_estimate(est: dict) -> list[str]:
     help="stance-topic: topic class + position on the Iran war, with the handle (war "
     "candidates + random unflagged posts); rater: the score_opus prompt on the second "
     "rater's model (war candidates); stance-topic-nohandle: stance-topic without the "
-    "handle on a paired subsample",
+    "handle on a paired subsample; stance-topic-census: stance-topic on every other post "
+    "with text, into its label file (no pilot: stance-topic's pilot and batch measure it)",
 )
 @click.option(
     "--model",
@@ -2623,6 +2733,14 @@ def post_label_cmd(
         raise click.UsageError("--results-file goes with collect")
     if limit and action == "pilot":
         raise click.UsageError("a pilot takes --n, not --limit")
+    if action == "pilot" and j.shares:
+        click.secho(
+            f"{j.name} takes no pilot: {j.shares}'s pilot and collected batches (the same "
+            f"prompt and model) measure its output; `post-label submit --job {j.name} --limit "
+            "N` sends a small batch first",
+            fg="red",
+        )
+        sys.exit(1)
     if action == "report":
         try:
             rep = pl.job_report(j.name, model)
@@ -2653,6 +2771,16 @@ def post_label_cmd(
             click.secho(f"a {j.check} batch is open: these calls include its requests", fg="yellow")
         else:
             _refuse_open_batch(j.check, "a pilot" if action == "pilot" else "a new batch")
+    for other in pl.sharing_checks(j):  # same label file: a post could be paid for twice
+        if sl.open_batch(other):
+            if action == "estimate":
+                click.secho(
+                    f"a {other} batch is open on the same label file: these calls include "
+                    "its requests, and a submit waits for its collect",
+                    fg="yellow",
+                )
+            else:
+                _refuse_open_batch(other, "a pilot" if action == "pilot" else "a new batch")
     if action == "pilot":
         click.echo(f"pilot: {est['todo']} direct calls ≈ ${est['usd_direct']:.2f}")
         if not _confirm_paid(est["todo"], yes):

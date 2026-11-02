@@ -1783,14 +1783,10 @@ def _state_matches(st: dict, match: dict | None) -> bool:
     return True
 
 
-def batch_run_totals(check: str, match: dict | None = None) -> dict:
-    """What the check's batches have sent so far, from its state file and
-    its archived states (one per batch id): {"batches", "calls" (requests
-    submitted), "usd_batch" (the billed spend of each collected batch, the
-    recorded ceiling of one not collected yet), "stop_reasons" and
-    "failed_by_outcome" (summed over the collected batches)}. `match` keeps
-    only the batches sent with those settings (model, prompt_version,
-    max_tokens, effort). No call."""
+def batch_states(check: str, match: dict | None = None) -> dict[str, dict]:
+    """{batch id: state} of every batch the check has sent, from its state
+    file and its archived states (the live file's record wins); `match`
+    keeps only those sent with its settings (_state_matches). No call."""
     path = batch_state_path(check)
     states: dict[str, dict] = {}
     for f in sorted(path.parent.glob(f"teacher_batch_{check}_*.json")) + [path]:
@@ -1799,6 +1795,18 @@ def batch_run_totals(check: str, match: dict | None = None) -> dict:
         st = json.loads(f.read_text())
         if st.get("check") == check and st.get("batch_id") and _state_matches(st, match):
             states[st["batch_id"]] = st  # the live file last: its record wins
+    return states
+
+
+def batch_run_totals(check: str, match: dict | None = None) -> dict:
+    """What the check's batches have sent so far, from its state file and
+    its archived states (one per batch id): {"batches", "calls" (requests
+    submitted), "usd_batch" (the billed spend of each collected batch, the
+    recorded ceiling of one not collected yet), "stop_reasons" and
+    "failed_by_outcome" (summed over the collected batches)}. `match` keeps
+    only the batches sent with those settings (model, prompt_version,
+    max_tokens, effort). No call."""
+    states = batch_states(check, match)
     usd = 0.0
     stops: dict[str, int] = {}
     failed: dict[str, int] = {}

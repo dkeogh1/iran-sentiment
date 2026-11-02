@@ -146,10 +146,10 @@ def plan(limit: int | None = None) -> dict:
     }
 
 
-def tier_table(p: dict, topic_source: str = settings.TOPIC_SOURCE) -> pd.DataFrame:
+def tier_table(p: dict, topic_source: str | None = None) -> pd.DataFrame:
     """Per tier and account: candidates, how many are war posts (inference.
-    war_flag on the cached text, so the Haiku label where there is one) and
-    how many this run reads."""
+    war_flag on the cached text: settings.TOPIC_SOURCE, read at call time,
+    when topic_source is None) and how many this run reads."""
     from src.analysis.inference import war_flag
 
     c = pd.DataFrame(p["candidates"], columns=["id", "user", "tier", "created_at", "text"])

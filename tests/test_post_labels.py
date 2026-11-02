@@ -15,6 +15,7 @@ from src.analysis import post_labels as pl
 from src.analysis import stance_local as sl
 from src.analysis import topic_label as tl
 from src.analysis.sentiment import llm_prompt
+from src.cli import main as _cli  # noqa: F401 -- imported before a fixture narrows the --n range
 from tests.test_reply_labels import env  # noqa: F401 -- the fixture
 from tests.test_teacher_checks import _ended, _stub_client
 
@@ -95,6 +96,9 @@ def posts(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "POST_NOHANDLE_PER_TIER", 1)
     monkeypatch.setattr(settings, "POST_PILOT_MAX_CALLS", 40)
     monkeypatch.setattr(settings, "POST_PILOT_MIN_BILLED", 1)  # the stub pilots are small
+    # Most tests write no stance-topic labels: the either flag (the opus flag
+    # of record needs them; the tests of it pass topic_source or set it).
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "either")
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     def write(x=None, trump=None):
@@ -498,7 +502,7 @@ def _label_file(job, model, rows):
     df.to_parquet(pl.labels_path(job, model), index=False)
 
 
-def test_attach_joins_only_candidates_and_current_text(posts):
+def test_attach_joins_every_labelled_post_on_its_current_text(posts):
     x = posts()
     ln = dict(zip(x["id"], x["text"].str.len()))
     _label_file(
@@ -536,8 +540,9 @@ def test_attach_joins_only_candidates_and_current_text(posts):
     assert out.loc["x_admin_0", "score_opus_stance"] == 0.7
     assert out.loc["x_admin_0", "topic_opus"] == "iran_war"
     assert np.isnan(out.loc["x_admin_1", "score_opus_stance"])  # stale
-    assert np.isnan(out.loc["x_admin_2", "score_opus_stance"])  # never joins a series
-    assert out["score_opus_stance"].notna().sum() == 1
+    # The random arm joins (same prompt, model and text check, 2026-11-02).
+    assert out.loc["x_admin_2", "score_opus_stance"] == 0.9
+    assert out["score_opus_stance"].notna().sum() == 2
     with pytest.raises(ValueError, match="never overwrites"):
         pl.attach(out.reset_index(), "score_opus_stance")
     with pytest.raises(LookupError, match="no post-label job"):
@@ -580,28 +585,43 @@ def test_phases_reads_post_label_columns_and_opus_topic(posts, monkeypatch, capl
         main, ["phases", "--score", "score_opus_stance", "--topic", "opus", "--n-boot", "20"]
     )
     assert run.exit_code == 0, run.output
-    assert "covers 12 of" in run.output and "calls iran_war" in run.output
+    # The random arm's label joins too (2026-11-02): 12 candidates + 1.
+    assert "covers 13 of" in run.output and "Opus classes them iran_war" in run.output
     assert (settings.PROCESSED_DIR / "phases_x_tier_score_opus_stance_opus.csv").exists()
     assert "AND Opus iran_war" not in run.output  # --topic opus: the war set is Opus's own
-    # Under the default flag the score's nulls still cut the war set to Opus's
-    # iran_war candidates: said so, with the like-for-like baseline.
-    run = CliRunner().invoke(main, ["phases", "--score", "score_opus_stance", "--n-boot", "20"])
+    # Under the either flag the score's nulls still cut the war set to Opus's
+    # iran_war posts: said so, with the like-for-like baseline.
+    run = CliRunner().invoke(
+        main, ["phases", "--score", "score_opus_stance", "--topic", "either", "--n-boot", "20"]
+    )
     assert run.exit_code == 0, run.output
-    assert "war candidates Opus classes iran_war with score_opus_stance" in run.output
+    assert "posts with score_opus_stance (Opus classes them iran_war)" in run.output
     assert "either flag AND Opus iran_war" in run.output
     assert "`phases --score score_opus --topic opus`" in run.output
-    # --topic opus on score_opus: candidates Opus calls iran_war, not the random arm's.
+    # --topic opus on score_opus: every post whose current label says iran_war,
+    # the random arm's included; an unlabelled post counts by the either flag.
     from src.analysis import inference as inf
 
     df = pd.read_parquet(settings.SENTIMENT_OUTPUT)
-    d = inf.prepare(df, "score_opus", topic_source="opus")
+    with caplog.at_level("WARNING"):
+        d = inf.prepare(df, "score_opus", topic_source="opus")
     flagged = set(d.loc[d["on_topic"], "id"])
-    assert flagged == {f"x_{t}_{i}" for t in TIERS for i in (0, 1)}
+    assert flagged == {f"x_{t}_{i}" for t in TIERS for i in (0, 1)} | {"x_admin_2"}
+    # 48 posts with text in the phases (search rows out), 25 labelled: 23 by either,
+    # none of them flagged (the unlabelled candidates: none).
+    assert "23 of 48 posts with text have no current stance-topic label" in caplog.text
+    assert "(0 of them flagged)" in caplog.text
     # A candidate with no label yet counts as the either flag does, with a warning.
+    caplog.clear()
     _label_file("stance-topic", O5, rows[1:])
     with caplog.at_level("WARNING"):
         d = inf.prepare(df, "score_opus", topic_source="opus")
-    assert "x_admin_0" in set(d.loc[d["on_topic"], "id"]) and "no stance-topic label" in caplog.text
+    assert "x_admin_0" in set(d.loc[d["on_topic"], "id"])
+    assert "24 of 48" in caplog.text and "(1 of them flagged)" in caplog.text
+    # The flag of record is the default: phases with no --topic reads it.
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "opus")
+    run = CliRunner().invoke(main, ["phases", "--n-boot", "5"])
+    assert run.exit_code == 0 and "topic=opus" in run.output, run.output
     pl.labels_path("stance-topic", O5).unlink()
     run = CliRunner().invoke(main, ["phases", "--topic", "opus", "--n-boot", "5"])
     assert run.exit_code == 1 and "no stance-topic labels" in run.output
@@ -866,7 +886,10 @@ def test_topic_collect_records_no_verdict_on_the_text_sent(posts, monkeypatch):
 # ── reply rater arm ────────────────────────────────────────────────
 
 
-def test_reply_rater_job(monkeypatch):
+def test_reply_rater_job(monkeypatch, tmp_path):
+    # Its own PROCESSED_DIR: the gate counts the batches on record there.
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    monkeypatch.delitem(settings.REPLY_OUTPUT_TOKENS, "claude-opus-5-5")  # unmeasured here
     from src.analysis import reply_labels as rlab
 
     j = rlab.job("v2-rater")
@@ -1149,8 +1172,10 @@ def test_a_label_on_a_changed_text_is_redone_and_archived(posts, monkeypatch, ca
     # --topic opus: the stale label is dropped, so the candidate counts as either does.
     df = pd.read_parquet(settings.SENTIMENT_OUTPUT)
     with caplog.at_level("WARNING"):
-        flag = pl.opus_war_flag(df, pd.Series(True, index=df.index)).set_axis(df["id"])
+        flag = pl.opus_war_flag(df).set_axis(df["id"])
     assert flag["x_admin_0"] and not flag["x_admin_4"]
+    assert not flag["x_admin_2"]  # unlabelled, flagged by neither filter
+    assert "47 of 48 posts with text have no current stance-topic label" in caplog.text
     # A report reads only the current label.
     assert pl._labelled(j, O5)["id"].tolist() == ["x_admin_4"]
     # Labelled again by a pilot: one row per id, the old one in the archive.
@@ -1408,3 +1433,189 @@ def test_nohandle_all_interval_is_the_ratios_linearized_one():
     v_a = np.var([*d_a, 0.0], ddof=1)
     v2 = sh["a"] ** 2 * v_a / 4 + sh["b"] ** 2 * np.var(d_b, ddof=1) / 3
     assert row2["diff_hi"] - row2["diff"] == pytest.approx(1.96 * np.sqrt(v2))
+
+
+# ── the census and the topic flag of record (2026-11-02) ──────────
+
+
+def test_census_job_shares_stance_topics_file_and_columns():
+    c, st = pl.JOBS["stance-topic-census"], pl.JOBS["stance-topic"]
+    assert c.label_name == "stance-topic" and c.measure_name == "stance-topic"
+    assert c.prompt_version == st.prompt_version and c.kind == st.kind and c.handle
+    assert c.columns(O5) == st.columns(O5)
+    assert c.check != st.check and c.cap_setting == "POST_CENSUS_MAX_CALLS"
+    assert c.usd_cap_setting == "POST_CENSUS_MAX_USD"
+    assert pl.column_owner("topic_opus") == (st, O5)  # never the census
+    assert pl.sharing_checks(c) == [st.check] and pl.sharing_checks(st) == [c.check]
+    assert pl.sharing_checks(pl.JOBS["rater"]) == []
+    assert c.prompt("We strike", "acct") == st.prompt("We strike", "acct")
+    # Its caps bound its own run, sized from the no-call estimate (2026-11-02).
+    # The call cap covers the whole census; the dollar cap covers its expected
+    # $24.53 but not the $56.95 no-cache ceiling: it goes in --limit parts.
+    assert settings.POST_CENSUS_MAX_CALLS >= 16_047 and settings.POST_CENSUS_MAX_USD >= 24.53
+
+
+def test_census_labels_every_other_post_and_the_flag_reads_it(posts, monkeypatch, caplog):
+    from src.analysis import inference as inf
+    from src.cli import main
+
+    posts()
+    target = {"t_1"}  # posts no filter flags that Opus calls iran_war (+ one X post below)
+    off = set()  # a keyword candidate Opus calls not_war (chosen below)
+
+    def answer(cid, text):
+        if cid in target:
+            return '{"topic": "iran_war", "score": 0.7, "reasoning": "x"}'
+        if cid in off:
+            return '{"topic": "not_war", "score": null, "reasoning": "x"}'
+        return _answer(cid, text)
+
+    client = _stub_client(answer)
+    monkeypatch.setattr(sl, "_batch_client", lambda: client)
+    run = CliRunner().invoke
+    # Before stance-topic is measured, the census is a guess: a submit would refuse.
+    est = pl.job_estimate("stance-topic-census")
+    assert not est["output_measured"] and "unmeasured" in est["problem"]
+    res = run(main, ["post-label", "pilot", "--job", "stance-topic-census", "--n", "2", "--yes"])
+    assert res.exit_code == 1 and "takes no pilot" in res.output
+    with pytest.raises(ValueError, match="takes no pilot"):
+        pl.run_pilot("stance-topic-census", n=2, caller=Caller(), concurrency=1)
+    # stance-topic: a pilot of 2 (90 output tokens each) and its batch (50 each).
+    pl.run_pilot("stance-topic", n=2, caller=Caller(), concurrency=1)
+    piloted = set(pd.read_parquet(pl.labels_path("stance-topic", O5))["id"])
+    off.add(next(f"x_media_{i}" for i in (0, 4) if f"x_media_{i}" not in piloted))
+    assert run(main, ["post-label", "submit", "--job", "stance-topic", "--yes"]).exit_code == 0
+    _ended(client)
+    assert run(main, ["post-label", "collect", "--job", "stance-topic"]).exit_code == 0
+    frame = pl.post_frame()
+    lab = pd.read_parquet(pl.labels_path("stance-topic", O5))
+    n_st = len(lab)
+    rest_x = sorted(set(frame.loc[frame["source"] == "x", "id"]) - set(lab["id"]))
+    tx = rest_x[0]
+    target.add(tx)
+    assert not frame.set_index("id").loc[tx, "candidate"]
+    # The census: every post with text not labelled yet, measured by both, no call.
+    _no_api(monkeypatch)
+    monkeypatch.setattr(sl, "_batch_client", lambda: client)
+    before = sorted(p.name for p in settings.PROCESSED_DIR.iterdir())
+    est = pl.job_estimate("stance-topic-census")
+    assert sorted(p.name for p in settings.PROCESSED_DIR.iterdir()) == before  # wrote nothing
+    assert est["todo"] == len(frame) - n_st and est["labelled"] == n_st
+    assert set(est["by_set"]) == {"rest/x", "rest/trump"}
+    assert est["by_set"]["rest/trump"]["calls"] == 3  # t_1, t_3, t_5
+    assert est["output_measured"] and est["problem"] is None
+    assert "pilot of 2 billed calls" in est["output_basis"]
+    assert "1 collected batch of" in est["output_basis"]
+    n_batch = est["measure_batch"]["calls"]
+    assert est["output_tokens_per_call"] == pytest.approx((2 * 90 + 50 * n_batch) / (2 + n_batch))
+    assert est["labels_file"] == pl.labels_path("stance-topic", O5).name
+    res = run(main, ["post-label", "estimate", "--job", "stance-topic-census"])
+    assert res.exit_code == 0 and "stance-topic's collected batches (1)" in res.output
+    assert "'rest/x'" in res.output and "no API call" in res.output
+    # Its own caps refuse before any call.
+    monkeypatch.setattr(settings, "POST_CENSUS_MAX_CALLS", est["todo"] - 1)
+    res = run(main, ["post-label", "submit", "--job", "stance-topic-census", "--yes"])
+    assert res.exit_code == 1 and "POST_CENSUS_MAX_CALLS" in res.output
+    monkeypatch.setattr(settings, "POST_CENSUS_MAX_CALLS", 17000)
+    res = run(main, ["post-label", "submit", "--job", "stance-topic-census", "--yes"])
+    assert res.exit_code == 0 and f"({est['todo']} requests)" in res.output, res.output
+    st = sl.read_batch_state("post_stance_topic_census")
+    assert st["labels_file"] == pl.labels_path("stance-topic", O5).name
+    assert st["prompt_version"] == pl.STANCE_TOPIC_PROMPT_VERSION
+    # While it is open, stance-topic sends nothing (a post could be paid twice).
+    with pytest.raises(RuntimeError, match="post_stance_topic_census"):
+        pl.run_pilot("stance-topic", n=1, caller=Caller(), concurrency=1)
+    res = run(main, ["post-label", "submit", "--job", "stance-topic", "--yes"])
+    assert res.exit_code == 1 and "post_stance_topic_census" in res.output
+    _ended(client)
+    res = run(main, ["post-label", "collect", "--job", "stance-topic-census"])
+    assert res.exit_code == 0 and "census, ALL" in res.output, res.output
+    lab = pd.read_parquet(pl.labels_path("stance-topic", O5)).set_index("id")
+    assert lab.index.is_unique and set(lab.index) == set(frame["id"])
+    assert lab.loc[tx, "post_set"] == "rest" and lab.loc[tx, "topic"] == "iran_war"
+    assert pl.job_estimate("stance-topic-census")["todo"] == 0
+    rep = json.loads(pl.report_path("stance-topic", O5).read_text())
+    by = {r["source"]: r for r in rep["census"]}
+    assert by["ALL"]["labelled"] == by["ALL"]["posts"] == len(frame)
+    assert by["x"]["iran_war_not_candidate"] == 1 and by["trump"]["iran_war_not_candidate"] == 1
+    # The flag of record: every post labelled, so no fallback; a post no filter
+    # flags is a war post when Opus says so, a candidate Opus calls off-topic is not.
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "opus")
+    df = pd.read_parquet(settings.SENTIMENT_OUTPUT)
+    with caplog.at_level("WARNING"):
+        d = inf.prepare(df, "score_opus")
+    assert "no current stance-topic label" not in caplog.text
+    on = d.set_index("id")["on_topic"]
+    assert on[tx] and not on[next(iter(off))]  # a keyword candidate Opus calls not_war
+    assert on["x_media_1"]  # "A quiet day": Haiku's candidate, Opus iran_war
+    x_war = {i for i in lab.index[lab["topic"] == "iran_war"] if i.startswith("x_")}
+    assert set(d.loc[d["on_topic"], "id"]) == x_war
+    # score_opus_stance now joins on every labelled post, the census's too.
+    out = pl.attach(df, "score_opus_stance").set_index("id")
+    assert out.loc[tx, "score_opus_stance"] == 0.7
+    assert set(out.index[out["score_opus_stance"].notna()]) == x_war
+
+
+def test_census_basis_pools_the_pilot_and_the_batch(posts, monkeypatch):
+    """The census's output, input scale and stops come from stance-topic's
+    pilot and collected batches together; a max_tokens stop in either
+    refuses its submit."""
+    posts()
+    pl.run_pilot("stance-topic", n=4, caller=Caller(out=80), concurrency=1)
+    lab = pd.read_parquet(pl.labels_path("stance-topic", O5))
+    ids = lab["id"].tolist()
+    pred = float(pl.predicted_input_tokens(lab).mean()) * 400
+    state = {
+        "check": "post_stance_topic",
+        "batch_id": "msgbatch_x",
+        "status": "collected",
+        "model": O5,
+        "max_tokens": settings.POST_LABEL_MAX_TOKENS,
+        "effort": settings.POST_LABEL_EFFORT,
+        "prompt_version": pl.STANCE_TOPIC_PROMPT_VERSION,
+        "n_submitted": 400,
+        "ids": ids,
+        "spend": {
+            "input_tokens": 10_000,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 90_000,
+            "output_tokens": 400 * 60,
+            "calls": 400,
+            "output_tokens_p95": 95.0,
+            "stop_reasons": {"end_turn": 400},
+            "usd_batch": 1.0,
+        },
+    }
+    sl._write_json(sl.batch_state_path("post_stance_topic"), state)
+    j = pl.JOBS["stance-topic-census"]
+    b = pl.output_basis(j, O5)
+    pilot = pl.pilot_summary("stance-topic", O5)
+    assert b["measured"] and b["batch"]["calls"] == 400
+    assert b["mean"]["x"] == pytest.approx((4 * 80 + 400 * 60) / 404)
+    assert b["ceiling"]["trump"] == 95.0  # the larger p95: the batch's
+    assert b["batch"]["input_scale"] == pytest.approx(100_000 / pred)
+    assert b["input_scale"] == pytest.approx(
+        (pilot["input_tokens_billed"] + 100_000) / (pilot["input_tokens_estimated"] + pred)
+    )
+    assert pl.submit_problem(j, O5, None, 10_000) is None  # measured: no pilot-size gate
+    # The stance-topic job's own basis is its pilot alone, as before.
+    assert pl.output_basis(pl.JOBS["stance-topic"], O5)["mean"]["x"] == pytest.approx(80)
+    state["spend"]["stop_reasons"] = {"end_turn": 399, "max_tokens": 1}
+    sl._write_json(sl.batch_state_path("post_stance_topic"), state)
+    why = pl.submit_problem(j, O5, None, 10)
+    assert "1 answers in" in why and "max_tokens" in why
+
+
+def test_phases_trump_defaults_to_score_opus(posts, monkeypatch):
+    from src.cli import main
+
+    posts(trump=_trump_rows().assign(score_opus=[0.5, np.nan, 0.1, -0.2, 0.3, 0.0]))
+    res = CliRunner().invoke(main, ["phases", "--source", "trump", "--n-boot", "5"])
+    assert res.exit_code == 0, res.output
+    assert "score_opus covers 5 of 6 posts" in res.output and "not imputed" in res.output
+    assert "5 posts, score_opus" in res.output
+    assert (settings.PROCESSED_DIR / "phases_trump_user_score_opus_either.csv").exists()
+    res = CliRunner().invoke(
+        main, ["phases", "--source", "trump", "--score", "score_opus_distilled", "--n-boot", "5"]
+    )
+    assert res.exit_code == 0 and "6 posts, score_opus_distilled" in res.output

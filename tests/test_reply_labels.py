@@ -794,6 +794,7 @@ def test_v2_fresh_caps_bound_the_whole_run(env, monkeypatch):
 
 
 def test_v2_fresh_goes_post_by_post_and_pilots_an_unmeasured_model(env, monkeypatch):
+    monkeypatch.delitem(settings.REPLY_OUTPUT_TOKENS, "claude-opus-5-5")  # unmeasured here
     from src.cli import main
 
     env(_replies(n_per_post=60))
@@ -1028,6 +1029,7 @@ def test_bootstrap_has_the_finite_population_correction(env):
 
 
 def test_calibrated_cost_matches_a_hand_count(monkeypatch):
+    monkeypatch.delitem(settings.REPLY_OUTPUT_TOKENS, "claude-opus-5-5")  # unmeasured here
     u = settings.REPLY_V2_BATCH_USAGE
     j = rlab.JOBS["v2-fresh"]  # the v2 prompt: no extra instructions
     rows = pd.DataFrame(
@@ -1104,6 +1106,7 @@ def test_cli_job_names_are_the_jobs():
 
 
 def test_reply_label_estimates_make_no_call_without_a_key(env, monkeypatch):
+    monkeypatch.delitem(settings.REPLY_OUTPUT_TOKENS, "claude-opus-5-5")  # unmeasured here
     from src.cli import main
 
     env(_replies(n_per_post=60))
@@ -1209,6 +1212,7 @@ def test_v2_fresh_without_post_is_only_a_pilot_sized_limit(env, monkeypatch):
 
 
 def test_v2_rater_caps_bound_the_run_and_unmeasured_batches_add_up(env, monkeypatch):
+    monkeypatch.delitem(settings.REPLY_OUTPUT_TOKENS, "claude-opus-5-5")  # unmeasured here
     env()
     client = _stub_client()
     j = rlab.JOBS["v2-rater"]

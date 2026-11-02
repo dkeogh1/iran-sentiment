@@ -12,6 +12,9 @@ Uncertainty and composition checks behind the published numbers.
                      from the Opus-labelled reply sample weighted back to the
                      population, directly and model-assisted (distilled score
                      + the sample's mean correction)
+  reply_loyalty      the same estimate by replier loyalty tier (bio keywords and
+                     account age on a fixed date): low / medium / high and high
+                     minus low, per post, pooled and within posts
   draw_fresh_sample  a second, frozen random sample of replies per post
                      (proportional across the valence buckets) whose v2
                      labels join the first draws in reply_population
@@ -70,21 +73,31 @@ def on_topic(text: pd.Series, pattern: str = settings.WAR_TOPIC_PATTERN) -> pd.S
     return text.fillna("").str.contains(pattern, case=False, regex=True)
 
 
-def war_flag(d: pd.DataFrame, source: str = settings.TOPIC_SOURCE) -> pd.Series:
-    """About-the-war flag per row. "keyword": the pattern. "llm": the Haiku
-    topic label, the pattern where there is none (link-only posts Haiku
-    would not judge). "either": flagged by one or the other -- Haiku is
-    strict (it drops the Pope's war appeals that never name Iran), the
-    pattern is loose (it misses unnamed strikes, catches "culture war").
-    "opus": an "either" post whose Opus stance-topic label says iran_war
-    (post_labels.opus_war_flag; an unlabelled candidate counts as "either"
-    does, a post neither filter flags never counts)."""
+TOPIC_SOURCES = ("opus", "either", "llm", "keyword")
+
+
+def war_flag(d: pd.DataFrame, source: str | None = None) -> pd.Series:
+    """About-the-war flag per row (source: settings.TOPIC_SOURCE, read at
+    call time, when None). "opus", the flag of record since 2026-11-02:
+    Claude Opus 5's stance-topic class says iran_war, on every post its
+    labels cover (candidates, random arm, census; post_labels.opus_war_flag
+    loads the label file once per call and checks each label was made from
+    the post's text now), a post with no current label counting as "either"
+    counts it, with a warning that counts them. "keyword": the pattern.
+    "llm": the Haiku topic label, the pattern where there is none (link-only
+    posts Haiku would not judge). "either": flagged by one or the other --
+    Haiku is strict (it drops the Pope's war appeals that never name Iran),
+    the pattern is loose (it misses unnamed strikes, catches "culture war").
+    Any other source raises."""
+    source = source or settings.TOPIC_SOURCE
+    if source not in TOPIC_SOURCES:
+        raise ValueError(f"no topic source {source!r}: one of {', '.join(TOPIC_SOURCES)}")
+    if source == "opus":
+        from src.analysis.post_labels import opus_war_flag
+        return opus_war_flag(d)
     kw = on_topic(d["text"])
     if source == "keyword":
         return kw
-    if source == "opus":
-        from src.analysis.post_labels import opus_war_flag
-        return opus_war_flag(d, war_flag(d, "either"))
     from src.analysis.topic_label import load_labels
     lab = load_labels()
     if lab is None:
@@ -96,9 +109,10 @@ def war_flag(d: pd.DataFrame, source: str = settings.TOPIC_SOURCE) -> pd.Series:
 
 
 def prepare(df: pd.DataFrame, score_col: str, group: str = "tier",
-            topic_source: str = settings.TOPIC_SOURCE, phases=PHASES) -> pd.DataFrame:
+            topic_source: str | None = None, phases=PHASES) -> pd.DataFrame:
     """Rows with text and a score inside a phase, tagged with phase / topic /
-    day. Rows without text (has_text: 1,810 of Trump's Truth Social posts,
+    day: on_topic is war_flag(topic_source), settings.TOPIC_SOURCE at call
+    time when None. Rows without text (has_text: 1,810 of Trump's Truth Social posts,
     images or videos with no caption and quotes of his own no-text posts)
     are dropped first, so they leave every share and
     mean instead of counting as off-topic posts with a constant score.
@@ -672,6 +686,147 @@ def reply_population_paired(
             row[name], row[f"{name}_lo"], row[f"{name}_hi"] = _ci(v)
         rows.append(row)
     return pd.DataFrame(rows)
+
+
+# ── Reply audience: the loyalty gradient ───────────────────────────
+
+LOYALTY_TIERS = ("low", "medium", "high")
+_LOYALTY_COUNTS = ("replies_", "repliers_", "labelled_")
+
+
+def replier_tiers(replies: pd.DataFrame, as_of=None) -> pd.DataFrame:
+    """id, replier (the account's id, else its username) and loyalty tier
+    (event_study.loyalty_tier of loyalty_score, the account's age taken on
+    `as_of`: settings.LOYALTY_REFERENCE_DATE when None) per reply. A reply
+    with no account record is "unknown"."""
+    from src.analysis.event_study import loyalty_score, loyalty_tier
+
+    as_of = as_of or settings.LOYALTY_REFERENCE_DATE
+    acct = replies["account"] if "account" in replies else pd.Series(None, index=replies.index)
+
+    def tier(a) -> str:
+        if not isinstance(a, dict):
+            return "unknown"
+        return loyalty_tier(loyalty_score({"account": a}, as_of))
+
+    def who(a):
+        return (a.get("id") or a.get("username")) if isinstance(a, dict) else None
+
+    return pd.DataFrame({"id": replies["id"].astype(str).to_numpy(),
+                         "replier": acct.map(who).astype(object).to_numpy(),
+                         "loyalty": acct.map(tier).to_numpy()})
+
+
+def reply_loyalty(
+    col: str = "score_opus_distilled",
+    model: str = settings.TEACHER_CHECK_MODEL,
+    n_boot: int = settings.BOOTSTRAP_N,
+    seed: int = settings.BOOTSTRAP_SEED,
+    labels_version: str | None = None,
+    fresh: bool | None = None,
+    as_of=None,
+) -> tuple[pd.DataFrame, dict]:
+    """The loyalty gradient of Trump's reply audience: the Opus stance of
+    low-, medium- and high-loyalty repliers (replier_tiers, the account's
+    age on settings.LOYALTY_REFERENCE_DATE) and high minus low, per tracked
+    post, over every post pooled (ALL), and as the posts' own high - low
+    gaps averaged by post size ("within posts": a gap that is only a
+    difference between the posts' audiences does not count).
+
+    Same sample, weights and intervals as reply_population: the population
+    is each post's replies with text and a `col` score, the sample its
+    labelled random draws (the label set of record and the fresh draws by
+    default), each tier's mean the design-weighted ratio of the tier's
+    labels over its draws within (post, draw-time bucket) strata (_weighted:
+    stratum shares of the population, resampled within strata with the
+    finite-population correction, one shared resample per stratum for
+    every tier), so a tier's mean is its estimated mean over the whole
+    population. The within-posts average takes each post's replicates.
+
+    Returns (rows, counts): rows per post, ALL and "within posts" with
+    mean_<tier> (and _lo, _hi), high_minus_low (and _lo, _hi), and per
+    tier the replies with text (replies_<tier>), distinct repliers
+    (repliers_<tier>) and labelled draws (labelled_<tier>); counts the same
+    in all plus replies with no account record ("unknown", left out of
+    every tier). A tier is per reply, from that reply's account snapshot,
+    so a replier whose bio or account record differs between replies can
+    be in two tiers: repliers_multi_tier counts them, and the repliers_<tier>
+    add up to more than the repliers by that much (one each for two tiers).
+    No API."""
+    from src.analysis.stance_local import REPLY_LABEL_SETS, read_reply_label_set
+
+    version = labels_version or settings.REPLY_TEACHER_LABELS_VERSION
+    labels = read_reply_label_set(model, version)
+    pools = "v2-fresh" in REPLY_LABEL_SETS.get(version, ())
+    want = settings.REPLY_POPULATION_FRESH_DRAWS if fresh is None else fresh
+    pop, draws, _ = _reply_frames(col, want and pools)
+    tiers = replier_tiers(pop, as_of)
+    pop = pop.assign(loyalty=tiers["loyalty"].to_numpy(), replier=tiers["replier"].to_numpy())
+    lab = (
+        pop.drop(columns="bucket")
+        .merge(draws[["id", "bucket", "draw_set"]], on="id")
+        .merge(labels[["id", "score_teacher"]], on="id")
+    )
+    if want and pools:
+        lab = _whole_fresh_posts(lab, pop, draws)
+    rng = np.random.default_rng(seed)
+
+    def counts(p: pd.DataFrame, smp: pd.DataFrame) -> dict:
+        out = {}
+        for t in (*LOYALTY_TIERS, "unknown"):
+            out[f"replies_{t}"] = int((p["loyalty"] == t).sum())
+            out[f"repliers_{t}"] = int(p.loc[p["loyalty"] == t, "replier"].nunique())
+            out[f"labelled_{t}"] = int(smp.loc[smp["loyalty"] == t, "id"].nunique())
+        known = p.loc[p["loyalty"].isin(LOYALTY_TIERS)]
+        out["repliers_multi_tier"] = int((known.groupby("replier")["loyalty"].nunique() > 1).sum())
+        return out
+
+    rows, gaps, sizes = [], [], []
+    for slug in list(pop["tracked_slug"].dropna().unique()) + ["ALL"]:
+        p = pop if slug == "ALL" else pop[pop["tracked_slug"] == slug]
+        smp = lab if slug == "ALL" else lab[lab["tracked_slug"] == slug]
+        y = smp["score_teacher"].to_numpy(dtype=float)
+        arrays = {}
+        for t in LOYALTY_TIERS:
+            it = (smp["loyalty"] == t).to_numpy(dtype=float)
+            arrays[f"y_{t}"], arrays[f"n_{t}"] = y * it, it
+        coverage, reps, uncovered = _weighted(p, smp, arrays, n_boot, rng)
+        if reps is None:
+            logger.warning(
+                "reply loyalty: %s has %.1f%% of its replies in buckets with no labelled "
+                "draw (%s); left NaN", slug, 100 * (1 - coverage), ", ".join(uncovered))
+            reps = {k: np.full(1 + n_boot, np.nan) for k in arrays}
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = {t: reps[f"y_{t}"] / reps[f"n_{t}"] for t in LOYALTY_TIERS}
+        gap = mean["high"] - mean["low"]
+        row = {"post": slug, "labels": version, "n_replies": len(p),
+               "n_labelled": int(smp["id"].nunique()), "coverage": coverage, **counts(p, smp)}
+        for t in LOYALTY_TIERS:
+            row[f"mean_{t}"], row[f"mean_{t}_lo"], row[f"mean_{t}_hi"] = _ci(mean[t])
+        row["high_minus_low"], row["high_minus_low_lo"], row["high_minus_low_hi"] = _ci(gap)
+        rows.append(row)
+        if slug != "ALL" and np.isfinite(gap[0]):
+            gaps.append(gap)
+            sizes.append(len(p))
+    within = {"post": "within posts", "labels": version, "n_replies": int(sum(sizes)),
+              "n_labelled": int(lab["id"].nunique())}
+    if gaps:
+        w = np.asarray(sizes, dtype=float) / sum(sizes)
+        avg = sum(wi * g for wi, g in zip(w, gaps))
+        lo_hi = _ci(avg)
+        within["high_minus_low"], within["high_minus_low_lo"], within["high_minus_low_hi"] = lo_hi
+    rows.append(within)
+    all_row = rows[-2]
+    summary = {
+        "labels": version,
+        "pooled_fresh": bool(want and pools),
+        "as_of": pd.Timestamp(as_of or settings.LOYALTY_REFERENCE_DATE).isoformat(),
+        "n_replies": len(pop),
+        "n_labelled": int(lab["id"].nunique()),
+        "repliers": int(pop["replier"].nunique()),
+        **{k: v for k, v in all_row.items() if k.startswith(_LOYALTY_COUNTS)},
+    }
+    return pd.DataFrame(rows), summary
 
 
 # ── Fresh reply draws and the reply categories ─────────────────────

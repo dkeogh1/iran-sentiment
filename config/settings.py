@@ -6,7 +6,7 @@ that scripts can stay thin and data-driven.
 """
 
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 
@@ -68,6 +68,14 @@ COLLECTION_END = (
 # absent from the frame are skipped by the plots.
 STANCE_SCORE_COL = "score_opus"
 PLOT_SCORE_COLS = ["score_vader", "score_transformer", "score_llm", "score_opus"]
+# Trump's own Truth Social feed: score_opus too since 2026-11-02 (the user's
+# call; docs/decisions.md): Opus 5 on llm_prompt, the X tiers' model and
+# prompt, written onto the feed parquet by `teacher-check --source trump
+# --merge` (3,221 of his 3,222 posts with text). `phases --source trump` and
+# export-web's trump_phases read it; a post without it is left out with a
+# count, never imputed. score_opus_distilled (the distilled DeBERTa, the
+# stance of record before) stays available through `--score`.
+TRUMP_STANCE_SCORE_COL = "score_opus"
 # Posts and replies with fewer characters, once links and a leading
 # "RT @x: " / "RT: " are removed (src/text_rules.py), carry no text to judge:
 # an image or video with no caption, or a quote of a post with no text, on
@@ -93,11 +101,18 @@ WAR_TOPIC_PATTERN = (
     r"|\bbomb|missile|\bdrones?\b|\btroops\b|israel|\bidf\b|netanyahu|hezbollah|houthi"
     r"|middle east|blockade|islamabad|regime"
 )
-# About-the-war flag for `phases` / `export-web`: "keyword" (the regex,
-# loose), "llm" (Haiku labels from `topic-label`, strict: it drops the Pope's
-# war appeals that never name Iran), or "either" (one or the other, the
-# default since 2026-09-23). Report only what holds under all three.
-TOPIC_SOURCE = "either"
+# About-the-war flag for `phases`, `visualize`, `export-web` and every other
+# inference.war_flag reader: "opus" (the flag of record since 2026-11-02, the
+# user's call: Claude Opus 5's topic class from the `post-label` stance-topic
+# job, iran_war or not, on every post its labels cover: the war candidates,
+# the random arm and the census of every other post; a post with no current
+# label falls back to "either", with a warning that counts them), "keyword"
+# (the regex, loose), "llm" (Haiku labels from `topic-label`, strict: it
+# drops the Pope's war appeals that never name Iran), or "either" (one or
+# the other, the default 2026-09-23 to 2026-11-02: it took in ~1,300 X posts
+# Opus classes off the Iran war and missed ~29% of those on it). The other
+# three stay for comparison (`phases --topic`).
+TOPIC_SOURCE = "opus"
 # `topic-label`: a post Haiku answered with no verdict (a link share) this
 # many times on the same text counts as unjudgeable and is not sent again.
 # Retries do recover some (the four batches to 2026-11-02: 30% of the posts
@@ -464,9 +479,18 @@ REPLY_FRESH_MAX_USD = 21.5
 # its model-assisted columns use every labelled random draw. A post's fresh
 # draws join only once this share of them carry a label (before its batch
 # is collected, the only labelled ones are reused flipper labels, not a
-# random part). Set False to reproduce the 1,071-draw figures.
+# random part). The pooled draws (1,071 first + 8,000 fresh = 9,071) are
+# the published basis since 2026-11-02 (the user's call, docs/decisions.md);
+# set False only to reproduce the 1,071-draw figures.
 REPLY_POPULATION_FRESH_DRAWS = True
 REPLY_FRESH_POOL_MIN_SHARE = 0.98
+# `reply-loyalty` (inference.reply_loyalty): a replier's loyalty tier
+# (event_study.loyalty_score: bio keywords plus account age) takes the
+# account's age on this date, not on the day the command runs, so a tier
+# does not move with the run date. It is config.timeline.ANALYSIS_END, the
+# end of the analysis window: every reply was collected by then. (The
+# 2026-11-02 findings check ran on datetime.now(), a day later.)
+LOYALTY_REFERENCE_DATE = datetime(2026, 11, 1, tzinfo=UTC)
 # Measured on the 2026-10-05 v2 batch (1,141 requests, all end_turn, billed
 # $2.10): input tokens per request = a per-post prefix (the instructions,
 # the parent post and the reply wrapper; least squares with one slope) +
@@ -538,18 +562,27 @@ SECOND_RATER_REPLY_MAX_USD = 5.0  # raised from 4.0 by the user, 2026-11-02 (pil
 # frame when read (`phases --score`, post_labels.attach), never merged into
 # sentiment_all.parquet or score_opus. The war candidates are the X
 # accounts' posts with text (search rows out) and Trump's feed flagged by
-# the keyword pattern OR the Haiku topic label (TOPIC_SOURCE "either").
+# inference.war_flag("either") (the keyword pattern OR the Haiku topic label;
+# fixed, not TOPIC_SOURCE, which is now "opus" and rests on these labels).
 #   stance-topic           a topic class plus the author's position on U.S.
 #                          military action against Iran (null when not about
 #                          Iran), with the author's handle, on the candidates
-#                          and POST_RANDOM_N unflagged X posts, which only
-#                          measure what the filters miss
+#                          and POST_RANDOM_N unflagged X posts (drawn to
+#                          measure what the filters miss; since 2026-11-02
+#                          their labels join every series, as the census's do)
 #   rater                  llm_prompt (the score_opus prompt) on
 #                          SECOND_RATER_MODEL, on the candidates
 #   stance-topic-nohandle  stance-topic without the handle, on a seeded paired
 #                          subsample of the X candidates: every post of the
 #                          POST_NOHANDLE_ALL_TIERS, POST_NOHANDLE_PER_TIER of
 #                          each of the POST_NOHANDLE_TIERS
+#   stance-topic-census    stance-topic's prompt, model, label file and
+#                          columns on every other post with text (X accounts
+#                          and Trump's feed) that has no current stance-topic
+#                          label, so the flag of record (TOPIC_SOURCE "opus")
+#                          rests on an Opus label on every post; its own
+#                          batches and caps, its output measured by
+#                          stance-topic's pilot and batch (no pilot of its own)
 # The random posts and the subsample are the smallest seeded hashes of their
 # ids, recorded in a manifest by the first pilot or submit (never redrawn).
 POST_LABEL_MAX_TOKENS = TEACHER_MAX_TOKENS  # thinking counts: no max_tokens stop in a pilot or batch
@@ -603,6 +636,25 @@ POST_RATER_MAX_CALLS = 5400
 POST_RATER_MAX_USD = 20.0
 POST_NOHANDLE_MAX_CALLS = 2150
 POST_NOHANDLE_MAX_USD = 9.5
+# stance-topic-census: the census is the user's call 2026-11-02, ~$22
+# approved (the stance-topic batch's billed $8.62 / 6,375 = $0.00135 a
+# call). The caps are not the user's figures: they are sized from
+# the no-call estimate (`post-label estimate --job stance-topic-census`,
+# 2026-11-02, output and input scale measured by stance-topic's 50-call pilot
+# and 6,375-call batch pooled: 67.6 output tokens a call, p95 90, input x
+# 0.941): 16,047 calls (13,271 X + 2,776 Trump), expected $24.53 at batch
+# prices with 89% of requests reading the cached instructions (the v2 reply
+# batch's share; ~$21.7 at the stance-topic batch's own 100%, ~$34 at the
+# nohandle batch's ~59%), ceiling $56.95 with no cache hits (every request
+# writes the ~677-token instructions) and output at p95. The dollar cap
+# gates a submit on spend so far plus that ceiling, so a $60 cap would let
+# one submit of the whole census through at any cache rate. The cap is held
+# near the user's ~$22 approval instead ($28, ~25% over it): the census goes
+# in --limit parts collected between them, each gated on billed spend so far
+# plus its own ceiling, so a run that bills high stops for the user's go
+# before it passes the approval. The call cap covers the 16,047 with ~6%.
+POST_CENSUS_MAX_CALLS = 17000
+POST_CENSUS_MAX_USD = 28.0
 # Input tokens of an llm_prompt request on claude-opus-5, least squares on
 # billed usage against prompt characters, and its output tokens a call:
 # X posts from the 2026-10-05 relabel batch (2,575 posts), Trump's feed from

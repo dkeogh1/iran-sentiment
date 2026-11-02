@@ -215,7 +215,7 @@ LOYALTY_BIO_KEYWORDS = (
 )
 
 
-def loyalty_score(record: dict | pd.Series) -> float:
+def loyalty_score(record: dict | pd.Series, as_of: datetime | None = None) -> float:
     """
     Return a 0–1 "how MAGA does this account look before the war?" score.
     Two additive signals:
@@ -223,6 +223,11 @@ def loyalty_score(record: dict | pd.Series) -> float:
       - Bio keywords (0–0.7): up to 0.7 from explicit self-identification.
       - Account age (0–0.3): older accounts get a mild boost, capped at
         3+ years on Truth Social.
+
+    The age is taken on `as_of` (a timezone-aware datetime); None is the
+    moment of the call, as event-study's segment_by_loyalty has always had
+    it, so its tiers move with the run date. `reply-loyalty` passes
+    settings.LOYALTY_REFERENCE_DATE.
 
     This is a *prior*, not a measurement of current stance. High-loyalty
     accounts turning critical is the strongest civil-war evidence we can
@@ -241,7 +246,8 @@ def loyalty_score(record: dict | pd.Series) -> float:
     if created:
         try:
             created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-            years = (datetime.now(timezone.utc) - created_dt).days / 365.25
+            ref = as_of if as_of is not None else datetime.now(timezone.utc)
+            years = (ref - created_dt).days / 365.25
             age_component = min(0.3, max(0.0, years / 10))  # 3yr ≈ 0.3
         except Exception:
             pass

@@ -80,6 +80,9 @@ def data(tmp_path, monkeypatch):
         ("TRUMP_FEED_STANCE", proc / "no_trump_feed.parquet"),
         ("VADER_CHECKPOINT", proc / "checkpoint_vader.parquet"),
         ("ROBERTA_CHECKPOINT", proc / "checkpoint_roberta.parquet"),
+        # No stance-topic labels here: the war counts take the either flag
+        # (no Haiku labels either, so the keyword pattern).
+        ("TOPIC_SOURCE", "either"),
     ]:
         monkeypatch.setattr(settings, name, val)
     return tmp_path

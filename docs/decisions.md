@@ -4,6 +4,99 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-02: Definitions of record after the Claude credit jobs
+
+- **Decision (the user's calls, 2026-11-02, after the findings check on the
+  seven collected label jobs):**
+  1. **The war-post flag of record is Opus's topic class**
+     (`settings.TOPIC_SOURCE = "opus"`): a post is a war post when its
+     current `post-label` stance-topic label (claude-opus-5,
+     post-stance-topic-2026-11-02) says `iran_war`, whichever set labelled
+     it: the war candidates, the 1,500-post random arm (which now joins every
+     series: same prompt, model and text check) or the census. A post with no
+     label made from its text now counts by the old either flag, with a
+     warning that counts them; no label file at all is an error, not a
+     fallback. Every `inference.war_flag` reader takes it: `phases`,
+     `visualize`, `export-web` (weekly series, accounts, the shift-share
+     decomposition, Trump's phases), the Trump check's report and the
+     `x-backfill-text` war counts; `--topic either|llm|keyword` stay for
+     comparison. `summary` and `event-study`'s broadcaster windows read no
+     topic flag (all-post means) and are unchanged. The stance of record on
+     X stays score_opus.
+  2. **A census labels every other post** so the flag rests on an Opus
+     label everywhere: `post-label estimate|submit|status|collect --job
+     stance-topic-census` sends stance-topic's prompt and model, into its
+     label file and columns, to every post with text (X accounts, search
+     rows out, and Trump's feed) without a current stance-topic label. It
+     has its own batches and caps (`POST_CENSUS_MAX_CALLS` 17,000,
+     `POST_CENSUS_MAX_USD` $28); its output is measured by stance-topic's
+     50-call pilot and 6,375-call batch pooled (67.6 tokens a call, p95 90,
+     input x 0.941), so it takes no pilot. Approved at about $22 of credit.
+     The no-call estimate: 16,047 calls (13,271 X, 2,776 Trump), $24.53
+     expected at batch prices with 89% cache reads (~$21.7 at the
+     stance-topic batch's own rate, which read the cache on every request;
+     ~$34 at the no-handle batch's ~59%), ceiling $56.95 with no cache hits.
+     The dollar cap gates a submit on billed spend so far plus that
+     submit's ceiling, so a cap at the ceiling ($60) would pass one submit
+     of the whole census at any cache rate. It is held at $28 instead, ~25%
+     over the approval, and the census goes in `--limit` parts collected
+     between them: a run that bills high is refused before it passes the
+     approval, and goes back to the user. Jobs that share a label file refuse to send while the
+     other's batch is open.
+  3. **Trump's stance of record is score_opus**
+     (`settings.TRUMP_STANCE_SCORE_COL`): Opus 5 on llm_prompt, the X tiers'
+     model and prompt, from `teacher-check --source trump --merge` (3,221 of
+     his 3,222 posts with text). `phases --source trump` and export-web's
+     trump_phases default to it; a post without it is left out with a
+     count, never imputed. score_opus_distilled stays available (`--score`).
+  4. **The reply figures are the pooled draws:** the first and fresh random
+     draws together (1,071 + 8,000 = 9,071 labelled), as
+     `REPLY_POPULATION_FRESH_DRAWS` already had it. export-web logs the
+     basis and puts each post's labelled draws (`labelled`,
+     `labelled_fresh`) in replies.json; it warns only when it exports
+     without the fresh draws.
+  5. **The praise rule stays:** v2 (praise for a deal, ceasefire or pause
+     counts against the war) is the reply label set of record; v2b, the same
+     prompt without the rule, is reported beside it (`reply-label report
+     --job v2b`, `reply-population --labels v2b --first-draws`).
+  6. **The loyalty gradient is a command:** `reply-loyalty` (free;
+     inference.reply_loyalty) gives the Opus stance of low-, medium- and
+     high-loyalty repliers and high minus low per tracked post, over every
+     post pooled, and within posts (each post's gap averaged by post size),
+     on the v2 pooled draws, design-weighted with reply-population's strata,
+     resampling and finite-population correction. A replier's tier takes the
+     account's age on `settings.LOYALTY_REFERENCE_DATE` (2026-11-01,
+     ANALYSIS_END), not the run date, so tiers no longer drift;
+     event-study's segment_by_loyalty keeps the run date. On the 2026-11-02
+     data: 60,852 repliers (27,827 low, 29,768 medium, 3,330 high; a tier
+     is per reply, from that reply's account snapshot, so the 73 repliers
+     whose bio or account differs between replies count in two tiers and
+     the tiers add to 60,925), high minus low +0.145 [+0.10, +0.20] pooled,
+     +0.125 [+0.07, +0.18] within posts, reversed on the deal post (-0.14).
+- **Why:** the either flag took in ~1,300 X posts Opus classes off the Iran
+  war (keyword-only candidates are about a third Iran-war) and missed about
+  29% [26%, 32%] of the Iran-war X posts (134 of the 1,500 random unflagged
+  posts); Opus gives off-topic posts a stance from the author, so both errors
+  move tier means. Trump's whole feed now has Opus labels from the X tiers'
+  model and prompt, and with the analysis frozen the distilled model saves
+  nothing; it also reads the collapse phase 0.07 [0.02, 0.12] too low. The
+  fresh draws are a random sample of the same design as the first ones,
+  and pooled they narrow the reply intervals (the loyalty gap's from
+  [-0.06, +0.22] on the first draws to [+0.10, +0.20]).
+- **Headline move, X by tier (data copy, before the census):** the
+  administration's strike-to-midterm war-post change goes from -0.200
+  [-0.30, -0.10] (either) to -0.131 [-0.27, -0.00] (opus), and pro-war MAGA
+  minus the administration in the midterm hold from +0.146 [+0.01, +0.27]
+  to +0.204 [+0.02, +0.39].
+- **Rejected:** keeping the either flag (its errors are measured now, and
+  they fall on the late phases where war posts are few); the Opus flag on
+  the candidates only, with the random arm kept out (it leaves the ~29%
+  missed posts out of every series; the census closes that); score_opus_distilled
+  for Trump (a second scorer in the published series, and biased by phase);
+  the first draws only for the replies (the fresh draws are the same
+  design, 7.5 times as many); dropping the praise rule (a reply that cheers
+  a deal does oppose escalation; v2b shows how much the rule moves).
+
 ## 2026-11-02: One alternate post-rater path; Trump's whole feed on score_opus; unjudgeable topic posts
 
 - **Decision:** labels on broadcaster posts beyond score_opus go through one

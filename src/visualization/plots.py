@@ -252,7 +252,8 @@ HEATMAP_MIN_CELL_POSTS = 5  # account x phase cells with fewer war posts are lef
 _INK, _MUTED, _HAIRLINE, _CONTEXT = "#1a1a1a", "#666666", "#e0e0e0", "#c8c8c8"
 _SCORERS = {"score_opus": "Claude Opus 5", "score_llm": "Claude Haiku 4.5",
             "score_opus_distilled": "distilled DeBERTa"}
-_TOPIC_SOURCES = {"either": "the Haiku topic label or the keyword pattern",
+_TOPIC_SOURCES = {"opus": "Claude Opus 5's topic class (about the Iran war)",
+                  "either": "the Haiku topic label or the keyword pattern",
                   "llm": "the Haiku topic label", "keyword": "the keyword pattern"}
 
 

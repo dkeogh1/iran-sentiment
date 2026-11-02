@@ -10,10 +10,15 @@ from the same functions as `phases` / `reply-population`, never recomputed.
                         plus RoBERTa valence on the same posts (the sign-flip chart)
   decomposition.json    each tier's strike-phase -> September change, split into
                         "talked about the war less" and "changed its war stance"
-  trump_phases.json     Trump's own Truth Social war posts by phase (distilled model)
+  trump_phases.json     Trump's own Truth Social war posts by phase
+                        (settings.TRUMP_STANCE_SCORE_COL: score_opus, Opus 5)
   replies.json          Trump's reply audience per post (replies with text):
                         Opus-corrected anti / neutral / pro shares, net stance
-                        with CI, RoBERTa valence
+                        with CI, RoBERTa valence, and the labelled random draws
+                        it rests on (first + fresh, pooled)
+
+War posts are inference.war_flag's settings.TOPIC_SOURCE (Opus's stance-topic
+class since 2026-11-02), read once per prepared frame.
 """
 
 from __future__ import annotations
@@ -99,12 +104,33 @@ def decomposition(d: pd.DataFrame, score: str) -> list[dict]:
     return rows
 
 
-def trump_phases() -> list[dict]:
-    """Trump's war posts by phase. Each tick's dates are clipped to the feed:
-    it was collected from Apr 4, so the first phase reads Apr 4, not Feb 1."""
+def trump_phases(score: str | None = None) -> list[dict]:
+    """Trump's war posts by phase on `score` (settings.TRUMP_STANCE_SCORE_COL,
+    score_opus, by default). A post with text in the phases but no score is
+    left out with a logged count, never imputed; a feed without the column
+    raises (score-posts rewrites the parquet without score_opus: `teacher-check
+    --source trump --merge` writes it back). Each tick's dates are clipped to
+    the feed: it was collected from Apr 4, so the first phase reads Apr 4,
+    not Feb 1."""
+    score = score or settings.TRUMP_STANCE_SCORE_COL
     df = pd.read_parquet(settings.TRUMP_FEED_STANCE)
-    d = inf.prepare(df, "score_opus_distilled", group="user")
-    st = inf.phase_stats(inf.bootstrap_cells(d, "score_opus_distilled"))
+    if score not in df.columns:
+        raise LookupError(
+            f"{settings.TRUMP_FEED_STANCE.name} has no {score}: `teacher-check --source trump "
+            "--merge` writes it onto the feed (score-posts rewrites the parquet without it)"
+        )
+    text = inf.has_text(df["text"]) & inf.assign_phase(df["created_at"]).notna()
+    missing = int((text & df[score].isna()).sum())
+    if missing:
+        logger.warning(
+            "export-web: %d of Trump's %d posts with text in the phases have no %s: left out "
+            "of trump_phases.json",
+            missing,
+            int(text.sum()),
+            score,
+        )
+    d = inf.prepare(df, score, group="user")
+    st = inf.phase_stats(inf.bootstrap_cells(d, score))
     days = pd.to_datetime(df["created_at"], utc=True).dt.date
     first, last = days.min(), days.max()
     ticks = {label: f"{max(start, first):%b %-d}–{min(end, last):%b %-d}\n{label}"
@@ -116,32 +142,39 @@ def trump_phases() -> list[dict]:
 
 
 def _log_reply_basis(rp: pd.DataFrame) -> None:
-    """Say how many labelled random draws replies.json rests on, and warn
-    when the fresh draws are pooled in (REPLY_POPULATION_FRESH_DRAWS): the
-    published prose (README, docs/STATUS.md, dkweb's post) cites the
-    1,071-draw figures, and which basis is published is the user's call."""
+    """Say how many labelled random draws replies.json rests on, first and
+    fresh. The pooled draws (REPLY_POPULATION_FRESH_DRAWS) are the published
+    basis since 2026-11-02 (the user's call); exporting without the fresh
+    draws (the 1,071-draw figures) is warned about."""
     per = rp[rp["post"] != "ALL"]
     if "n_labelled_fresh" not in per:
         return
     n, fresh = int(per["n_labelled"].sum()), int(per["n_labelled_fresh"].sum())
-    logger.info("export-web: replies.json rests on %d labelled random draws, %d of them fresh",
-                n, fresh)
     if fresh:
-        logger.warning(
-            "export-web: replies.json pools %d fresh draws' labels with the first draws "
-            "(%d in all; REPLY_POPULATION_FRESH_DRAWS): README, docs/STATUS.md and dkweb's "
-            "post cite the 1,071-draw figures. Update that prose before publishing, or set "
-            "REPLY_POPULATION_FRESH_DRAWS = False to export the 1,071-draw figures",
-            fresh,
+        logger.info(
+            "export-web: replies.json rests on %d labelled random draws pooled: %d first "
+            "draws + %d fresh draws (REPLY_POPULATION_FRESH_DRAWS, the published basis "
+            "since 2026-11-02)",
             n,
+            n - fresh,
+            fresh,
+        )
+    else:
+        logger.warning(
+            "export-web: replies.json rests on the %d first draws only, no fresh draws: the "
+            "published basis is the pooled first + fresh draws (REPLY_POPULATION_FRESH_DRAWS"
+            "%s)",
+            n,
+            " is False" if not settings.REPLY_POPULATION_FRESH_DRAWS else ", none labelled",
         )
 
 
 def replies() -> list[dict]:
     """Per tracked post, over its replies with text (as reply_population). A
     post whose Opus estimate is NaN (replies in a valence bucket with no
-    labelled draw) is left out with a warning, not exported as nulls. Logs
-    the labelled draws it rests on (_log_reply_basis)."""
+    labelled draw) is left out with a warning, not exported as nulls. Each
+    record carries the labelled random draws it rests on (labelled, of them
+    labelled_fresh), and the log says the same in all (_log_reply_basis)."""
     rp = inf.reply_population()
     _log_reply_basis(rp)
     val = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT,
@@ -162,7 +195,9 @@ def replies() -> list[dict]:
                      "date": p.event_date.isoformat(), "replies": int(r["n_replies"]),
                      "anti": _r(anti), "neutral": _r(1 - pro - anti), "pro": _r(pro),
                      "stance": _r(r["assisted_mean"]), "lo": _r(r["assisted_mean_lo"]),
-                     "hi": _r(r["assisted_mean_hi"]), "valence": _r(val.get(r["post"]))})
+                     "hi": _r(r["assisted_mean_hi"]), "valence": _r(val.get(r["post"])),
+                     "labelled": int(r["n_labelled"]),
+                     "labelled_fresh": int(r.get("n_labelled_fresh", 0))})
     return sorted(rows, key=lambda x: x["date"])
 
 

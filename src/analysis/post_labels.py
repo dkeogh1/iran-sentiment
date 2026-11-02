@@ -10,8 +10,15 @@ set (`post-label estimate|pilot|submit|status|collect|report --job <job>`).
                          Iran), with the author's handle where llm_prompt
                          has it; on the war candidates (X accounts and
                          Trump's feed) plus a seeded random POST_RANDOM_N
-                         unflagged X posts, which only measure what the two
-                         filters miss and never join a series
+                         unflagged X posts (what the two filters miss)
+  stance-topic-census    the same prompt, model, label file and columns on
+                         every other post with text that has no current
+                         stance-topic label (set "rest"), so the topic flag
+                         of record (settings.TOPIC_SOURCE "opus") rests on
+                         one Opus label on every post. Its own batches and
+                         caps (POST_CENSUS_*); its output is measured by
+                         stance-topic's pilot and collected batches, so it
+                         takes no pilot
   rater                  llm_prompt, the score_opus prompt word for word, on
                          a second model (settings.SECOND_RATER_MODEL), on
                          the war candidates: do the published contrasts
@@ -22,15 +29,18 @@ set (`post-label estimate|pilot|submit|status|collect|report --job <job>`).
 
 The war candidates are the posts with text flagged by the keyword pattern OR
 the Haiku topic label (inference.war_flag "either"), the X search rows left
-out. Each job has its own label file (post_labels_<job>_<model>.parquet),
-batch state (teacher_batch_post_*.json), caps (settings.POST_*_MAX_CALLS and
-_MAX_USD) and report. Its columns carry the model's tag (pricing.model_tag:
-score_opus_stance and topic_opus on claude-opus-5, score_opus55 and
-label_opus55 for the rater on claude-opus-5-5) and are joined onto a frame
-when it is read (attach: `phases --score <col>`; opus_war_flag: `phases
---topic opus`), only on the frame's war candidates and only where the post's
-text is the one labelled. Nothing here writes sentiment_all.parquet, the
-Trump feed parquet, score_opus or relabel's label file.
+out. Each job has its own label file (post_labels_<job>_<model>.parquet;
+the census writes stance-topic's), batch state (teacher_batch_post_*.json),
+caps (settings.POST_*_MAX_CALLS and _MAX_USD) and report. Its columns carry
+the model's tag (pricing.model_tag: score_opus_stance and topic_opus on
+claude-opus-5, score_opus55 and label_opus55 for the rater on
+claude-opus-5-5) and are joined onto a frame when it is read (attach:
+`phases --score <col>`), on every post the job labelled (any set) and only
+where the post's text is the one labelled. opus_war_flag is the about-the-war
+flag of record (inference.war_flag "opus"): a post is a war post when its
+current stance-topic label says iran_war. Nothing here writes
+sentiment_all.parquet, the Trump feed parquet, score_opus or relabel's label
+file.
 
 The random posts and the subsample are the smallest seeded hashes of their
 ids, recorded in a manifest by the first pilot or submit and never redrawn.
@@ -40,10 +50,13 @@ usage (settings.POST_PROMPT_TOKEN_FIT) plus a longer prompt's extra
 instruction characters, output tokens measured or guessed. `pilot` sends
 the first N posts still to do through the direct API, records what they
 were billed and how each answer stopped, and the estimate is calibrated on
-it; batches of a model and prompt whose output length is unmeasured are
-refused past a pilot's size in all, and every batch after a pilot answer
-stopped at max_tokens (thinking counts against it). Each job's caps bound
-its whole run: every pilot and batch it has made, on any model.
+it (the census: on stance-topic's pilot and collected batches pooled);
+batches of a model and prompt whose output length is unmeasured are
+refused past a pilot's size in all, and every batch after a pilot or batch
+answer stopped at max_tokens (thinking counts against it). Each job's caps
+bound its whole run: every pilot and batch it has made, on any model. Jobs
+that share a label file refuse to send while another's batch is open, so
+no post is paid for twice.
 
 A label made from a text the post no longer has does not count as done: the
 post is labelled again and the old label moves to the cache's *_superseded
@@ -130,11 +143,15 @@ def stance_topic_prompt(text: str, user: str | None = None) -> tuple[str, int]:
 class PostJob:
     """A post label job. kind "stance" answers a score and a label
     (llm_prompt's JSON); "stance_topic" a topic class and a score that is
-    null off the Iran war. posts: "candidates", "candidates+random" or
-    "subsample". Columns are score_<tag><score_suffix> (label_ alike) and,
-    for stance_topic, topic_<tag><topic_suffix>. model_setting names the
-    settings entry of its default model. in_series: attach may join its
-    columns onto a frame for `phases` (a paired subsample may not)."""
+    null off the Iran war. posts: "candidates", "candidates+random",
+    "subsample" or "census" (every post in the frame). Columns are
+    score_<tag><score_suffix> (label_ alike) and, for stance_topic,
+    topic_<tag><topic_suffix>. model_setting names the settings entry of its
+    default model. in_series: attach may join its columns onto a frame for
+    `phases` (a paired subsample may not). shares names the job whose label
+    file, columns and report this one writes into, and whose pilot and
+    collected batches measure its output (it takes no pilot of its own);
+    its batches, batch state and caps stay its own."""
 
     name: str
     check: str
@@ -149,6 +166,18 @@ class PostJob:
     model_setting: str = "TEACHER_CHECK_MODEL"
     in_series: bool = True
     output_guess: str | None = None
+    shares: str | None = None
+
+    @property
+    def label_name(self) -> str:
+        """The job whose label file (and columns and report) this one uses."""
+        return self.shares or self.name
+
+    @property
+    def measure_name(self) -> str:
+        """The job whose pilot (and, for a sharing job, collected batches)
+        measure this one's output."""
+        return self.shares or self.name
 
     def prompt(self, text: str, user: str) -> tuple[str, int]:
         """(prompt, the length of its cached prefix, 0 for none)."""
@@ -221,7 +250,36 @@ JOBS = {
         in_series=False,
         output_guess="stance-topic",
     ),
+    "stance-topic-census": PostJob(
+        "stance-topic-census",
+        "post_stance_topic_census",
+        STANCE_TOPIC_PROMPT_VERSION,
+        "stance_topic",
+        "census",
+        "POST_CENSUS_MAX_CALLS",
+        "POST_CENSUS_MAX_USD",
+        score_suffix="_stance",
+        topic_suffix="",
+        output_guess="stance-topic",
+        shares="stance-topic",
+    ),
 }
+
+
+def sharing_checks(j: PostJob) -> list[str]:
+    """The batch checks of the other jobs that write j's label file: while
+    one of them has a batch open, j sends nothing (the same post could be
+    paid for twice)."""
+    return [o.check for o in JOBS.values() if o.name != j.name and o.label_name == j.label_name]
+
+
+def refuse_sharing_open_batch(j: PostJob, doing: str) -> None:
+    """Raises (RuntimeError) while a job sharing j's label file has a batch
+    open."""
+    for check in sharing_checks(j):
+        st = sl.open_batch(check)
+        if st:
+            raise RuntimeError(sl.open_batch_message(check, st, doing))
 
 
 def job(name: str) -> PostJob:
@@ -371,13 +429,23 @@ def freeze_sets(j: PostJob, frame: pd.DataFrame | None = None) -> dict | None:
 
 
 def job_posts(j: PostJob, frame: pd.DataFrame, preview: bool = False) -> tuple[pd.DataFrame, bool]:
-    """(the job's posts with post_set "war" / "random" / "subsample",
-    whether the drawn part is a preview). A drawn set comes from its
+    """(the job's posts with post_set "war" / "random" / "subsample" /
+    "rest", whether the drawn part is a preview). A drawn set comes from its
     manifest; with `preview` and no manifest, from the draw freeze_sets
-    would record (nothing written). Without either it raises."""
+    would record (nothing written). Without either it raises. The census
+    takes every post in the frame: the candidates ("war"), the random arm's
+    recorded draws ("random", when the manifest exists; it is never drawn
+    here) and the rest ("rest")."""
     cand = frame[frame["candidate"]].assign(post_set="war")
     if j.posts == "candidates":
         return cand, False
+    if j.posts == "census":
+        man = read_manifest(random_manifest_path())
+        rnd = set(man["id"]) if man is not None else set()
+        sets = np.where(
+            frame["candidate"], "war", np.where(frame["id"].isin(rnd), "random", "rest")
+        )
+        return frame.assign(post_set=sets), False
     path, select = _manifest(j)
     man = read_manifest(path)
     if man is None and not preview:
@@ -422,7 +490,7 @@ def job_todo(
     check_model(j, model)
     frame = post_frame()
     posts, is_preview = job_posts(j, frame, preview)
-    cached = sl.read_label_cache(labels_path(j.name, model), j.prompt_version)
+    cached = sl.read_label_cache(labels_path(j.label_name, model), j.prompt_version)
     todo = posts[~posts["id"].isin(_done_ids(cached, posts))]
     todo = todo.assign(stratum=todo["post_set"] + "/" + todo["group"])
     todo = sl.stratified_order(todo, "stratum", params.get("seed", settings.TEACHER_SAMPLE_SEED))
@@ -528,6 +596,8 @@ def pilot_summary(name: str, model: str, max_tokens: int | None = None) -> dict 
             for k in {k for r in runs for k in r["failed"]}
         },
         "input_scale": sum(r["input_tokens_billed"] for r in runs) / pred if pred else 1.0,
+        "input_tokens_billed": sum(r["input_tokens_billed"] for r in runs),
+        "input_tokens_estimated": pred,
         "input_tokens_per_call": sum(r["input_tokens_billed"] for r in runs) / len(outs),
         "output_mean": float(np.mean(outs)),
         "output_p95": float(np.quantile(outs, 0.95)),
@@ -548,29 +618,144 @@ def measured_pilot(pilot: dict | None) -> bool:
     return bool(pilot) and pilot["billed"] >= settings.POST_PILOT_MIN_BILLED
 
 
+def batch_usage(j: PostJob, model: str) -> dict | None:
+    """For a job that shares another's labels (j.shares): that job's
+    collected batches on `model` sent with the current request (prompt
+    version, max_tokens, effort), pooled: billed calls, billed input tokens
+    (plain, cache writes and reads), the estimate's input for the same
+    posts (predicted_input_tokens on the label rows the batches wrote, per
+    call, times the billed calls), output tokens, the largest batch p95 a
+    call and the stop reasons. None for a job that measures itself (its
+    pilot alone, as before) or with no such batch. No call."""
+    if j.shares is None:
+        return None
+    m = JOBS[j.measure_name]
+    states = [
+        st
+        for st in sl.batch_states(m.check, _current_request(m, model)).values()
+        if (st.get("spend") or {}).get("calls")
+    ]
+    if not states:
+        return None
+    calls = sum(int(st["spend"]["calls"]) for st in states)
+    billed_in = sum(
+        int(st["spend"].get(k) or 0)
+        for st in states
+        for k in ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
+    )
+    ids = {str(i) for st in states for i in st.get("ids", [])}
+    lab = sl.read_label_cache(labels_path(m.label_name, model), m.prompt_version)
+    need = ["source", "base_chars", "prompt_chars"]
+    rows = lab[lab["id"].isin(ids)] if set(need) <= set(lab.columns) else lab.iloc[0:0]
+    rows = rows.dropna(subset=need) if len(rows) else rows
+    pred = float(predicted_input_tokens(rows).mean()) * calls if len(rows) else float("nan")
+    stops: dict[str, int] = {}
+    for st in states:
+        for k, v in (st["spend"].get("stop_reasons") or {}).items():
+            stops[k] = stops.get(k, 0) + int(v)
+    p95 = [
+        float(st["spend"]["output_tokens_p95"])
+        for st in states
+        if st["spend"].get("output_tokens_p95")
+    ]
+    return {
+        "job": m.name,
+        "batches": len(states),
+        "calls": calls,
+        "input_tokens_billed": billed_in,
+        "input_tokens_estimated": pred,
+        "input_scale": billed_in / pred if pred and np.isfinite(pred) else float("nan"),
+        "cache_read_tokens": sum(
+            int(st["spend"].get("cache_read_input_tokens") or 0) for st in states
+        ),
+        "cache_write_tokens": sum(
+            int(st["spend"].get("cache_creation_input_tokens") or 0) for st in states
+        ),
+        "output_tokens": sum(int(st["spend"].get("output_tokens") or 0) for st in states),
+        "output_mean": sum(int(st["spend"].get("output_tokens") or 0) for st in states) / calls,
+        "output_p95": max(p95) if p95 else None,
+        "stop_reasons": stops,
+        "usd_batch": sum(float(st["spend"].get("usd_batch") or 0.0) for st in states),
+        "rows_matched": len(rows),
+    }
+
+
+def _shared_basis(j: PostJob, model: str, pilot: dict | None) -> dict | None:
+    """A sharing job's output basis: its measuring job's pilot and collected
+    batches (batch_usage) pooled, measured once they hold
+    POST_PILOT_MIN_BILLED billed answers. Output a call: the pooled mean;
+    the ceiling's: the largest p95 (pilot or batch), at least the mean.
+    Input scale: billed over the estimate's input, pooled. None when
+    neither has a billed answer."""
+    usage = batch_usage(j, model)
+    parts = [x for x in (pilot, usage) if x]
+    billed = (pilot["billed"] if pilot else 0) + (usage["calls"] if usage else 0)
+    if not parts or not billed:
+        return None
+    out = (pilot["output_mean"] * pilot["billed"] if pilot else 0.0) + (
+        usage["output_tokens"] if usage else 0.0
+    )
+    mean = out / billed
+    ceil = max([mean, *(x["output_p95"] for x in parts if x.get("output_p95") is not None)])
+    est = sum(
+        x["input_tokens_estimated"] for x in parts if np.isfinite(x["input_tokens_estimated"])
+    )
+    got = sum(x["input_tokens_billed"] for x in parts if np.isfinite(x["input_tokens_estimated"]))
+    stops: dict[str, int] = {}
+    for x in parts:
+        for k, v in (x.get("stop_reasons") or {}).items():
+            stops[k] = stops.get(k, 0) + int(v)
+    what = []
+    if pilot:
+        what.append(f"{j.measure_name}'s pilot of {pilot['billed']} billed calls")
+    if usage:
+        what.append(
+            f"its {usage['batches']} collected batch{'es' if usage['batches'] > 1 else ''} of "
+            f"{usage['calls']} calls"
+        )
+    return {
+        "measured": billed >= settings.POST_PILOT_MIN_BILLED,
+        "basis": " and ".join(what),
+        "pilot": pilot,
+        "batch": usage,
+        "stops": stops,
+        "input_scale": got / est if est else 1.0,
+        "mean": {s: mean for s in ("x", "trump")},
+        "ceiling": {s: ceil for s in ("x", "trump")},
+    }
+
+
 def output_basis(j: PostJob, model: str) -> dict:
     """Where the estimate's output (and input scale) comes from: the job's
     pilot on this model at the current max_tokens, once it has
-    POST_PILOT_MIN_BILLED billed answers (measured_pilot); else, for
+    POST_PILOT_MIN_BILLED billed answers (measured_pilot); for a job that
+    shares another's labels (the census), that job's pilot and collected
+    batches of the current request pooled (_shared_basis); else, for
     llm_prompt on the fit's model, the fit's measured output (per source);
     else a guess (POST_OUTPUT_TOKENS_GUESS, or the fit's output for
     llm_prompt), twice it for a model other than the fit's. measured says
     whether a full batch may go without a pilot. "pilot" is the pilot
     summary even when it is too small to measure (its stop reasons still
-    count)."""
+    count); "stops" the stop reasons of every measured answer (pilot, and
+    for a sharing job its measuring job's batches)."""
     fit = settings.POST_PROMPT_TOKEN_FIT
-    pilot = pilot_summary(j.name, model)
+    pilot = pilot_summary(j.measure_name, model)
+    shared = _shared_basis(j, model, pilot) if j.shares is not None else None
+    if shared and shared["measured"]:
+        return shared
     small = (
         f" (a pilot of {pilot['billed']} billed calls is under the "
         f"{settings.POST_PILOT_MIN_BILLED} a measurement needs)"
         if pilot and not measured_pilot(pilot)
         else ""
     )
+    stops = dict(shared["stops"] if shared else (pilot or {}).get("stop_reasons") or {})
     if measured_pilot(pilot):
         return {
             "measured": True,
             "basis": f"pilot of {pilot['billed']} billed calls",
             "pilot": pilot,
+            "stops": stops,
             "input_scale": pilot["input_scale"],
             "mean": {s: pilot["output_mean"] for s in ("x", "trump")},
             "ceiling": {s: max(pilot["output_p95"], pilot["output_mean"]) for s in ("x", "trump")},
@@ -586,6 +771,7 @@ def output_basis(j: PostJob, model: str) -> dict:
             "measured": True,
             "basis": f"llm_prompt usage fit on {fit['model']}{small}",
             "pilot": pilot,
+            "stops": stops,
             "input_scale": 1.0,
             "mean": base,
             "ceiling": p95,
@@ -597,6 +783,7 @@ def output_basis(j: PostJob, model: str) -> dict:
         "basis": ("a guess" + (small or " (no pilot)"))
         + (" at twice the fit model's" if mult > 1 else ""),
         "pilot": pilot,
+        "stops": stops,
         "input_scale": 1.0,
         "mean": guess,
         "ceiling": {s: 2 * v for s, v in guess.items()},
@@ -613,7 +800,7 @@ def cache_basis(j: PostJob, model: str) -> dict:
     chars = j.prefix_chars()
     if not chars:
         return {"prefix_tokens": 0.0, "engaged": False, "hit_share": 0.0, "basis": "no prefix"}
-    pilot = pilot_summary(j.name, model)
+    pilot = pilot_summary(j.measure_name, model)
     hit = settings.REPLY_V2_BATCH_USAGE["cache_hit_share"]
     if measured_pilot(pilot):
         if pilot["cache_engaged"]:
@@ -685,6 +872,7 @@ def calibrated_cost(j: PostJob, rows: pd.DataFrame, model: str) -> dict:
         "output_basis": basis["basis"],
         "input_scale": basis["input_scale"],
         "pilot": basis["pilot"],
+        "measure_batch": basis.get("batch"),
         "cache": cache,
         "by_set": by_set,
         "usd_batch": usd(billed, out) * disc,
@@ -744,10 +932,11 @@ def submit_problem(j: PostJob, model: str, limit: int | None, n: int) -> str | N
     except (KeyError, ValueError) as e:
         return str(e)
     basis = output_basis(j, model)
-    stops = ((basis.get("pilot") or {}).get("stop_reasons") or {}).get("max_tokens", 0)
+    stops = (basis.get("stops") or {}).get("max_tokens", 0)
     if stops:
+        where = f"answers in {basis['basis']}" if j.shares else "pilot answers"
         return (
-            f"{stops} pilot answers stopped at max_tokens ({settings.POST_LABEL_MAX_TOKENS}; "
+            f"{stops} {where} stopped at max_tokens ({settings.POST_LABEL_MAX_TOKENS}; "
             "thinking counts against it): raise POST_LABEL_MAX_TOKENS and pilot again"
         )
     cut = sl.batch_run_totals(j.check, _current_request(j, model))["stop_reasons"]
@@ -789,6 +978,8 @@ def job_estimate(
         "model": model,
         "prompt_version": j.prompt_version,
         "columns": j.columns(model),
+        "labels_file": labels_path(j.label_name, model).name,
+        "measured_by": j.measure_name if j.shares else None,
         "posts": {f"{a}/{b}": int(v) for (a, b), v in sets.items()},
         "preview": preview,
         "labelled": int(posts["id"].isin(_done_ids(cached, posts)).sum()),
@@ -923,11 +1114,18 @@ def run_pilot(
     j = job(name)
     model = model or j.default_model()
     check_model(j, model)
+    if j.shares is not None:
+        raise ValueError(
+            f"{j.name} takes no pilot: {j.shares}'s pilot and collected batches (the same "
+            f"prompt and model) measure its output; `post-label submit --job {j.name} --limit "
+            "N` sends a small batch first"
+        )
     if n > settings.POST_PILOT_MAX_CALLS:
         raise ValueError(
             f"a pilot of {n} calls is over POST_PILOT_MAX_CALLS ({settings.POST_PILOT_MAX_CALLS})"
         )
     sl.refuse_open_batch(j.check, "a pilot")
+    refuse_sharing_open_batch(j, "a pilot")
     freeze_sets(j)
     _, cached, todo, _ = job_todo(j, model, {"seed": seed}, limit=n)
     if todo.empty:
@@ -956,7 +1154,7 @@ def run_pilot(
     stops: dict[str, int] = {}
     failed: dict[str, int] = {}
     spend = sl.Spend(model)
-    out = labels_path(j.name, model)
+    out = labels_path(j.label_name, model)
     run_at = pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
     run_id = uuid.uuid4().hex  # this run's entry in the pilot record
 
@@ -1043,6 +1241,7 @@ def _check(j: PostJob) -> sl.BatchCheck:
         return cached, rows
 
     def guard(model, params, limit, rows):
+        refuse_sharing_open_batch(j, "a new batch")
         why = submit_problem(j, model, limit, len(rows))
         if why:
             raise RuntimeError(why)
@@ -1050,7 +1249,7 @@ def _check(j: PostJob) -> sl.BatchCheck:
     return sl.BatchCheck(
         j.prompt_version,
         j.cap_setting,
-        lambda m: labels_path(j.name, m),
+        lambda m: labels_path(j.label_name, m),
         todo,
         lambda m, p: job_report(j.name, m),
         parse=_batch_parse(j),
@@ -1073,8 +1272,11 @@ def column_owner(col: str) -> tuple[PostJob, str] | None:
     """(job, model) whose labels are column `col`, or None. Pairs the job
     refuses (check_model: the rater on claude-opus-5 or Haiku, whose
     score_<tag> is relabel's series) own nothing: score_opus is never a
-    post-label column."""
+    post-label column. A job that writes another's label file (the census)
+    owns nothing: its columns are that job's."""
     for j in JOBS.values():
+        if j.shares is not None:
+            continue
         for m in settings.MODEL_PRICES:
             try:
                 check_model(j, m)
@@ -1086,7 +1288,7 @@ def column_owner(col: str) -> tuple[PostJob, str] | None:
 
 
 def _labels_by_id(j: PostJob, model: str) -> pd.DataFrame:
-    path = labels_path(j.name, model)
+    path = labels_path(j.label_name, model)
     if not path.exists():
         raise LookupError(
             f"no {j.name} labels from {model} yet ({path.name}): `post-label submit --job "
@@ -1096,27 +1298,28 @@ def _labels_by_id(j: PostJob, model: str) -> pd.DataFrame:
     return lab.drop_duplicates("id").set_index("id")
 
 
-def _candidates(df: pd.DataFrame) -> pd.Series:
-    """The frame's war candidates (text, not a search row, keyword OR Haiku)."""
-    from src.analysis.inference import war_flag
-    from src.text_rules import has_text
-
-    ok = df["text"].map(has_text).astype(bool)
-    if "user" in df:
-        ok &= ~df["user"].astype(str).str.startswith("search:")
-    out = pd.Series(False, index=df.index)
-    if ok.any():
-        out[ok] = war_flag(df[ok], "either").to_numpy(dtype=bool)
-    return out
+def _current(d: pd.DataFrame, lab: pd.DataFrame) -> pd.Series:
+    """Per row of d: whether `lab` (by id) holds a label made from the text
+    the row has now (its input_chars equal the text's length; a label with
+    no input_chars counts as current, as stance_local.current_label_ids
+    has it)."""
+    ids = d["id"].astype(str)
+    held = ids.isin(lab.index)
+    if "input_chars" not in lab:
+        return held
+    had = ids.map(lab["input_chars"]).astype(float)
+    now = d["text"].fillna("").astype(str).str.len().astype(float)
+    return held & (had.isna() | (had == now))
 
 
 def attach(df: pd.DataFrame, col: str) -> pd.DataFrame:
     """df plus the columns of the job and model that `col` names
-    (column_owner), from its label file, on the frame's war candidates only
-    and only where the post's text has the length it was labelled with.
-    Raises LookupError for a column no job writes, a job whose posts are no
-    series (the paired subsample) or labels not made yet; ValueError when
-    the frame has one of the columns already (never overwritten)."""
+    (column_owner), from its label file, on every post the file labels (any
+    set: candidates, the random arm, the census) and only where the post's
+    text has the length it was labelled with. Raises LookupError for a
+    column no job writes, a job whose posts are no series (the paired
+    subsample) or labels not made yet; ValueError when the frame has one of
+    the columns already (never overwritten)."""
     owner = column_owner(col)
     if owner is None:
         raise LookupError(f"{col} is not in the frame and no post-label job writes it")
@@ -1133,48 +1336,70 @@ def attach(df: pd.DataFrame, col: str) -> pd.DataFrame:
     lab = _labels_by_id(j, model)
     d = df.copy()
     ids = d["id"].astype(str)
-    chars = ids.map(lab["input_chars"])
-    held = ids.isin(lab.index) & _candidates(d)
-    stale = held & (chars != d["text"].fillna("").str.len())
+    keep = _current(d, lab)
+    stale = ids.isin(lab.index) & ~keep
     if stale.any():
         logger.warning(
             "%s: %d labels were made from another text of the post (since changed): left out",
             col,
             int(stale.sum()),
         )
-    keep = held & ~stale
     src = {"score": "score_teacher", "label": "label_teacher", "topic": "topic"}
     for kind, c in cols.items():
         d[c] = ids.map(lab[src[kind]]).where(keep)
     return d
 
 
-def opus_war_flag(d: pd.DataFrame, either: pd.Series, model: str | None = None) -> pd.Series:
-    """`phases --topic opus`: a war candidate (`either`) whose stance-topic
-    label says iran_war. A candidate with no label yet (or one made from
-    another text) counts as the either flag does, with a warning; a post no
-    filter flags is never a war post, whatever the random arm says of posts
-    like it."""
+def opus_topic(d: pd.DataFrame, model: str | None = None) -> pd.Series:
+    """Per row of d: Opus's topic class from the stance-topic label file
+    (every set: candidates, random arm, census), NaN where the row has no
+    label made from its text now. Raises FileNotFoundError with no label
+    file: the flag of record cannot be applied at all."""
     j = JOBS["stance-topic"]
     model = model or j.default_model()
     try:
         lab = _labels_by_id(j, model)
     except LookupError as e:
-        raise FileNotFoundError(str(e)) from None
-    ids = d["id"].astype(str)
-    topic = ids.map(lab["topic"])
-    stale = topic.notna() & (ids.map(lab["input_chars"]) != d["text"].fillna("").str.len())
-    topic = topic.mask(stale)
-    either = pd.Series(np.asarray(either, dtype=bool), index=d.index)
-    missing = either & topic.isna()
+        raise FileNotFoundError(
+            f"{e}; the census (`post-label submit --job stance-topic-census`) labels every "
+            "other post. The topic flag of record (settings.TOPIC_SOURCE opus) needs them: "
+            "`--topic either` reads the posts without"
+        ) from None
+    return d["id"].astype(str).map(lab["topic"]).where(_current(d, lab))
+
+
+def opus_war_flag(d: pd.DataFrame, model: str | None = None) -> pd.Series:
+    """The about-the-war flag of record (inference.war_flag "opus",
+    settings.TOPIC_SOURCE): a post is a war post when its current
+    stance-topic label says iran_war (opus_topic). A post with no current
+    label (not labelled yet, or labelled from another text) counts as the
+    "either" flag counts it, with a warning that counts the posts with text
+    (X search rows, which no job labels, and rows with no text, which leave
+    every denominator, fall back silently)."""
+    from src.analysis.inference import war_flag
+    from src.text_rules import has_text
+
+    model = model or JOBS["stance-topic"].default_model()
+    topic = opus_topic(d, model)
+    flag = topic.eq(IRAN_WAR)
+    missing = topic.isna()
     if missing.any():
-        logger.warning(
-            "--topic opus: %d war candidates have no stance-topic label from %s: counted as "
-            "the either flag counts them",
-            int(missing.sum()),
-            model,
-        )
-    return (either & (topic.eq(IRAN_WAR) | topic.isna())).astype(bool)
+        flag[missing] = war_flag(d[missing], "either").to_numpy(dtype=bool)
+        posts = d["text"].map(has_text).astype(bool)  # what a job labels: text, no search row
+        if "user" in d:
+            posts &= ~d["user"].astype(str).str.startswith("search:")
+        counted = missing & posts
+        if counted.any():
+            logger.warning(
+                "topic opus: %d of %d posts with text have no current stance-topic label from "
+                "%s: counted by the either flag (%d of them flagged). The census labels them: "
+                "`post-label estimate --job stance-topic-census`",
+                int(counted.sum()),
+                int(posts.sum()),
+                model,
+                int(flag[counted].sum()),
+            )
+    return flag.astype(bool)
 
 
 # ── Reports (aggregates only) ──────────────────────────────────────
@@ -1263,7 +1488,8 @@ def _labelled(j: PostJob, model: str, frame: pd.DataFrame | None = None) -> pd.D
     a text since changed (or a post gone) are dropped."""
     from src.analysis.inference import assign_phase
 
-    lab = sl.read_label_cache(labels_path(j.name, model), j.prompt_version).drop_duplicates("id")
+    lab = sl.read_label_cache(labels_path(j.label_name, model), j.prompt_version)
+    lab = lab.drop_duplicates("id")
     if lab.empty:  # no labels yet (no pilot, or no batch collected)
         cols = ["source", "group", "created_at", "candidate", "phase"]
         return pd.DataFrame(columns=list(dict.fromkeys([*lab.columns, *cols])))
@@ -1299,6 +1525,32 @@ def _coverage(j: PostJob, model: str, frame: pd.DataFrame, d: pd.DataFrame) -> d
     }
 
 
+def _census_coverage(frame: pd.DataFrame, d: pd.DataFrame) -> list[dict]:
+    """Per source and ALL: the posts with text in the frame (post_frame),
+    how many carry a current stance-topic label (any set) and of those how
+    many Opus classes iran_war; the posts the flag of record (TOPIC_SOURCE
+    "opus") still reads by the either flag are the unlabelled ones."""
+    from src.analysis.inference import assign_phase
+
+    lab = d.drop_duplicates("id").set_index("id")["topic"]
+    rows = []
+    for src, g in [*frame.groupby("source"), ("ALL", frame)]:
+        topic = g["id"].map(lab)
+        inph = assign_phase(g["created_at"]).notna()
+        rows.append(
+            {
+                "source": str(src),
+                "posts": len(g),
+                "in_phases": int(inph.sum()),
+                "labelled": int(topic.notna().sum()),
+                "unlabelled_in_phases": int((topic.isna() & inph).sum()),
+                "iran_war": int(topic.eq(IRAN_WAR).sum()),
+                "iran_war_not_candidate": int((topic.eq(IRAN_WAR) & ~g["candidate"]).sum()),
+            }
+        )
+    return rows
+
+
 def _stance_topic_report(j: PostJob, model: str) -> dict:
     """Topic classes by set and group; on the candidates, the topic against
     which filter flagged the post; the random arm's Iran-war share (what
@@ -1313,6 +1565,7 @@ def _stance_topic_report(j: PostJob, model: str) -> dict:
     if d.empty:
         return rep
     rep["coverage"] = _coverage(j, model, frame, d)
+    rep["census"] = _census_coverage(frame, d)
     rep["topics"] = {
         f"{s}/{g}": {str(t): int(c) for t, c in grp["topic"].value_counts().items()}
         for (s, g), grp in d.groupby(["post_set", "group"])
@@ -1504,9 +1757,12 @@ def _nohandle_report(j: PostJob, model: str) -> dict:
 
 
 def job_report(name: str, model: str | None = None) -> dict:
-    """The job's report, written to post_labels_report_<job>_<model>.json."""
+    """The job's report, written to post_labels_report_<job>_<model>.json.
+    A job that writes another's label file (the census) gets that job's
+    report, over every label in the file, written under that job's name."""
     j = job(name)
     model = model or j.default_model()
+    j = JOBS[j.label_name]
     rep = {
         "stance-topic": _stance_topic_report,
         "rater": _rater_report,
@@ -1535,6 +1791,13 @@ def summary_lines(rep: dict) -> list[str]:
             f"  coverage: {c['labelled']} of {c['posts']} posts labelled; {c['batches']} batches; "
             f"failed by outcome {c['failed_by_outcome'] or 0}; stop reasons "
             f"{c['stop_reasons'] or 'n/a'}"
+        )
+    for r in rep.get("census", []):
+        lines.append(
+            f"  census, {r['source']:6s} {r['labelled']:>6d} of {r['posts']} posts with text "
+            f"labelled ({r['unlabelled_in_phases']} in the phases without one: the flag of "
+            f"record reads those by the either flag); iran_war {r['iran_war']}, of them "
+            f"{r['iran_war_not_candidate']} no filter flags"
         )
     for r in rep.get("filters_vs_topic", []):
         lines.append(
