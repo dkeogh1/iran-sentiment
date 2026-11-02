@@ -1,14 +1,21 @@
 # Status
 
-As of 2026-10-07. Update the date and the lines that change after each refresh.
+As of 2026-11-02. Update the date and the lines that change after each refresh.
 
 ## Data
 
 Two layers at different depths. Nothing runs on a schedule.
 
-- **X broadcasters**: 17,837 posts from 17 accounts plus 1,768 keyword-search
-  rows (19,605 in all), Feb 1 -> Sep 18, 2026, though nine accounts start
-  later (below). The May 10 -> Sep 18 refresh read 5,631 tweets for ~$28,
+- **X broadcasters**: 19,786 posts from 17 accounts plus 1,768 keyword-search
+  rows, Feb 1 -> Nov 1, 2026, though nine accounts start later (below). The
+  Sep 18 -> Nov 1 pull (2026-11-01, the 35 h window sampler, `docs/decisions.md`)
+  read 1,949 posts plus 17 user lookups (~$9.92): 11 accounts sampled at 5
+  per window, 6 take-all; per-window rows in
+  `data/raw/x_sampling/windows_2026-11-01.jsonl`. It lost @marklevinshow's
+  first 11 h and @VP's first 2 days to the timeline horizon (VP replies a
+  lot, and replies count toward the 3,200). Its 1,903 new posts with text
+  have RoBERTa scores; `relabel` was submitted 2026-11-02 and topic labels
+  follow (*Open*). Before it: the May 10 -> Sep 18 refresh read 5,631 tweets for ~$28,
   with the five heaviest accounts (Loomer, Levin, Jones, Ravid, StateDept)
   sampled at 450. 490 posts have no text (nearly all bare links) and leave
   every series (`src/text_rules.py`). `score_opus` on all 19,115 posts with
@@ -31,18 +38,35 @@ Two layers at different depths. Nothing runs on a schedule.
 - **Late starts**: only 8 accounts begin on Feb 1-2. @VaticanNews starts
   Feb 21, then @POTUS Feb 27, @Pontifex Mar 3, @StateDept Mar 4, @VP Mar 17,
   @BarakRavid Mar 30, @RealAlexJones Apr 1, @LauraLoomer Apr 6 and
-  @WhiteHouse Apr 9; their raw caches start there too (cause unverified).
+  @WhiteHouse Apr 9; their raw caches start there too. X's counts
+  (`x-counts`, 2026-11-02) show the posts exist (e.g. @WhiteHouse 877 in
+  February, @LauraLoomer 1,544, @RealAlexJones 1,187), and full-archive
+  search works on this app, so they can be filled (*Open*).
   The strike phase, the base of every phase contrast, lacks them before
   those dates, and the late-March jump in the blog's weekly anti-war MAGA
   line is @RealAlexJones entering the data.
-- **Holes from the ~3,200-tweet timeline horizon** (unrecoverable): from
+- **Holes from the ~3,200-tweet timeline horizon** (fillable from the
+  archive since the 2026-11-02 probe; `x-counts --report` has X's count per
+  month beside what is held): from
   May 10 up to Jun 20 for @marklevinshow, Jul 4 for @LauraLoomer, Jul 17 for
   @WhiteHouse and Jul 31 for @RealAlexJones. The other 13 accounts have no
   horizon hole, but the Sep 18 run returned no posts for whole 14-day
   slices of @POTUS (May 4-18), @VP (May 22-Jun 5), @RealCandaceO
   (Jul 18-Aug 1) and @TuckerCarlson (Aug 1-15), and, after her horizon
-  hole, for two slices of @LauraLoomer (Jul 19-Aug 16): silence or a
-  failed fetch, unverified.
+  hole, for two slices of @LauraLoomer (Jul 19-Aug 16). X's counts say
+  most were not silence (e.g. @POTUS 171 posts in May against 56 held).
+- **@WhiteHouse: the timeline endpoint fails for it.** X counts 756-1,102
+  posts a month (25-35 a day), but the Nov 1 pull got posts in only 5 of
+  its 31 windows (25 posts); the cache holds 0-37% of X's count in every
+  month. The Nov 1 pull also got 0 where X counts posts in 15 other windows
+  (@POTUS 4, @VP 3, @BarakRavid 3, @marklevinshow 2, @StateDept 2,
+  @RealCandaceO 1), and 4 instead of 5 in a few more (X returns short
+  pages). Full-archive search returned every cached post on the probe days,
+  so it is the route for @WhiteHouse and the empty windows.
+- **Full-archive search works** (`x-archive probe`, 2026-11-02): for two
+  closed @PeteHegseth days it returned every cached post, retweets
+  included, plus 1 not cached; counts/all includes retweets and matches the
+  cache (270 vs 268 posts, Feb 1 - Mar 2).
 - **Capped slices**: a capped 14-day slice keeps its newest posts, a median
   of 0.7-2.9 days of the 14 for the five sampled accounts and @WhiteHouse.
   Capped on Sep 18, besides the five: @POTUS, @PeteHegseth, @VP and
@@ -50,9 +74,10 @@ Two layers at different depths. Nothing runs on a schedule.
   @Pontifex 1.
 - **Keyword searches**: frozen at May 12, with a gap from about Apr 20 to
   May 5 (7-day recent search only).
-- **Truth Social**: Trump's feed current through 2026-09-30 (anonymous
-  refresh), 4,360 posts from Apr 4 (contiguous), 2,550 of them with text,
-  scored with `score_opus_distilled`. Checked against Opus on the feed
+- **Truth Social**: Trump's feed current through 2026-10-31 (anonymous
+  refresh, 1,016 new posts), 5,376 posts from Apr 4 (contiguous), 3,222 of
+  them with text, scored with `score_opus_distilled` (the 672 new posts with
+  text on dkbl1's CPU, 2026-11-02, thread-capped). Checked against Opus on the feed
   (`teacher-check --source trump`, 400 random posts with text; 2026-10-05,
   refilled 2026-10-06): 0.74 Pearson and 1.8% sign flips on all 400; on
   the 63 war posts among them 0.62 and 11%, the model's mean 0.03 below
@@ -98,9 +123,10 @@ Two layers at different depths. Nothing runs on a schedule.
   posts with text, his war share rises 0.8-2.1 points a phase
   (33.1/13.8/12.2/12.9% -> 35.2/15.2/13.0/14.0%). X tables and reply
   estimates are unchanged.
-- **Timeline**: 84 events through 2026-09-15 in `config/timeline.py`;
-  `ANALYSIS_END` = 2026-09-18. Sources for the Sep 2026 additions are in
-  `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`.
+- **Timeline**: 138 events through 2026-10-31 in `config/timeline.py`;
+  `ANALYSIS_END` = 2026-09-18 and `PHASES` end there until the phase-5
+  decision (*Open*). Sources: `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`
+  and `docs/timeline_candidates_2026-09-16_to_2026-10-31.json`.
 - **Spend, 2026-10-04/05** (approved runs): X ≈ $14.90 for the backfill
   reads (2,980 returned at $0.005). Anthropic, measured from the batch
   results' usage: `relabel` $5.04 (2,575 posts; the 3-post resubmit under a
@@ -113,6 +139,13 @@ Two layers at different depths. Nothing runs on a schedule.
   `topic-label` $0.023 (126 posts, 35 labelled), the Trump-feed check's
   refill $0.035 (20 posts); about $0.06. No X reads; `ts-fill-text` is
   free.
+- **Spend, 2026-11-01/02** (approved runs): X ≈ $11.90: the pull $9.92
+  (1,949 posts + 17 lookups), the archive probe $0.10 (16 posts + 2 counts
+  pages), `x-counts` $1.89 (189 counts/all pages, 17 accounts + 4 terms,
+  Feb 1 -> Nov 2, hourly). Anthropic: `relabel` of 1,903 posts submitted
+  (estimate $3.08), drawn from the plan's API credit. Anthropic API spend
+  from 2026-11 is covered by a monthly promotional credit on the user's
+  Claude plan (expires each cycle, no rollover).
 
 ## Where things are
 
@@ -121,15 +154,10 @@ Two layers at different depths. Nothing runs on a schedule.
   Models, including
   `data/models/reply_ctx_lopo/`, are in `data/models/` on dkbl1 and in the
   S3 backup.
-- S3 backup first synced 2026-09-25: raw 72 MB and processed 50 MB in
-  Standard, models 8.8 GB in Glacier IR, verified object for object. Last
-  synced 2026-09-30 after the reply refresh and the GPU pull, as far as
-  these notes record: run `backup` for the 2026-10-04/05 runs (the
-  rewritten X raw cache, the relabels, the `*_superseded` archives, the v2
-  and Trump-feed labels, the downloaded batch results),
-  `data/processed/reply_sample_draws.parquet`, and the 2026-10-06 ones
-  (the rewritten Trump raw cache, `ts_fill_text_journal.jsonl`, the new
-  `*_superseded` rows, the refilled check and the new topic labels).
+- S3 backup first synced 2026-09-25 (models 8.8 GB in Glacier IR, the
+  rest Standard). Last synced 2026-11-02 after the X pull, the probe and
+  the counts; run `backup` again after the relabel, topic labels and the
+  Trump scoring land.
 - Host backup (restic, homelab-infra): the SanDisk drive is unplugged and no
   host backup has run since 2026-04-23. The host backup script no longer
   needs Timeshift, so the drive can go back in; until then S3 is the only
@@ -159,26 +187,17 @@ Two layers at different depths. Nothing runs on a schedule.
   after `ts-fill-text`: only `trump_phases.json` changed (Trump's posts
   with text and war shares; the war-post counts and means did not), and
   the post's Trump prose and caption follow it.
-- **Next X pull: Oct 25-30, 2026, no later than Nov 1.** On Sep 18
-  @RealAlexJones's ~3,200-tweet timeline reached back only ~7 weeks, so his
-  gap starts opening around Nov 1-6 (@WhiteHouse ~Nov 20, @LauraLoomer early
-  Dec). One pull then covers ~6 weeks for about what a pull now would cost,
-  because the heavy accounts hit their caps either way. Requests now ask for
-  `note_tweet`, so long posts arrive whole. Before it: reconsider the
-  per-slice cap split. It gives each 14-day slice an equal share and keeps
-  that slice's newest posts, so for the heavy accounts it keeps only about
-  the newest 1-3 days of each fortnight (*Capped slices*, above), and unused
-  cap from quiet slices never reaches busy ones; holding the May-Sep density
-  repeats that. Then size `ACCOUNT_CAP_OVERRIDES` for the gap so the
-  accounts that hit slice caps (the five heavy ones plus @POTUS,
-  @PeteHegseth, @VP, @VaticanNews, @RealCandaceO and @WhiteHouse) keep the
-  May-Sep density of ~45-50 per two-week slice, `collect --estimate`, ask
-  the user for the X credit balance, run with `--no-search`. Rough cost at
-  that density: ~2,100 reads (~$10) plus ~$4 for the Opus relabel and topic
-  labels; at today's 450/500 caps it would be ~$20-23 plus ~$7. After it:
-  add timeline events from Sep 16 on, move `ANALYSIS_END` and extend
-  `PHASES` (which end Sep 18, so Trump's feed after that is collected but
-  outside every phase).
+- **Next (2026-11-02):** collect and merge the `relabel` batch, run
+  `topic-label estimate|submit` once the Trump scoring finishes, then
+  `backup`. Size an archive fill (`search/all`, same 35 h window grid) from
+  `x-counts --report`: @WhiteHouse Feb 1 -> Nov 1, the horizon holes, the
+  late starts and the empty windows; it needs an `x-archive fill` command.
+  Decide phase 5 ("midterm hold", Sep 19 -> Nov 1) before `phases`,
+  `visualize`, `export-web`. The Claude credit jobs (Trump's feed on Opus,
+  reply prompt and sample checks, a stance-and-topic prompt, Opus 5.5 as a
+  second rater) are being built; each is a paid run to estimate and ask.
+  The timeline route stays the forward pull; the horizon matters less now
+  that the archive works.
 - **The Anthropic SDK's batch results stream breaks on this host** (httpx
   `ReadError`, "Bad file descriptor"): all four collects on 2026-10-04/05
   (`topic-label`, `relabel`, both teacher checks) failed on it. Workaround:
