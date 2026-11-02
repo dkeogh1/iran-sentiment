@@ -740,6 +740,579 @@ EVENTS: list[Event] = [
         "support the Iran war, 58% oppose.",
         category="media", impact="dovish", importance=3,
     ),
+    # ── Midterm hold (Sep 16 -> Oct 31; verified 2026-10-31, sources in
+    # docs/timeline_candidates_2026-09-16_to_2026-10-31.json) ─────────────
+    Event(
+        date=date(2026, 9, 17),
+        label="Trump to Axios: 'big decision' on resuming strikes",
+        description="In a Thursday Axios interview Trump said he faces a 'big decision' on "
+        "whether to resume large-scale attacks on Iran and 'annihilate' its "
+        "government ('Anything could happen with me'). He gave no timeline, said "
+        "Tehran was still in contact and wanted a deal, and said he would first hear "
+        "from the GCC states on the UNGA sidelines the next Tuesday. Axios also "
+        "reported that Trump and Hegseth had told the military to hold Middle East "
+        "force levels through year-end.",
+        category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 9, 17),
+        label="IRGC claims strike on tanker Trend",
+        description="The IRGC Navy said it hit the Togo-flagged tanker Trend, which caught fire "
+        "and stopped, during an 'illegal passage' of Hormuz after being 'provoked and "
+        "deceived' by the US military, and warned that such ships face destruction. "
+        "UKMTO reported an attack on the Omani side of the strait without naming the "
+        "vessel, and there is no independent confirmation. Date corrected from the "
+        "candidate's Sep 18: Reuters carried the claim on Sep 17.",
+        category="military", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 9, 17),
+        label="Fox poll: 60% say war wrong, 71% see no plan",
+        description="Fox News poll (1,211 registered voters, Sep 11-14), published Sep 17: 60% "
+        "say military action against Iran was the wrong decision and 37% right. 71% "
+        "say the administration lacks a plan to end the war, including 43% of "
+        "Republicans. Trump's overall job approval is 39/61.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 9, 22),
+        label="Trump at UN: deal or 'annihilate' Iran",
+        description="Trump's UNGA address (Tue Sep 22), about 40 minutes and largely a defence of "
+        "the war, framed a choice between a deal that lets Iran rebuild and quickly "
+        "'annihilating' the Islamic Republic. He said a deal could come after the "
+        "midterms and that the two sides would 'get it done, one way or the other'. "
+        "Iran's delegation walked out. The meeting with GCC leaders on the sidelines "
+        "had been set for the same day (Axios); no outcome was confirmed.",
+        category="political", impact="hawkish", importance=4,
+    ),
+    Event(
+        date=date(2026, 9, 22),
+        label="Araghchi meets Witkoff, Kushner at the UN",
+        description="Hours after Trump's speech, FM Araghchi met envoys Witkoff and Kushner on "
+        "the UNGA sidelines, at the US side's request according to Iranian state TV. "
+        "Trump said the session lasted about three hours, called it productive, and "
+        "said another round would come 'in the very near future'. Accounts differ on "
+        "whether the two sides met directly: the NYT, citing Iranian officials, said "
+        "Pakistan and Qatar mediated. Iran set out its terms for reopening Hormuz: "
+        "lift the naval blockade, release frozen assets, and end the war on all "
+        "'resistance' fronts.",
+        category="diplomatic", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 9, 23),
+        label="Pezeshkian at UN: Iran 'ready for dialogue', won't bow",
+        description="A day after Trump's 'annihilate' threat, President Pezeshkian gave a rare "
+        "wartime UNGA speech. He said Iranians were the 'victims of terrorism' and "
+        "held up images of the dead, including Ali Khamenei and the Minab "
+        "schoolchildren. He told 'Mr. Trump and those who seek to bully us' that Iran "
+        "is ready for negotiations 'without accepting the language of force'. The "
+        "lone US delegate in the hall walked out.",
+        category="diplomatic", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 9, 23),
+        label="Bulk carrier Cape Dao hit; Indian sailor killed",
+        description="The Antigua and Barbuda-flagged bulk carrier Cape Dao was hit about 2.5 nm "
+        "off Oman's Musandam; UKMTO said by an unknown projectile, while one outlet "
+        "reported torpedoes. One Indian crew member was killed and Oman's navy "
+        "rescued the rest; the ship was left burning and adrift. No one claimed the "
+        "attack.",
+        category="military", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 9, 24),
+        label="Senate rejects war powers 49-50; Tillis flips",
+        description="The Senate voted 49-50 (Thu Sep 24) against the House-passed resolution to "
+        "remove US forces from hostilities with Iran. Paul, Collins and Murkowski "
+        "voted yes, joined for the first time by Tillis (after 12 'no' votes), who "
+        "cited 60 days since the administration told Congress in July that 'military "
+        "action' had restarted. Fetterman voted no and Alsobrooks did not vote.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 9, 24),
+        label="Carlson on NPR: Trump said 'we'll all die anyway'",
+        description="In an NPR Newsmakers interview with Steve Inskeep, Tucker Carlson said that "
+        "when he warned Trump in the Oval Office days before the war, Trump answered "
+        "'we'll all die anyway' (also quoted as 'we all die anyway'). Carlson called "
+        "it nihilism and blamed Israel for pushing the war. The quote rests on "
+        "Carlson's account alone. The White House did not address it and sent a Trump "
+        "post calling Carlson and others 'stupid people'.",
+        category="media", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 9, 24),
+        label="Cohen files 26 impeachment articles, one on Iran",
+        description="Retiring Rep. Steve Cohen (D-Tenn.) introduced 26 articles of impeachment "
+        "against Trump. Article II charges abuse of power for waging war on Iran "
+        "without congressional approval. Cohen acknowledged the resolution will not "
+        "advance.",
+        category="political", impact="dovish", importance=1,
+    ),
+    Event(
+        date=date(2026, 9, 26),
+        label="Trump rejects Iran's seven-day plan",
+        description="Leaving the White House on Saturday Sep 26, Trump said Iran's seven-day plan "
+        "'would not be acceptable' and that Iran wants the strait opened 'because "
+        "they're losing so badly'. Under the plan the US would lift the blockade, "
+        "waive oil sanctions, release about $12bn in frozen assets and observe a "
+        "wider ceasefire including Lebanon and Yemen; Iran would then reopen Hormuz "
+        "and begin final-deal talks. He also shared a map labelling the waterway the "
+        "'Trump Strait'. A report cited by Fox said he told aides he expects strikes "
+        "to resume after the midterms.",
+        category="diplomatic", impact="hawkish", importance=4,
+    ),
+    Event(
+        date=date(2026, 9, 29),
+        label="IRGC open letter urges US voters to reject Trump",
+        description="IRGC spokesman Hossein Mohebbi released an open letter 'to the American "
+        "people' (25 or 26 pages; reports differ) urging voters to reject Trump's "
+        "policies at the midterms. He said it was aimed at voters, not the "
+        "administration. On Sep 30 a State Department spokesperson called it 'nothing "
+        "more than a smokescreen'.",
+        category="media", impact="polarizing", importance=2,
+    ),
+    Event(
+        date=date(2026, 9, 30),
+        label="Qatar relays messages; Iran gets US reply on 7-day plan",
+        description="Qatari foreign ministry spokesman Majed Al-Ansari said on Tuesday Sep 29 "
+        "that Doha is 'currently relaying messages between the American and Iranian "
+        "sides'. One candidate dated this Oct 6, but Anadolu published it Sep 29. On "
+        "Sep 30 Reuters reported that Araghchi had received Washington's feedback on "
+        "Iran's seven-day trust-building plan from Qatari mediators in Doha. The "
+        "dispute is over the order of steps, not the plan's content, despite Trump's "
+        "public rejection.",
+        category="diplomatic", impact="dovish", importance=2,
+    ),
+    Event(
+        date=date(2026, 9, 30),
+        label="Trump video: Iran 'crazy', 'maybe you blow them up'",
+        description="In a Truth Social video post (9:36 PM EDT Sep 30) Trump calls Iran's leaders "
+        "'crazy' and irrational and asks how a deal can be made with them. 'Maybe you "
+        "blow them up': the choice is to 'blow them up, make a deal', and it will end "
+        "'very soon one way or the other'.",
+        category="political", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 1),
+        label="~9,000 troops, third carrier head to Mideast",
+        description="AP reported on Thursday Oct 1 that about 9,000 US personnel were heading to "
+        "the Middle East with the USS Theodore Roosevelt carrier group, which left "
+        "San Diego, and the USS Makin Island amphibious ready group, as Trump weighs "
+        "new strikes. He called a post-election bombing ramp-up 'possible'. A US "
+        "official said the Roosevelt is due by the end of November, not October as "
+        "one candidate had it.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 1),
+        label="AP-NORC: 69% say war not worth fighting",
+        description="AP-NORC poll of more than 2,000 adults, released Thursday Oct 1: 69% say the "
+        "Iran war has not been worth fighting, up five points since July, and 71% "
+        "disapprove of Trump's handling of Iran.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 4),
+        label="Tanker attacks hit a weekly record",
+        description="CNBC (Oct 9) counted 11 tankers attacked in Hormuz in the week ending Oct 4, "
+        "the most strikes on commercial ships since the war began. Another analysis "
+        "counted a dozen ships attacked Oct 5-11, also a weekly high. Reuters, citing "
+        "a think tank, called October the worst month yet for ship attacks. The date "
+        "marks the end of the record week, not a single incident.",
+        category="military", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 5),
+        label="Trump: 'Let them take out Los Angeles'",
+        description="At a midterm rally in Grand Island, Nebraska, Trump said of Iran: 'Let them "
+        "take out Los Angeles. Let them take out San Diego. This is a very small "
+        "price to pay.' Newsom called him 'deranged and dangerous', LA Mayor Bass "
+        "objected, and the backlash crossed party lines. The White House said the "
+        "remark was taken out of context and that he meant a nuclear Iran could "
+        "strike US cities.",
+        category="political", impact="polarizing", importance=4,
+    ),
+    Event(
+        date=date(2026, 10, 6),
+        label="Vance: Iran must cut enrichment to end war",
+        description="In a Reuters interview given Monday Oct 5 in Fairbanks and published Oct 6, "
+        "Vance said any deal needs a 'meaningful' reduction in Iran's enrichment "
+        "capacity, not assurances: 'If you don't want a nuclear weapon, then why do "
+        "you need 60% enriched fuel?' He said it is unclear how much authority Iran's "
+        "negotiators hold. A senior Iranian official replied that recognition of "
+        "Iran's right to enrich is Tehran's red line.",
+        category="diplomatic", impact="dovish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 8),
+        label="Trump: no attack on Iran before midterms",
+        description="On Thursday Oct 8 Trump posted on Truth Social that 'we will not be "
+        "attacking Iran at any time prior to the Midterm Elections' (Nov 3), citing "
+        "'productive discussions' with Iran. The blockade and sanctions stay. It "
+        "followed an Atlantic report that the White House had asked the Pentagon for "
+        "strike options usable before the vote, and an oil-price surge. It frames the "
+        "rest of the window as a pre-midterm hold: there have been no US strikes on "
+        "Iran since early September.",
+        category="political", impact="dovish", importance=5,
+    ),
+    Event(
+        date=date(2026, 10, 8),
+        label="Treasury sanctions 17 shadow-fleet tankers",
+        description="Under Operation Economic Outcast, Treasury sanctioned 17 vessels in Iran's "
+        "shadow fleet on Oct 8, saying this neutralizes most of what remains of the "
+        "network. A same-day State Department action added entities, individuals and "
+        "five vessels; Iran International put the total at 22 vessels.",
+        category="diplomatic", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 8),
+        label="Pew: 65% disapprove; GOP approval slips to 63%",
+        description="Pew survey (Sep 28-Oct 4, 5,062 adults), published Oct 8: 65% disapprove of "
+        "Trump's handling of the Iran military action and 33% approve. 34% say the "
+        "decision to use force was right, down 4 points from March. Republican "
+        "approval is 63%, down from 69% in March. 47% expect the war to last more "
+        "than another year.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 8),
+        label="Carlson calls the war 'treason'; WH: 'whiny turncoat'",
+        description="Tucker Carlson told Arabian Business that Trump's 'voluntary, ruinous' war "
+        "with Iran amounts to treason against the US. A White House spokesman did not "
+        "dispute his account, restated that Iran will never get a nuclear weapon, and "
+        "called Carlson 'a whiny turncoat who dramatically overestimates his "
+        "influence and relevance'. The search reported the article as dated Oct 8; "
+        "the page itself was not opened.",
+        category="media", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 10),
+        label="Houthi missile hits Riyadh airport, 12-13 killed",
+        description="A Houthi missile struck King Khalid International Airport in Riyadh on "
+        "Saturday Oct 10. Saudi authorities first said 12 were killed and 309 "
+        "injured; later reports say at least 13, the deadliest attack on Saudi soil "
+        "in over a decade. An Oct 8 strike had killed three, and Riyadh was targeted "
+        "again on Oct 11-12. The US later ordered non-emergency staff out of Saudi "
+        "Arabia.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 13),
+        label="Container ship GFS Pride sunk near Hormuz",
+        description="The Singapore-flagged container ship GFS Pride was hit on Oct 13, caught "
+        "fire and had sunk by Oct 14. Singapore's MPA said all 21 crew were "
+        "evacuated; CNN reported one death, unconfirmed elsewhere. Singapore cited an "
+        "unidentified projectile; the IRGC said the ship hit a naval mine. Its sister "
+        "ship GFS Giselle was damaged. The IMO counts it as the third commercial ship "
+        "sunk in the war. CNN tied the surge in attacks to the midterms.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 14),
+        label="Trump: 'should have probably left their leaders'",
+        description="At a Wednesday-night rally in Kalispell, Montana, for House candidate Aaron "
+        "Flint, Trump said Iran has no navy or air force and its leaders are gone, "
+        "then added: 'I should have probably left their leaders because I don't know "
+        "who the hell we're negotiating with.' He said Iran's main ask in talks is "
+        "'Will you please allow us to live?'. The Iran International post decodes to "
+        "Oct 15 03:36 UTC, which is Oct 14 evening US time.",
+        category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 15),
+        label="Trump rules out nukes; MOAB strike plans reported",
+        description="To Newsmax (Oct 15) Trump said 'I wouldn't use nuclear, we don't have to', "
+        "called the 'mother of all bombs' conventional, and on ground troops for a "
+        "Pickaxe Mountain strike said 'No, I don't see that.' The same day CNN "
+        "reported new US strike plans, including possible MOAB use, against Iranian "
+        "energy and nuclear sites. Bloomberg said he declined to rule out using the "
+        "MOAB after the midterms.",
+        category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 16),
+        label="Polls: war a top midterm issue; FP approval lows",
+        description="Fox News poll (Oct 9-12, 1,202 RV): 75% extremely or very concerned about "
+        "the war, six in ten oppose military action, and Trump's foreign policy "
+        "approval is 35%, Fox's lowest of his second term. AP-NORC (Oct 8-12): 62% of "
+        "registered voters call the war one of the most important issues, and foreign "
+        "policy approval is 33%, the low across eight polls this term. The date is "
+        "the Responsible Statecraft roundup (Oct 16); the two polls' release days "
+        "were not seen.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 17),
+        label="Pakistan suspends trade at Iran border crossings",
+        description="Pakistan's Commerce Ministry withdrew its Oct 3 order allowing trade through "
+        "the Taftan and Gabd-Rimdan crossings, citing security and smuggling. "
+        "Commercial traffic stopped from Oct 17 while passenger traffic continued. "
+        "Iran said the border stayed open, and trade only partly resumed by Oct 26.",
+        category="diplomatic", impact="hawkish", importance=1,
+    ),
+    Event(
+        date=date(2026, 10, 17),
+        label="Vance: 'in some ways we have won decisively'",
+        description="At a CBS News 'Things That Matter' town hall in Michigan that aired Saturday "
+        "evening (Oct 17), Tony Dokoupil asked why the US hasn't decisively won. "
+        "Vance said 'in some ways we have won decisively' but 'the enemy gets a vote "
+        "here'. A man whose wife died in an Iranian strike pressed him on "
+        "'fundamental failures'.",
+        category="political", impact="polarizing", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 19),
+        label="Hegseth meets Netanyahu in unannounced visit",
+        description="Hegseth met Netanyahu and Defense Minister Katz at Ovda Air Base during an "
+        "unannounced visit, first reported by Axios, eight days before Israel's "
+        "election. Iran dominated the talks, which came amid US-Israeli discussion of "
+        "resuming major combat. Hegseth said only that he visited troops and spoke "
+        "with the prime minister. Some outlets date it Oct 20, but Hegseth confirmed "
+        "Oct 19.",
+        category="diplomatic", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 20),
+        label="Rezaei: no uranium leaves Iran; Netanyahu vows regime's end",
+        description="SNSC secretary Mohsen Rezaei told visiting Pakistani army chief Asim Munir "
+        "that Iran will not hand over enriched uranium under any deal and will not "
+        "negotiate until the US builds trust; Speaker Ghalibaf echoed him. The same "
+        "day Netanyahu said at Kiryat Shmona, 'We must complete the elimination of "
+        "the Iranian regime — that is the primary objective.'",
+        category="diplomatic", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 20),
+        label="Rubio: Iran using 'Nazi U-boat tactics'",
+        description="In an interview with India's News18 during a Mumbai visit, Rubio said Iran "
+        "is targeting merchant ships and trying to kill civilian sailors with Nazi "
+        "U-boat-style tactics. He said a deal is hard with 'radical Shia clerics' in "
+        "charge and promised 'extraordinary economic pressure', while claiming Hormuz "
+        "traffic was back to 80-100% of prewar levels.",
+        category="diplomatic", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 21),
+        label="Reports: Trump blocked Israeli strike; post-midterm plan",
+        description="Two reports on Oct 21. The FT, citing three sources, said Israel had "
+        "prepared a multi-day campaign against Iranian nuclear, power and regime "
+        "targets, aimed at around the weekend of Oct 10, which Trump opposed before "
+        "the midterms; Netanyahu called the report 'biased and untrue'. The NYT said "
+        "the US and Israel had drawn up plans for a 'short but intensive' operation "
+        "after Nov 3, possibly including Pickaxe Mountain. The White House did not "
+        "comment on plans 'that may or may not exist'.",
+        category="military", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 21),
+        label="MTG: attack Iran and El-Sayed wins Michigan",
+        description="Marjorie Taylor Greene posted on X (Oct 21, 21:40 UTC, from @FmrRepMTG): 'If "
+        "Trump is dumb enough to attack Iran again before the midterms, @AbdulElSayed "
+        "will win the senate seat in Michigan. It's a stupid senseless war and "
+        "America hates it.' She said it was not an endorsement.",
+        category="media", impact="dovish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 22),
+        label="Trump: 'not negotiating'; calls ship-hit claims fake",
+        description="Asked by NewsNation (reported late Oct 21 to Oct 22, US time) whether he was "
+        "done negotiating, Trump said talks were happening 'a little bit', then 'I "
+        "think we're not negotiating', that something will happen 'fairly soon', and "
+        "that 'most people seem to think it's after the election.' On Oct 22 the IRGC "
+        "claimed it had set four ship-to-ship tankers on fire in the northern Gulf "
+        "and that three more had hit mines west of Hormuz. CENTCOM called the mine "
+        "claims false. In a Truth Social post at 11:40 AM EDT, Trump accused Iran of "
+        "making up attacks and mines to drive up oil before the midterms.",
+        category="political", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 23),
+        label="Trump: 'We may do another little Epic Fury'",
+        description="At a Friday rally in Fort Myers, Florida, Trump said 'We may do another "
+        "little Epic Fury, or they'll agree.' The same day, envoy Tom Barrack told "
+        "Mario Nawfal that a US strike could come as soon as that weekend; Trump said "
+        "he knew nothing about it.",
+        category="political", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 23),
+        label="DNI memo: Iranian plots in 'advanced stages'",
+        description="An unclassified memo from DNI Jay Clayton to Rubio, dated Oct 23 and first "
+        "reported by Axios (dated Oct 24), warns that Iranian lethal plots against US "
+        "officials have reached 'advanced stages'. State ordered non-emergency staff "
+        "out of the Riyadh embassy and its consulates; reports date that order Oct "
+        "21-23, and the public announcement cited Houthi threats.",
+        category="diplomatic", impact="hawkish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 23),
+        label="European, Mideast FMs meet in Istanbul on Hormuz",
+        description="Turkey's FM Fidan hosted the foreign ministers of Britain, France, Germany "
+        "and Italy with Saudi Arabia, Pakistan and Egypt, the first meeting in this "
+        "format. They urged restraint and diplomacy, the reopening of Hormuz and an "
+        "end to Houthi attacks on Saudi Arabia. Fidan said military intervention is "
+        "not a solution.",
+        category="diplomatic", impact="dovish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 23),
+        label="Alex Jones: Trump wrong on Iran, vote GOP anyway",
+        description="Alex Jones on X (status decodes to Oct 23 17:24 UTC): 'Yes Trump Was Wrong "
+        "To Start The Iran War, But We Must Live In Reality And We Cannot Flush Our "
+        "Country Down The Toilet And Let The Democrat Socialists Win. Vote For Your "
+        "Local Republicans!' He called for impeachment in July, so this marks an "
+        "anti-war MAGA account closing ranks before the vote. @RealAlexJones is a "
+        "tracked account.",
+        category="media", impact="polarizing", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 25),
+        label="Trump: 'deal or finish them off?'; Qatari draft",
+        description="On Fox's Sunday Morning Futures (Oct 25) Trump asked 'Do I make a deal with "
+        "them or do I finish them off?' ('Getting to be decision time') and said "
+        "there would be no strike that day. Per an official briefed on the talks "
+        "(Reuters, reported Oct 28), Qatari mediators gave Iran a new draft that day: "
+        "daily reciprocal steps over seven days, with guarantor states. A senior "
+        "Iranian official called it 'unacceptable ideas and not an offer'.",
+        category="diplomatic", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 26),
+        label="Mecca Pact envoys in Tehran to avert renewed war",
+        description="Saudi Defence Minister Khalid bin Salman, Pakistan's Field Marshal Asim "
+        "Munir and Turkish intelligence chief Ibrahim Kalin met Pezeshkian and Rezaei "
+        "in Tehran on Monday Oct 26. They came as members of the Mecca (Makkah) Joint "
+        "Defence Agreement, to de-escalate between Iran and the US and over the "
+        "Houthi attacks on Saudi Arabia. Iran International called it a possible "
+        "'last chance' before military action. No agreement was announced.",
+        category="diplomatic", impact="dovish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 27),
+        label="Israel election: neither bloc reaches 61",
+        description="Final count of the Oct 27 Knesset election: Netanyahu's bloc 53 seats, the "
+        "Eisenkot-led bloc 48, Arab parties 19. Neither side can form a government "
+        "without the other or the Arab parties, so Netanyahu stays on as caretaker "
+        "during coalition talks. Turnout was 77.9%.",
+        category="political", impact="polarizing", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 27),
+        label="Pope: 'There is no such thing as a holy war'",
+        description="Recovering from his Oct 13 lung-cancer surgery, Pope Leo sent a video "
+        "message to the Assisi interfaith gathering marking 40 years since John Paul "
+        "II's 1986 prayer for peace: 'There is no such thing as a holy war: Only "
+        "peace is holy.' He condemned the 'revival of war as an instrument of "
+        "international politics' and religious justifications for war, without naming "
+        "Iran or the US.",
+        category="media", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 27),
+        label="Trump: 'You'll see Iran in a couple of weeks'",
+        description="Not in either researcher's list; found while verifying. At a Lubbock, Texas "
+        "rally Trump said 'Venezuela, Iran, you'll see Iran in a couple of weeks, if "
+        "you don't mind', and that Iran was 'defeated militarily, financially and "
+        "otherwise. And it will all end very soon.' The Washington Examiner read it "
+        "as a hint that strikes resume after the midterms.",
+        category="political", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 28),
+        label="Vance letter to Rezaei; Trump: 'medical supplies'",
+        description="On Oct 28 the WSJ and NYT reported a letter from Vance to SNSC secretary "
+        "Mohsen Rezaei, passed through Qatari mediators on Sunday (Oct 25). It "
+        "proposes direct talks with the nuclear programme on the table from the "
+        "start, and the WSJ said Trump directed it. Trump said he had not and that "
+        "the letter was about 'medical supplies and various things'. The WaPo later "
+        "reported that Vance offered to meet Rezaei in person, likely in Doha or "
+        "Istanbul. Tasnim said Iran had not yet replied.",
+        category="diplomatic", impact="dovish", importance=4,
+    ),
+    Event(
+        date=date(2026, 10, 28),
+        label="US tells allies to prepare for post-midterm strikes",
+        description="AP, citing two diplomats, reported on Oct 28 that US officials told Middle "
+        "East allies to prepare for possible renewed strikes on Iran after the Nov 3 "
+        "midterms, and for Iranian retaliation against energy and other "
+        "infrastructure. Gulf officials told MS NOW the first round could come as "
+        "early as Nov 4 and would be brief but intense. AP said Trump had not made a "
+        "final decision.",
+        category="military", impact="hawkish", importance=4,
+    ),
+    Event(
+        date=date(2026, 10, 28),
+        label="Hegseth fires Joint Staff planner Lt. Gen. Sylvia",
+        description="Hegseth removed Lt. Gen. Brett Sylvia as the Joint Staff's director of "
+        "strategy, plans and policy (J5). CBS said he was coordinating the Iran "
+        "battle plan; a War Department official denied he was central to it. A "
+        "Pentagon official alleged leaks of classified information on Iran and "
+        "Ukraine and referred the case to the Justice Department; another source "
+        "cited lack of confidence. He is the second J5 ousted under Hegseth.",
+        category="political", impact="polarizing", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 28),
+        label="Murphy: post-midterm strike plan 'insane'",
+        description="At a Middle East Institute event, Sen. Chris Murphy said that after a "
+        "briefing on the war plan, 'the plan is insane'. He said it would not achieve "
+        "its objectives, could hit civilian infrastructure, and would set off "
+        "'devastating escalation'. IBTimes dates the event Wednesday Oct 28; the "
+        "Daily Beast says Thursday.",
+        category="political", impact="dovish", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 30),
+        label="Brent at 6-month high; first limpet-mine hit",
+        description="The expiring December Brent contract settled up 2.4% at $117.64 on Friday "
+        "Oct 30, its highest close since late April (January: $113.43). Brent rose "
+        "13.6% in October and WTI 15.2%. UKMTO said a small boat attached explosives "
+        "to a tanker in Hormuz, which maritime sources called the first known "
+        "successful limpet-mine strike of the war. The IRGC claimed more tankers hit "
+        "mines; the US called that claim false. The IMO counted 121 attacks and 24 "
+        "seafarer deaths as of Oct 27.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 30),
+        label="Polling avg: 36% support, 57% oppose",
+        description="Silver Bulletin's Iran war polling average, updated Oct 30: 36% support and "
+        "57% oppose, up from 32/60 at the start of October. The existing Sep 15 event "
+        "recorded 34/58.",
+        category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 30),
+        label="Trump: Iran war 'going to get wrapped up soon'",
+        description="On Kansas City radio KCMO (Fri Oct 30) Trump said the war will be 'wrapped "
+        "up soon', without a timeline, and 'we need a guarantee there'll never be a "
+        "nuclear weapon'. At the White House he said Iran keeps seeking talks and the "
+        "US is in no rush. The WSJ reported that the CENTCOM commander had presented "
+        "strike options to him. Qatari mediators returned to Tehran the same day.",
+        category="political", impact="polarizing", importance=2,
+    ),
+    Event(
+        date=date(2026, 10, 31),
+        label="Khamenei orders 'geographically unrestricted' response",
+        description="After his first publicly disclosed meeting with the armed forces chiefs "
+        "since the war began, Supreme Leader Mojtaba Khamenei said on Saturday Oct 31 "
+        "that 'any level or type of threat must be met with an immediate, impactful "
+        "and geographically unrestricted response'. He ordered the target list "
+        "updated to cover all 'American-Zionist' assets and said Iran will decide "
+        "when and how any renewed war ends.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 10, 31),
+        label="Rubio: Trump 'hasn't made a decision' on strikes",
+        description="Closing the G20 foreign ministers' meeting in Atlanta on Saturday Oct 31, "
+        "Rubio said Trump 'hasn't made a decision' on resuming strikes, prefers a "
+        "diplomatic solution ('If there is a diplomatic solution, we would be open to "
+        "it') and has set no deadline, while not ruling out military action. The "
+        "meeting produced no joint communiqué.",
+        category="diplomatic", impact="dovish", importance=2,
+    ),
 ]
 
 # Date range for primary analysis window
