@@ -247,7 +247,7 @@ Since 2026-11-02, the user's calls (`docs/decisions.md`):
   are public only through this repo. Under the Opus flag @Pontifex (14 war posts)
   and @USCCB (15) fall under `WEB_MIN_ACCOUNT_POSTS` (20), so the account
   charts show 15 accounts, not 17; the post says why the Pope is left out.
-  Its frontmatter date is still 2026-09-23 (the user's call). Still worth a
+  Dated 2026-11-02, with no in-post update notes (it never launched). Still worth a
   look on the page: the reply-scatter labels and the audience bars'
   domains.
 - **Next:** the X archive fill is still unbuilt: `search/all` on the same
