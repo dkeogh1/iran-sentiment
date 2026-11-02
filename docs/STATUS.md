@@ -239,11 +239,12 @@ Since 2026-11-02, the user's calls (`docs/decisions.md`):
 ## Open
 
 - **The dkweb post** `iran-war-stance` is on dkweb `main` (merged
-  2026-10-04), behind Cloudflare Access until launch. Branch
-  `iran-post-midterm-hold` (pushed: data to Nov 1, a midterm-hold section,
-  five-phase charts, then on 2026-11-02 the export under the new
-  definitions and the prose brought to it; `npm run build` passes) awaits
-  the user's merge to `main`. Under the Opus flag @Pontifex (14 war posts)
+  2026-10-04, and again 2026-11-02 from branch `iran-post-midterm-hold`:
+  data to Nov 1, a midterm-hold section, five-phase charts, the export
+  under the new definitions and the prose brought to it), behind
+  Cloudflare Access until launch. dkweb is a private repo, so drafts merge
+  to its `main` before launch (the user's call, 2026-11-02); the findings
+  are public only through this repo. Under the Opus flag @Pontifex (14 war posts)
   and @USCCB (15) fall under `WEB_MIN_ACCOUNT_POSTS` (20), so the account
   charts show 15 accounts, not 17; the post says why the Pope is left out.
   Its frontmatter date is still 2026-09-23 (the user's call). Still worth a
