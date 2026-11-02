@@ -33,6 +33,7 @@ imports this module without torch/transformers being present.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 import logging
@@ -525,15 +526,26 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
 
     max_len = max_len or model_max_len(model_dir)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device == "cpu":
+        # dkbl1 has powered off under uncapped torch (AGENTS.md *CPU and memory*):
+        # cap the threads and use the RoBERTa batch size, as sentiment.py does.
+        torch.set_num_threads(settings.TORCH_NUM_THREADS)
+        batch_size = min(batch_size, settings.ROBERTA_BATCH_SIZE)
+        logger.info("CPU scoring: torch threads capped to %d, batch %d",
+                    settings.TORCH_NUM_THREADS, batch_size)
     tok = AutoTokenizer.from_pretrained(model_dir)
     model = AutoModelForSequenceClassification.from_pretrained(model_dir).to(device).eval()
-    with torch.no_grad():
-        for i in range(0, len(keep), batch_size):
-            idx = keep[i:i + batch_size]
-            enc = reply_inputs(tok, [texts[j] for j in idx],
-                               [parents[j] for j in idx] if parents is not None else None,
-                               variant, max_len, padding=True, return_tensors="pt").to(device)
-            out[idx] = model(**enc).logits.reshape(-1).float().cpu().numpy()
+    try:
+        with torch.no_grad():
+            for i in range(0, len(keep), batch_size):
+                idx = keep[i:i + batch_size]
+                enc = reply_inputs(tok, [texts[j] for j in idx],
+                                   [parents[j] for j in idx] if parents is not None else None,
+                                   variant, max_len, padding=True, return_tensors="pt").to(device)
+                out[idx] = model(**enc).logits.reshape(-1).float().cpu().numpy()
+    finally:
+        del model
+        gc.collect()
     return np.clip(out, -1, 1)
 
 

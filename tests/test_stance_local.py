@@ -268,6 +268,7 @@ def _stub_model(monkeypatch):
     torch = types.ModuleType("torch")
     torch.cuda = types.SimpleNamespace(is_available=lambda: False)
     torch.no_grad = contextlib.nullcontext
+    torch.set_num_threads = lambda n: loaded.append(("threads", n))
     tf = types.ModuleType("transformers")
     tf.AutoTokenizer = types.SimpleNamespace(from_pretrained=lambda d: loaded.append(d) or tok)
     tf.AutoModelForSequenceClassification = types.SimpleNamespace(
@@ -285,6 +286,7 @@ def test_score_with_distilled_leaves_textless_nan(tmp_path, monkeypatch):
     assert np.isnan(out[:4]).all()
     assert out[4] == pytest.approx(0.03) and out[5] == pytest.approx(0.11)
     assert seen == [["yes"], ["a real post"]]                       # only texts reach the model
+    assert ("threads", settings.TORCH_NUM_THREADS) in loaded       # CPU: thread cap applied
     loaded.clear()
     assert np.isnan(sl.score_with_distilled(["", "  "], tmp_path)).all()
     assert loaded == []                                     # nothing to score: no model load
