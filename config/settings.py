@@ -529,7 +529,7 @@ REPLY_CAT_EST_OUTPUT_TOKENS = 83.0
 # 1,157 v2 replies at the no-call ceiling, output at twice Opus 5's 67.8
 # tokens while unmeasured (thinking is always on): $3.14.
 SECOND_RATER_MODEL = "claude-opus-5-5"
-SECOND_RATER_REPLY_MAX_USD = 4.0
+SECOND_RATER_REPLY_MAX_USD = 5.0  # raised from 4.0 by the user, 2026-11-02 (pilot output ran longer)
 
 # ── Alternate post raters (`post-label`, src/analysis/post_labels.py) ──
 # Labels on broadcaster posts beyond score_opus: one path whose parameters
