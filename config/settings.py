@@ -508,7 +508,9 @@ REPLY_V2_BATCH_USAGE = {
 # on Opus 5's length, at REPLY_UNMEASURED_CEILING_MULT times it at the
 # ceiling, so the cap would bound a guess.
 REPLY_OUTPUT_TOKENS: dict[str, float | dict[str, float]] = {
-    "claude-opus-5": REPLY_V2_BATCH_USAGE["output_tokens"]
+    "claude-opus-5": REPLY_V2_BATCH_USAGE["output_tokens"],
+    # v2-rater pilot batch, 50 calls, collected 2026-11-02.
+    "claude-opus-5-5": {"mean": 108.1, "p95": 224.0},
 }
 REPLY_UNMEASURED_PILOT_MAX_CALLS = 50
 REPLY_UNMEASURED_CEILING_MULT = 2.0
