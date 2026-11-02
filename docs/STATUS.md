@@ -14,8 +14,9 @@ Two layers at different depths. Nothing runs on a schedule.
   `data/raw/x_sampling/windows_2026-11-01.jsonl`. It lost @marklevinshow's
   first 11 h and @VP's first 2 days to the timeline horizon (VP replies a
   lot, and replies count toward the 3,200). Its 1,903 new posts with text
-  have RoBERTa scores; `relabel` was submitted 2026-11-02 and topic labels
-  follow (*Open*). Before it: the May 10 -> Sep 18 refresh read 5,631 tweets for ~$28,
+  have RoBERTa scores and `score_opus` (2026-11-02; 2 unparseable answers
+  resubmitted and merged), and Haiku topic labels with Trump's 672 new posts
+  (2,570 of 2,666 labelled; the 96 failures are link shares, *Open*). Before it: the May 10 -> Sep 18 refresh read 5,631 tweets for ~$28,
   with the five heaviest accounts (Loomer, Levin, Jones, Ravid, StateDept)
   sampled at 450. 490 posts have no text (nearly all bare links) and leave
   every series (`src/text_rules.py`). `score_opus` on all 19,115 posts with
@@ -142,8 +143,9 @@ Two layers at different depths. Nothing runs on a schedule.
 - **Spend, 2026-11-01/02** (approved runs): X ≈ $11.90: the pull $9.92
   (1,949 posts + 17 lookups), the archive probe $0.10 (16 posts + 2 counts
   pages), `x-counts` $1.89 (189 counts/all pages, 17 accounts + 4 terms,
-  Feb 1 -> Nov 2, hourly). Anthropic: `relabel` of 1,903 posts submitted
-  (estimate $3.08), drawn from the plan's API credit. Anthropic API spend
+  Feb 1 -> Nov 2, hourly). Anthropic, metered from the batch results'
+  usage: `relabel` $2.90 (1,903 posts; the 2-post resubmit under a cent),
+  `topic-label` $0.49 (2,666), about $3.39, drawn from the plan's API credit. Anthropic API spend
   from 2026-11 is covered by a monthly promotional credit on the user's
   Claude plan (expires each cycle, no rollover).
 
@@ -155,9 +157,8 @@ Two layers at different depths. Nothing runs on a schedule.
   `data/models/reply_ctx_lopo/`, are in `data/models/` on dkbl1 and in the
   S3 backup.
 - S3 backup first synced 2026-09-25 (models 8.8 GB in Glacier IR, the
-  rest Standard). Last synced 2026-11-02 after the X pull, the probe and
-  the counts; run `backup` again after the relabel, topic labels and the
-  Trump scoring land.
+  rest Standard). Last synced 2026-11-02 after the X pull, the probe, the
+  counts, the Trump scoring and the merged labels.
 - Host backup (restic, homelab-infra): the SanDisk drive is unplugged and no
   host backup has run since 2026-04-23. The host backup script no longer
   needs Timeshift, so the drive can go back in; until then S3 is the only
@@ -187,9 +188,8 @@ Two layers at different depths. Nothing runs on a schedule.
   after `ts-fill-text`: only `trump_phases.json` changed (Trump's posts
   with text and war shares; the war-post counts and means did not), and
   the post's Trump prose and caption follow it.
-- **Next (2026-11-02):** collect and merge the `relabel` batch, run
-  `topic-label estimate|submit` once the Trump scoring finishes, then
-  `backup`. Size an archive fill (`search/all`, same 35 h window grid) from
+- **Next (2026-11-02):** labels for the Nov 1 pull are merged and backed
+  up. Size an archive fill (`search/all`, same 35 h window grid) from
   `x-counts --report`: @WhiteHouse Feb 1 -> Nov 1, the horizon holes, the
   late starts and the empty windows; it needs an `x-archive fill` command.
   Decide phase 5 ("midterm hold", Sep 19 -> Nov 1) before `phases`,
