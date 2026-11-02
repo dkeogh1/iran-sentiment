@@ -279,11 +279,13 @@ def _target(rec: dict, entry: dict) -> dict:
 
 def label_files() -> list[Path]:
     """The paid label caches that hold Truth Social post ids: the Haiku topic
-    labels and each Trump-feed teacher check's Opus labels."""
+    labels, each Trump-feed teacher check's Opus labels and each alternate
+    post rater's (post_labels_<job>_<model>.parquet, `post-label`)."""
     from src.analysis.topic_label import labels_path
 
     checks = sorted(settings.PROCESSED_DIR.glob("teacher_check_trump_*.parquet"))
-    return [labels_path(), *(p for p in checks if not p.stem.endswith("_superseded"))]
+    raters = sorted(settings.PROCESSED_DIR.glob("post_labels_*.parquet"))
+    return [labels_path(), *(p for p in [*checks, *raters] if not p.stem.endswith("_superseded"))]
 
 
 def supersede_labels(ids: set[str]) -> dict[str, int]:

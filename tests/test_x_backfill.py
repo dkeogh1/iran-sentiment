@@ -362,6 +362,15 @@ def test_apply_moves_cut_labels_and_relabel_topic_redo_exactly_them(data):
 
     n, usd = xb.relabel_cost()
     assert n == 4 and usd > rl.estimate_cost(4)  # priced at the full length
+    # Another model is priced by its own row (the same posts owed): Fable 5.1
+    # costs twice Opus 5, Opus 5.5 0.8 of it.
+    real_path = rl.labels_path
+    rl.labels_path = lambda m=model: real_path(model)
+    try:
+        assert xb.relabel_cost("claude-fable-5-1") == (4, pytest.approx(2 * usd))
+        assert xb.relabel_cost("claude-opus-5-5") == (4, pytest.approx(0.8 * usd))
+    finally:
+        rl.labels_path = real_path
 
     # relabel / topic-label see exactly the changed posts, with their full text
     df = pd.read_parquet(settings.SENTIMENT_OUTPUT)

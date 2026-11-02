@@ -98,6 +98,12 @@ WAR_TOPIC_PATTERN = (
 # war appeals that never name Iran), or "either" (one or the other, the
 # default since 2026-09-23). Report only what holds under all three.
 TOPIC_SOURCE = "either"
+# `topic-label`: a post Haiku answered with no verdict (a link share) this
+# many times on the same text counts as unjudgeable and is not sent again.
+# Retries do recover some (the four batches to 2026-11-02: 30% of the posts
+# got a verdict on the next try after one no-verdict, 25% after two, 20%
+# after three or more) and a resend costs ~$0.0001, so it waits for three.
+TOPIC_UNJUDGEABLE_MIN_ATTEMPTS = 3
 # Group pairs `phases` reports gaps for (a - b, within each phase).
 PHASE_GAPS = [("maga_prowar", "admin"), ("maga_prowar", "maga_antiwar")]
 # Bootstrap for the phase tables: posts are resampled in account-day blocks
@@ -338,6 +344,62 @@ TEACHER_CHECK_N = 500
 # keeps the thinking short for a one-line classification.
 TEACHER_MAX_TOKENS = 1024
 TEACHER_EFFORT = "low"
+# Claude API prices per model, $ per million tokens, and what multiplies
+# them (platform.claude.com pricing, fetched 2026-11-01): a 5-minute cache
+# write costs cache_write_mult x input, a read cache_read_mult x input, and
+# the Batch API price is list x batch_discount; the multipliers stack.
+# cache_min_tokens is the shortest prefix the model caches. Every estimator
+# and spend tally prices a model by its own row (pricing.model_price) and
+# refuses a model with none, so a new model is never priced at another's.
+MODEL_PRICES: dict[str, dict[str, float]] = {
+    "claude-opus-5": {
+        "input": 5.0,
+        "output": 25.0,
+        "cache_write_mult": 1.25,
+        "cache_read_mult": 0.10,
+        "batch_discount": 0.5,
+        "cache_min_tokens": 512,
+    },
+    "claude-opus-5-5": {
+        "input": 4.0,
+        "output": 20.0,
+        "cache_write_mult": 1.25,
+        "cache_read_mult": 0.05,
+        "batch_discount": 0.5,
+        "cache_min_tokens": 512,
+    },
+    "claude-fable-5-1": {
+        "input": 10.0,
+        "output": 50.0,
+        "cache_write_mult": 1.25,
+        "cache_read_mult": 0.025,
+        "batch_discount": 0.5,
+        "cache_min_tokens": 512,
+    },
+    "claude-haiku-4-5": {
+        "input": 1.0,
+        "output": 5.0,
+        "cache_write_mult": 1.25,
+        "cache_read_mult": 0.10,
+        "batch_discount": 0.5,
+        "cache_min_tokens": 4096,
+    },
+}
+# The score_<tag> / label_<tag> suffix a model's labels get (relabel merge).
+# These two keep their historical names; every other model is its family
+# and version (claude-opus-5-5 -> opus55, claude-fable-5-1 -> fable51), so
+# no two models share a column.
+MODEL_TAGS = {"claude-opus-5": "opus", "claude-haiku-4-5": "haiku"}
+# Columns already in the data whose model no record names: a merge writes
+# score_opus only from claude-opus-5 (sentiment_all_columns.json records
+# the rest as they are made).
+SCORE_COLUMN_MODELS = {"score_opus": "claude-opus-5"}
+# A batch collect streams the results; when the stream breaks (httpx
+# ReadError on this host, 2026-09-23 and 2026-10-05) it downloads the
+# batch's results_url to a file instead, resuming a cut download with a
+# Range request, up to this many retries with a growing pause.
+BATCH_RESULTS_DOWNLOAD_RETRIES = 6
+BATCH_RESULTS_READ_TIMEOUT_S = 300
 # Dry-run estimates (`--estimate`) count no tokens through the API: a prompt's
 # input tokens are its characters over this. relabel measured 217 input
 # tokens per X post on Opus 5 (2026-09-18), whose llm_prompt averages 460
@@ -372,8 +434,202 @@ REPLY_TEACHER_LABELS_VERSION = "v2"
 # distilled scorer used on his feed. Its 0.88 correlation with Opus was
 # measured on held-out X posts, not on the feed.
 TRUMP_TEACHER_CHECK_N = 400
-TRUMP_TEACHER_CHECK_MAX_CALLS = 500
+# Raised from 500 on purpose (2026-11-02) so `teacher-check --source trump
+# --all` can put his whole feed on score_opus: 3,222 posts with text after
+# the Nov 1 pull, 400 already labelled by the check (reused, never re-sent),
+# so 2,822 to do; 3,300 covers every post with text, with room for ~80 new
+# ones, and still refuses anything past the feed.
+TRUMP_TEACHER_CHECK_MAX_CALLS = 3300
 TEACHER_SAMPLE_SEED = 42           # --limit pilot order and the Trump sample
+# Reply labels beyond v2 (`reply-label`, src/analysis/reply_labels.py): v2b
+# (v2 without its praise rule) and cat-v2 (the six reply categories with the
+# parent post) on the stance sample reuse REPLY_TEACHER_V2_MAX_CALLS; the
+# fresh random sample (`reply-fresh-sample`, then `reply-label --job
+# v2-fresh --post <slug>`, one batch a post) has its own caps, sized to one
+# run of REPLY_FRESH_PER_POST replies for each of the eight posts. They
+# bound the whole run: a submit refuses when the calls its earlier batches
+# sent plus its own are over the call cap, or their billed spend plus its
+# ceiling (batch prices, no cache hits: every request on a cacheable post
+# writes the prefix) is over the dollar cap; the draw refuses more than
+# REPLY_FRESH_PER_POST a post or a manifest whose run would pass either cap.
+REPLY_FRESH_PER_POST = 1000
+REPLY_FRESH_SEED = 20261102
+REPLY_FRESH_DRAWS_NAME = "reply_sample_draws_fresh.parquet"  # under PROCESSED_DIR
+REPLY_FRESH_MAX_CALLS = 8500
+# The 7,995-call run's ceiling is $20.21 on claude-opus-5 (expected $14.90):
+# this leaves the ~6% slack the call cap has, for resubmitted failures.
+REPLY_FRESH_MAX_USD = 21.5
+# Whether reply-population (and so export-web) pools the fresh draws' v2
+# labels with the first draws' once they exist: both its direct (opus_*) and
+# its model-assisted columns use every labelled random draw. A post's fresh
+# draws join only once this share of them carry a label (before its batch
+# is collected, the only labelled ones are reused flipper labels, not a
+# random part). Set False to reproduce the 1,071-draw figures.
+REPLY_POPULATION_FRESH_DRAWS = True
+REPLY_FRESH_POOL_MIN_SHARE = 0.98
+# Measured on the 2026-10-05 v2 batch (1,141 requests, all end_turn, billed
+# $2.10): input tokens per request = a per-post prefix (the instructions,
+# the parent post and the reply wrapper; least squares with one slope) +
+# 0.350 per reply character. The cached block is the prefix less about 14
+# tokens of wrapper (ceasefire 734, hold-off 765, strikes 568 tokens read or
+# written); only those three reached the 512-token minimum, and 396 of their
+# 443 requests read the cache (the rest wrote it). Output 67.8 tokens a
+# request. Another prompt's prefix is the post's v2 prefix plus its extra
+# instruction characters at 2.67 a token (v2's instruction prose). A request
+# carries a cache breakpoint only where its post's block reaches the
+# model's minimum, so the ceiling is a true bound.
+REPLY_V2_BATCH_USAGE = {
+    "model": "claude-opus-5",
+    "prefix_tokens": {
+        "power_plant_day": 460.1,
+        "civilisation_dies": 511.9,
+        "deal_complete": 466.9,
+        "ceasefire": 747.8,
+        "hold_off_attack": 776.9,
+        "strikes_resume_sep": 584.8,
+        "these_fools": 443.3,
+        "trump_strait": 433.5,
+    },
+    "wrapper_tokens": 14.0,
+    "tokens_per_reply_char": 0.350,
+    "output_tokens": 67.8,
+    "cache_hit_share": 396 / 443,
+    "instruction_chars_per_token": 2.67,
+}
+# Output tokens a stance answer, measured per model (a batch's billed output
+# / calls). A bare figure is a large batch's mean (Opus 5's: 1,141 calls),
+# used for the expected cost and the ceiling alike: over a run of hundreds
+# or thousands of calls the mean is what bounds the output, not one call's
+# p95. A model measured by a pilot batch is recorded as {"mean": ..., "p95":
+# ...} from the collect's output line, and the ceiling takes the p95. A job
+# with a dollar cap sends a model without a figure here no more than
+# REPLY_UNMEASURED_PILOT_MAX_CALLS requests in all (a --limit pilot, its
+# earlier batches of the same prompt and model counted): its estimate rests
+# on Opus 5's length, at REPLY_UNMEASURED_CEILING_MULT times it at the
+# ceiling, so the cap would bound a guess.
+REPLY_OUTPUT_TOKENS: dict[str, float | dict[str, float]] = {
+    "claude-opus-5": REPLY_V2_BATCH_USAGE["output_tokens"]
+}
+REPLY_UNMEASURED_PILOT_MAX_CALLS = 50
+REPLY_UNMEASURED_CEILING_MULT = 2.0
+# max_tokens of a reply-label batch request. Thinking counts against it, so
+# a submit refuses once an earlier batch of the job on that model at this
+# value had an answer cut at max_tokens (it would be cut again): raise it.
+REPLY_LABEL_MAX_TOKENS = TEACHER_MAX_TOKENS
+# cat-v2 answers with a category name and a reason instead of a score and a
+# label: unmeasured, put at v2's output plus 15 tokens until a batch says.
+REPLY_CAT_EST_OUTPUT_TOKENS = 83.0
+# The second rater (`reply-label --job v2-rater`, `post-label --job rater`):
+# the same prompt as the labels of record on another model, in its own files
+# and columns (score_opus55), never score_opus or the v2 reply labels. Opus
+# 5.5, not Fable 5.1 (the user's call, 2026-11-02). The reply arm's dollar
+# cap bounds its whole run (every batch, pilot included) and covers the
+# 1,157 v2 replies at the no-call ceiling, output at twice Opus 5's 67.8
+# tokens while unmeasured (thinking is always on): $3.14.
+SECOND_RATER_MODEL = "claude-opus-5-5"
+SECOND_RATER_REPLY_MAX_USD = 4.0
+
+# ── Alternate post raters (`post-label`, src/analysis/post_labels.py) ──
+# Labels on broadcaster posts beyond score_opus: one path whose parameters
+# are the model, the prompt version and the post set, each job in its own
+# label file (post_labels_<job>_<model>.parquet) and columns, joined onto a
+# frame when read (`phases --score`, post_labels.attach), never merged into
+# sentiment_all.parquet or score_opus. The war candidates are the X
+# accounts' posts with text (search rows out) and Trump's feed flagged by
+# the keyword pattern OR the Haiku topic label (TOPIC_SOURCE "either").
+#   stance-topic           a topic class plus the author's position on U.S.
+#                          military action against Iran (null when not about
+#                          Iran), with the author's handle, on the candidates
+#                          and POST_RANDOM_N unflagged X posts, which only
+#                          measure what the filters miss
+#   rater                  llm_prompt (the score_opus prompt) on
+#                          SECOND_RATER_MODEL, on the candidates
+#   stance-topic-nohandle  stance-topic without the handle, on a seeded paired
+#                          subsample of the X candidates: every post of the
+#                          POST_NOHANDLE_ALL_TIERS, POST_NOHANDLE_PER_TIER of
+#                          each of the POST_NOHANDLE_TIERS
+# The random posts and the subsample are the smallest seeded hashes of their
+# ids, recorded in a manifest by the first pilot or submit (never redrawn).
+POST_LABEL_MAX_TOKENS = TEACHER_MAX_TOKENS  # thinking counts: no max_tokens stop in a pilot or batch
+POST_LABEL_EFFORT = TEACHER_EFFORT
+POST_RANDOM_N = 1500
+POST_RANDOM_SEED = 20261102
+POST_NOHANDLE_ALL_TIERS = ("religious_authority", "opposition")
+POST_NOHANDLE_TIERS = ("admin", "maga_prowar", "maga_antiwar", "media")
+POST_NOHANDLE_PER_TIER = 400
+POST_NOHANDLE_SEED = 20261103
+# `post-label pilot`: direct calls on the first N still to do (dealt across
+# sets, sources and tiers) that record the billed input and output tokens
+# and the stop reasons, which the estimate is then calibrated on. Only a
+# pilot of the job's current prompt version, POST_LABEL_MAX_TOKENS and
+# POST_LABEL_EFFORT counts. Batches of a model and prompt whose output
+# length is unmeasured (no such pilot of POST_PILOT_MIN_BILLED billed
+# answers, and not llm_prompt on claude-opus-5) send no more than
+# POST_PILOT_MAX_CALLS in all, and no batch goes after such a pilot, or an
+# earlier batch of the same request, had an answer stop at max_tokens.
+POST_PILOT_N = 50
+POST_PILOT_MAX_CALLS = 100
+# A pilot counts as the measurement (its p95 the ceiling's output, the
+# unmeasured gate open) only once it has this many billed answers, pooled
+# over the job's pilots of the current request: a p95 of a handful says
+# little, and the ceiling is what the dollar cap is checked against. A
+# smaller pilot still refuses every batch after a max_tokens stop.
+POST_PILOT_MIN_BILLED = 40
+# A pilot saves its labels and its running usage every this many answers
+# (its record is written before the first call, marked in_progress at its
+# direct ceiling), so a run killed outright keeps what it paid for and still
+# counts against the job's caps.
+POST_PILOT_SAVE_EVERY = 10
+# Caps for each job's whole run: every call it has made (pilots and
+# batches, on any model) against the call cap, and their spend (pilots at
+# direct prices, collected batches as billed, one not collected yet at its
+# ceiling) plus the next batch's no-call ceiling against the dollar cap. The
+# ceiling is at batch prices (input from the fit below, scaled by the
+# pilot's billed/estimated input once there is one, with no cache hits:
+# every request writes the stance-topic instructions; output at the pilot's
+# p95 a call, or twice the guess while unmeasured); a pilot refuses too when
+# it would pass either cap. Calls sized 2026-11-02 to one run with ~10% slack:
+# stance-topic 4,925 candidates (X 4,479, Trump 446) + 1,500 random = 6,425;
+# rater 4,925; nohandle 1,958 (272 religious, 86 opposition, 4 x 400). The
+# dollar caps hold that run's ceiling at a pilot p95 of up to ~160 output
+# tokens for the stance-topic jobs (expected ~$13.8 and ~$4.2 at the 110
+# guess with 89% cache reads) and ~350 for the rater on Opus 5.5 (expected
+# ~$10.8 at twice Opus 5's 84).
+POST_STANCE_TOPIC_MAX_CALLS = 7000
+POST_STANCE_TOPIC_MAX_USD = 30.0
+POST_RATER_MAX_CALLS = 5400
+POST_RATER_MAX_USD = 20.0
+POST_NOHANDLE_MAX_CALLS = 2150
+POST_NOHANDLE_MAX_USD = 9.5
+# Input tokens of an llm_prompt request on claude-opus-5, least squares on
+# billed usage against prompt characters, and its output tokens a call:
+# X posts from the 2026-10-05 relabel batch (2,575 posts), Trump's feed from
+# the 2026-10-05/06 check batches (398); output's mean and p95 a call from
+# the same batches. A longer prompt adds its extra instruction characters at
+# instruction_chars_per_token (v2's instruction prose, the 2026-10-05 reply
+# batch). Another model is priced at its own row of MODEL_PRICES on these
+# counts until a pilot measures it.
+POST_PROMPT_TOKEN_FIT = {
+    "model": "claude-opus-5",
+    "x": {
+        "tokens_per_char": 0.3365,
+        "fixed_tokens": 51.0,
+        "output_tokens": 84.0,
+        "output_p95_tokens": 113.0,
+    },
+    "trump": {
+        "tokens_per_char": 0.3628,
+        "fixed_tokens": 35.0,
+        "output_tokens": 77.0,
+        "output_p95_tokens": 104.0,
+    },
+    "instruction_chars_per_token": 2.67,
+}
+# Output tokens a call guessed for a job until its pilot: stance-topic
+# answers a topic, a score and a reason (96-110 by the 2026-11-01 sizing);
+# another model than claude-opus-5 is guessed at twice the figure (Opus 5.5
+# always thinks).
+POST_OUTPUT_TOKENS_GUESS = {"stance-topic": 110.0}
 # Distillation: fine-tune an encoder to regress score_llm.
 DISTILL_BASE_MODEL = "roberta-large"
 DISTILL_EPOCHS = 3

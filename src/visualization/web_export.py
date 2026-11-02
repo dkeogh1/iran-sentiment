@@ -115,11 +115,35 @@ def trump_phases() -> list[dict]:
             for _, r in st.iterrows()]
 
 
+def _log_reply_basis(rp: pd.DataFrame) -> None:
+    """Say how many labelled random draws replies.json rests on, and warn
+    when the fresh draws are pooled in (REPLY_POPULATION_FRESH_DRAWS): the
+    published prose (README, docs/STATUS.md, dkweb's post) cites the
+    1,071-draw figures, and which basis is published is the user's call."""
+    per = rp[rp["post"] != "ALL"]
+    if "n_labelled_fresh" not in per:
+        return
+    n, fresh = int(per["n_labelled"].sum()), int(per["n_labelled_fresh"].sum())
+    logger.info("export-web: replies.json rests on %d labelled random draws, %d of them fresh",
+                n, fresh)
+    if fresh:
+        logger.warning(
+            "export-web: replies.json pools %d fresh draws' labels with the first draws "
+            "(%d in all; REPLY_POPULATION_FRESH_DRAWS): README, docs/STATUS.md and dkweb's "
+            "post cite the 1,071-draw figures. Update that prose before publishing, or set "
+            "REPLY_POPULATION_FRESH_DRAWS = False to export the 1,071-draw figures",
+            fresh,
+            n,
+        )
+
+
 def replies() -> list[dict]:
     """Per tracked post, over its replies with text (as reply_population). A
     post whose Opus estimate is NaN (replies in a valence bucket with no
-    labelled draw) is left out with a warning, not exported as nulls."""
+    labelled draw) is left out with a warning, not exported as nulls. Logs
+    the labelled draws it rests on (_log_reply_basis)."""
     rp = inf.reply_population()
+    _log_reply_basis(rp)
     val = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT,
                           columns=["id", "tracked_slug", "text", "score_transformer"])
     val = val[~val["id"].astype(str).duplicated() & inf.has_text(val["text"])]

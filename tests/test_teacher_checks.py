@@ -346,9 +346,12 @@ def test_estimate_prices_cached_prefixes(monkeypatch):
     assert e["input_tokens"] == 6 * 610 and e["output_tokens"] == 6 * EST_OUT_TOKENS
     billed = 2 * 600 * sl.CACHE_WRITE_MULT + 4 * 600 * sl.CACHE_READ_MULT + 6 * 10
     assert e["usd"] == pytest.approx((billed * PRICE_IN + e["output_tokens"] * PRICE_OUT) / 1e6)
+    # The ceiling: no cache hits, so every call writes the prefix (1.25x).
+    ceiling = 6 * (600 * sl.CACHE_WRITE_MULT + 10)
     assert e["usd_no_cache"] == pytest.approx(
-        (6 * 610 * PRICE_IN + e["output_tokens"] * PRICE_OUT) / 1e6
+        (ceiling * PRICE_IN + e["output_tokens"] * PRICE_OUT) / 1e6
     )
+    assert e["usd_no_cache"] > (6 * 610 * PRICE_IN + e["output_tokens"] * PRICE_OUT) / 1e6
     short = sl.estimate_direct_cost(["s" * 100 + "r"] * 3, [100] * 3)  # under the minimum: no cache
     assert (
         short["usd"] == pytest.approx(short["usd_no_cache"]) and short["cached_prefix_calls"] == 0
@@ -589,7 +592,7 @@ class StubBatches:
     and answers each request with answer(custom_id, prompt text)."""
 
     def __init__(self, answer=None):
-        self.created, self.retrieved, self.extra = [], 0, []
+        self.created, self.retrieved, self.extra, self.deleted = [], 0, [], []
         self.status = "in_progress"
         self.answer = answer or (lambda cid, text: GOOD)
 
@@ -610,8 +613,17 @@ class StubBatches:
             expired=0,
         )
         return types.SimpleNamespace(
-            id=batch_id, processing_status=self.status, request_counts=counts
+            id=batch_id,
+            processing_status=self.status,
+            request_counts=counts,
+            results_url=f"https://api.example.test/v1/messages/batches/{batch_id}/results"
+            if done
+            else None,
         )
+
+    def delete(self, batch_id):
+        self.deleted.append(batch_id)
+        return types.SimpleNamespace(id=batch_id, type="message_batch_deleted")
 
     def results(self, batch_id):
         assert batch_id == f"msgbatch_{len(self.created)}"
@@ -942,7 +954,7 @@ def test_batch_estimate_cli_makes_no_calls(files, monkeypatch):
     assert res.exit_code == 0, res.output
     est = sl.reply_teacher_v2_estimate()
     assert (
-        f"at batch prices (0.5 x direct): ≈ ${est['usd_no_cache'] / 2:.2f} with no prefix cache "
+        f"at batch prices (0.5 x direct): ≈ ${est['usd_no_cache'] / 2:.2f} with no cache hits "
         "(the ceiling)" in res.output
     )
     assert "if the shared prefix cached" not in res.output
@@ -1283,3 +1295,119 @@ def test_batch_collect_drops_answers_to_a_changed_prompt(files, monkeypatch):
     assert nxt["ids"] == [changed]
     sent = _content_text(client.messages.batches.created[-1][0]["params"]["messages"][0]["content"])
     assert "edited" in sent
+
+
+# ── the create call is sent once (a real SDK client, no network) ───
+
+
+def _sdk_client(handler):
+    """A real anthropic client on an httpx MockTransport: the SDK's own retry
+    logic runs, nothing leaves the machine."""
+    import anthropic
+    import httpx
+
+    return anthropic.Anthropic(
+        api_key="sk-invalid-no-calls",
+        base_url="http://stub.invalid",
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+
+def _batch_body(n: int) -> dict:
+    counts = {"processing": 1, "succeeded": 0, "errored": 0, "canceled": 0, "expired": 0}
+    return {
+        "id": f"msgbatch_{n}",
+        "type": "message_batch",
+        "processing_status": "in_progress",
+        "request_counts": counts,
+        "ended_at": None,
+        "created_at": "2026-11-02T00:00:00Z",
+        "expires_at": "2026-11-03T00:00:00Z",
+        "cancel_initiated_at": None,
+        "results_url": None,
+        "archived_at": None,
+    }
+
+
+def _lost_first_answer(posts: list):
+    """The server makes the batch, then the answer is lost (a read timeout);
+    a second POST would make a second batch."""
+    import httpx
+
+    def handler(request):
+        posts.append(request.url.path)
+        if len(posts) == 1:
+            raise httpx.ReadTimeout("accepted, answer lost", request=request)
+        return httpx.Response(200, json=_batch_body(len(posts)))
+
+    return handler
+
+
+def _refusing(posts: list, code: int):
+    import httpx
+
+    def handler(request):
+        posts.append(request.url.path)
+        err = {"type": "error", "error": {"type": "overloaded_error", "message": "no"}}
+        return httpx.Response(code, json=err)
+
+    return handler
+
+
+@pytest.fixture
+def no_retry_wait(monkeypatch):
+    """The SDK's backoff at zero, so a retry (the bug) shows at once."""
+    import anthropic._base_client as bc
+
+    monkeypatch.setattr(bc.BaseClient, "_calculate_retry_timeout", lambda *a, **k: 0.0)
+
+
+def test_batch_create_is_sent_once_when_its_answer_is_lost(files, no_retry_wait):
+    """The SDK retries a POST after a timeout with no idempotency key: a
+    batch the server made would be made again and only the second recorded
+    (billed outside the run caps, never deleted). One attempt, and the
+    "submitting" state stays for a person to check."""
+    import anthropic
+
+    files()
+    posts: list = []
+    with pytest.raises(anthropic.APITimeoutError):
+        sl.teacher_batch_submit(
+            "reply_v2", params=V2_PARAMS, client=_sdk_client(_lost_first_answer(posts))
+        )
+    assert posts == ["/v1/messages/batches"]  # no second create
+    st = sl.read_batch_state("reply_v2")
+    assert st["status"] == "submitting" and st["batch_id"] is None
+    with pytest.raises(RuntimeError, match="stopped before it recorded a batch id"):
+        sl.teacher_batch_submit("reply_v2", params=V2_PARAMS, client=_stub_client())
+
+
+@pytest.mark.parametrize("code", [429, 529])
+def test_batch_create_refused_once_makes_no_batch(files, no_retry_wait, code):
+    """A 429 or 529 answers the one create before any batch exists: the
+    state goes back to what it was (none here), and nothing is sent twice."""
+    import anthropic
+
+    files()
+    posts: list = []
+    with pytest.raises(anthropic.APIStatusError):
+        sl.teacher_batch_submit(
+            "reply_v2", params=V2_PARAMS, client=_sdk_client(_refusing(posts, code))
+        )
+    assert len(posts) == 1 and sl.read_batch_state("reply_v2") is None
+
+
+def test_delete_batch_flushes_the_collects_writes_first(monkeypatch):
+    """The delete cannot be undone: what the collect wrote (new files ext4
+    may still hold in memory) goes to disk before it."""
+    from src.analysis import batch_io
+
+    order = []
+    monkeypatch.setattr(batch_io.os, "sync", lambda: order.append("sync"))
+    client = types.SimpleNamespace(
+        messages=types.SimpleNamespace(
+            batches=types.SimpleNamespace(delete=lambda b: order.append(("delete", b)))
+        )
+    )
+    assert batch_io.delete_batch(client, "msgbatch_1")["status"] == "deleted"
+    assert order == ["sync", ("delete", "msgbatch_1")]

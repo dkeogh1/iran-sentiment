@@ -1,4 +1,5 @@
 """Batch relabel plumbing without the API: request building, result parsing, merge."""
+import json
 import types
 
 import pandas as pd
@@ -87,3 +88,98 @@ def test_collect_reads_a_downloaded_results_file(tmp_path, monkeypatch):
     lab = pd.read_parquet(rl.labels_path("m"))
     assert lab["id"].tolist() == ["1"] and lab["score_teacher"].tolist() == [0.4]
     assert st["status"] == "collected" and sorted(st["collected"]["failed_ids"]) == ["2", "3"]
+
+
+def test_relabel_refuses_another_model(tmp_path, monkeypatch):
+    """relabel has no cap and prices output at Opus 5's length: a second
+    rater's model goes through `post-label --job rater`, before any call."""
+    import pytest
+    from click.testing import CliRunner
+
+    from src.cli import main
+
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(rl, "_client", lambda: (_ for _ in ()).throw(AssertionError("a client")))
+    for model in ("claude-opus-5-5", "claude-fable-5-1"):
+        with pytest.raises(ValueError, match="post-label"):
+            rl.submit(_df(), model=model)
+        for action in ("estimate", "submit", "resubmit"):
+            res = CliRunner().invoke(main, ["relabel", action, "--model", model, "--yes"])
+            assert res.exit_code == 1 and "--job rater" in res.output, res.output
+    assert not rl.state_path().exists()
+
+
+def test_relabel_and_topic_submits_send_the_create_once(tmp_path, monkeypatch):
+    """No SDK retry of the create (it has no idempotency key): a create whose
+    answer is lost leaves a "submitting" record the next submit refuses on;
+    a refusal puts the previous state back."""
+    import anthropic
+    import anthropic._base_client as bc
+    import pytest
+
+    from src.analysis import topic_label as tl
+    from tests.test_teacher_checks import _lost_first_answer, _refusing, _sdk_client
+
+    monkeypatch.setattr(bc.BaseClient, "_calculate_retry_timeout", lambda *a, **k: 0.0)
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(settings, "SENTIMENT_OUTPUT", tmp_path / "sentiment_all.parquet")
+    monkeypatch.setattr(settings, "TRUMP_FEED_STANCE", tmp_path / "no_feed.parquet")
+    _df().to_parquet(settings.SENTIMENT_OUTPUT, index=False)
+    for mod, submit in ((rl, lambda: rl.submit(_df())), (tl, lambda: tl.submit())):
+        posts: list = []
+        monkeypatch.setattr(mod, "_client", lambda p=posts: _sdk_client(_lost_first_answer(p)))
+        with pytest.raises(anthropic.APITimeoutError):
+            submit()
+        assert len(posts) == 1  # one create, not a retry that makes a second batch
+        st = json.loads(mod.state_path().read_text())
+        assert st["status"] == "submitting" and st["batch_id"] is None and st["n_submitted"] == 3
+        with pytest.raises(RuntimeError, match="stopped before it recorded a batch id"):
+            submit()
+        with pytest.raises(RuntimeError, match="stopped before it recorded a batch id"):
+            mod.status()
+        assert len(posts) == 1
+        prev = {"batch_id": "msgbatch_0", "status": "collected", "model": "m"}
+        mod.state_path().write_text(json.dumps(prev))
+        refused: list = []
+        monkeypatch.setattr(mod, "_client", lambda r=refused: _sdk_client(_refusing(r, 400)))
+        with pytest.raises(anthropic.BadRequestError):
+            submit()
+        assert len(refused) == 1 and json.loads(mod.state_path().read_text()) == prev
+
+
+def test_claim_column_and_unjudgeable_writes_are_atomic(tmp_path, monkeypatch):
+    """A write killed part-way leaves the old file whole: a torn column
+    record would break every merge, a torn unjudgeable file every topic-label
+    estimate, submit and collect."""
+    from pathlib import Path
+
+    import pytest
+
+    from src.analysis import topic_label as tl
+
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(settings, "SENTIMENT_OUTPUT", tmp_path / "sentiment_all.parquet")
+    monkeypatch.setattr(settings, "TRUMP_FEED_STANCE", tmp_path / "no_feed.parquet")
+    _df().to_parquet(settings.SENTIMENT_OUTPUT, index=False)
+    rl.claim_column("score_opus55", "claude-opus-5-5")
+    assert tl.record_unjudgeable(["1"], settings.LLM_MODEL, "msgbatch_a", "no verdict")["recorded"]
+    real_text, real_parquet = Path.write_text, pd.DataFrame.to_parquet
+
+    def torn_text(self, data, *a, **k):
+        real_text(self, data[:5])
+        raise OSError("power lost mid-write")
+
+    def torn_parquet(self, path, *a, **k):
+        Path(path).write_bytes(b"PAR1")
+        raise OSError("power lost mid-write")
+
+    monkeypatch.setattr(Path, "write_text", torn_text)
+    with pytest.raises(OSError):
+        rl.claim_column("score_fable51", "claude-fable-5-1")
+    monkeypatch.setattr(Path, "write_text", real_text)
+    assert json.loads(rl.columns_path().read_text()) == {"score_opus55": "claude-opus-5-5"}
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", torn_parquet)
+    with pytest.raises(OSError):
+        tl.record_unjudgeable(["2"], settings.LLM_MODEL, "msgbatch_b", "no verdict")
+    monkeypatch.setattr(pd.DataFrame, "to_parquet", real_parquet)
+    assert tl.load_unjudgeable()["id"].tolist() == ["1"]

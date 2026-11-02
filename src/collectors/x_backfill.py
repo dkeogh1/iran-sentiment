@@ -268,15 +268,24 @@ def lookup(client, todo: list[dict], batch_size: int | None = None) -> dict:
 
 def post_label_files() -> list[Path]:
     """The paid label caches keyed by X post id: each teacher model's batch
-    relabel (not the reply labels) and the Haiku topic labels."""
+    relabel (not the reply labels), each alternate post rater's
+    (post_labels_<job>_<model>.parquet, `post-label`) and the Haiku topic
+    labels."""
     from src.analysis.topic_label import labels_path as topic_labels_path
 
-    teacher = [
-        p
-        for p in sorted(settings.PROCESSED_DIR.glob("teacher_labels_*.parquet"))
-        if not p.name.startswith("teacher_labels_replies") and not p.stem.endswith("_superseded")
+    def caches(pattern: str) -> list[Path]:
+        return [
+            p
+            for p in sorted(settings.PROCESSED_DIR.glob(pattern))
+            if not p.name.startswith("teacher_labels_replies")
+            and not p.stem.endswith("_superseded")
+        ]
+
+    return [
+        *caches("teacher_labels_*.parquet"),
+        *caches("post_labels_*.parquet"),
+        topic_labels_path(),
     ]
-    return [*teacher, topic_labels_path()]
 
 
 def supersede_labels(ids: set[str], reason: str = SUPERSEDED_REASON) -> dict[str, int]:
@@ -407,6 +416,7 @@ def relabel_cost(model: str = settings.TEACHER_CHECK_MODEL) -> tuple[int, float]
     errs high. `relabel estimate` assumes the average cached post, and a
     backfilled post is longer. No API call."""
     from src.analysis import relabel as rl
+    from src.analysis.pricing import model_price
     from src.analysis.sentiment import llm_prompt
 
     lp = rl.labels_path(model)
@@ -414,5 +424,6 @@ def relabel_cost(model: str = settings.TEACHER_CHECK_MODEL) -> tuple[int, float]
     todo = [e for i, e in load_journal().items() if e.get("full_text") and i not in have]
     chars = sum(len(llm_prompt(e["full_text"], e["user"])) for e in todo)
     tokens_in = chars / settings.TEACHER_EST_CHARS_PER_TOKEN
-    usd = (tokens_in * rl.PRICE_IN + len(todo) * rl.EST_OUT_TOKENS * rl.PRICE_OUT) / 1e6
-    return len(todo), usd * rl.BATCH_DISCOUNT
+    p = model_price(model)  # the model's own row, never Opus 5's for another model
+    usd = (tokens_in * p["input"] + len(todo) * rl.EST_OUT_TOKENS * p["output"]) / 1e6
+    return len(todo), usd * p["batch_discount"]

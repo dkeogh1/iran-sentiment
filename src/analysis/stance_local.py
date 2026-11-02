@@ -25,7 +25,9 @@ Trump post it answers), and trump_teacher_check (Opus on a sample of
 Trump's feed against the distilled scorer used there). Each has an
 estimate that makes no call. The v2 and Trump checks also run through the
 Message Batches API at half price (teacher_batch_submit / _status /
-_collect): same requests, same label cache, same report.
+_collect): same requests, same label cache, same report. The reply-label
+jobs beyond v2 (v2b, cat-v2, the fresh draws) use the same transport from
+src/analysis/reply_labels.py.
 
 All heavy imports are local to the functions so the CPU-only CLI on dkbl1
 imports this module without torch/transformers being present.
@@ -48,6 +50,7 @@ import numpy as np
 import pandas as pd
 
 from config import settings
+from src.analysis.pricing import model_price, model_tag, token_usd, undated
 from src.text_rules import has_text
 
 logger = logging.getLogger(__name__)
@@ -654,16 +657,73 @@ def local_llm_eval(df: pd.DataFrame, *, model_name: str = settings.LOCAL_LLM_MOD
 
 # ── Scoring arbitrary post files (e.g. Trump's Truth Social feed) ──
 
+def scoring_marker(out: Path) -> Path:
+    """<out>.scoring: present while score_post_file is scoring into `out`."""
+    return out.with_name(out.name + ".scoring")
+
+
+def refuse_while_scoring(out: Path, doing: str) -> None:
+    """Raises while a score-posts run (score_post_file) is writing `out`: it
+    read the file when it started and writes it back whole when it ends, so
+    anything written to `out` meanwhile would be lost. A marker whose
+    process is gone (a killed run) is ignored with a warning."""
+    marker = scoring_marker(out)
+    if not marker.exists():
+        return
+    try:
+        info = json.loads(marker.read_text())
+        pid = int(info["pid"])
+    except (ValueError, KeyError, TypeError):
+        info, pid = {}, None
+    alive = False
+    if pid:
+        try:
+            os.kill(pid, 0)
+            alive = True
+        except ProcessLookupError:
+            alive = False
+        except PermissionError:
+            alive = True
+    if alive:
+        raise RuntimeError(
+            f"score-posts (pid {pid}, since {info.get('started_at')}) is writing {out.name}: "
+            f"it will write the file back as it read it, without {doing}. Run it after "
+            "score-posts ends"
+        )
+    logger.warning("%s: its process is gone (a killed score-posts?): ignored", marker.name)
+
+
 def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None,
                     col: str = "score_opus_distilled", batch_size: int = 64,
                     max_len: int | None = None) -> pd.DataFrame:
     """Score every record in the given JSONL files with a distilled model and
     write id / user / tier / platform / created_at / text / <col> to `out`.
     Incremental: new ids are appended, and only rows without a `col` score
-    are scored, so a new column scores every row and existing scores stay.
-    A stored row without text whose record now has some (a ReTruth, once the
-    feed is re-collected with the reblogged text) takes it and is rescored.
-    max_len defaults to the model's training length."""
+    are scored, so a new column scores every row and existing scores stay;
+    every other column (score_opus from `teacher-check --source trump
+    --merge`) is kept on the rows it is on. A stored row without text whose
+    record now has some (a ReTruth, once the feed is re-collected with the
+    reblogged text) takes it and is rescored. max_len defaults to the
+    model's training length. While it runs, <out>.scoring holds its pid
+    (refuse_while_scoring), and `out` is written atomically at the end."""
+    marker = scoring_marker(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    started = pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
+    marker.write_text(json.dumps({"pid": os.getpid(), "started_at": started}))
+    try:
+        return _score_post_file(inputs, out, model_dir, col, batch_size, max_len)
+    finally:
+        marker.unlink(missing_ok=True)
+
+
+def _score_post_file(
+    inputs: list[Path],
+    out: Path,
+    model_dir: Path | None,
+    col: str,
+    batch_size: int,
+    max_len: int | None,
+) -> pd.DataFrame:
     model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
     max_len = max_len or model_max_len(model_dir)
     rows = []
@@ -696,8 +756,7 @@ def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None
                     len(inputs), col, max_len)
         result.loc[todo, col] = score_with_distilled(result.loc[todo, "text"].fillna("").tolist(),
                                                      model_dir, batch_size, max_len)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    result.to_parquet(out, index=False)
+    write_parquet_atomic(result, out)
     return result
 
 
@@ -796,78 +855,98 @@ def write_parquet_atomic(df: pd.DataFrame, path: Path) -> None:
 
 # Prompt caching on the Claude API: a 5-minute cache write costs 1.25x the
 # input price, a read 0.1x; Opus 5 caches prefixes of 512 tokens or more.
-CACHE_WRITE_MULT, CACHE_READ_MULT = 1.25, 0.1
-CACHE_MIN_TOKENS = 512
+# Each model's own multipliers and minimum are in settings.MODEL_PRICES;
+# these are the Opus 5 row's.
+CACHE_WRITE_MULT = settings.MODEL_PRICES["claude-opus-5"]["cache_write_mult"]
+CACHE_READ_MULT = settings.MODEL_PRICES["claude-opus-5"]["cache_read_mult"]
+CACHE_MIN_TOKENS = int(settings.MODEL_PRICES["claude-opus-5"]["cache_min_tokens"])
 
 
 def _est_tokens(chars: int) -> int:
     return math.ceil(chars / settings.TEACHER_EST_CHARS_PER_TOKEN)
 
 
-def estimate_direct_cost(prompts: list[str], cache_chars: list[int] | None = None,
-                         concurrency: int = settings.LLM_CONCURRENCY) -> dict:
+def estimate_direct_cost(
+    prompts: list[str],
+    cache_chars: list[int] | None = None,
+    concurrency: int = settings.LLM_CONCURRENCY,
+    model: str = settings.TEACHER_CHECK_MODEL,
+) -> dict:
     """Dollars for one direct-API call per prompt, making none: input tokens
     from the prompt's characters (settings.TEACHER_EST_CHARS_PER_TOKEN),
-    output tokens per call and $/MTok from relabel (Opus 5 list prices,
-    without relabel's batch discount). usd counts a prompt's first
-    cache_chars characters as a cached prefix when it reaches
-    CACHE_MIN_TOKENS, in the order given: a call reads it once a call sharing
-    it started `concurrency` places earlier (done by then), else writes it.
-    usd_no_cache is the ceiling."""
-    from src.analysis.relabel import EST_OUT_TOKENS, PRICE_IN, PRICE_OUT
+    output tokens per call from relabel, and `model`'s own prices, cache
+    multipliers and cache minimum (settings.MODEL_PRICES, list prices). usd
+    counts a prompt's first cache_chars characters as a cached prefix when
+    it reaches the model's minimum, in the order given: a call reads it once
+    a call sharing it started `concurrency` places earlier (done by then),
+    else writes it. usd_no_cache is the ceiling: no cache hits, so every
+    call whose prefix reaches the minimum writes it (cache_write_mult)."""
+    from src.analysis.relabel import EST_OUT_TOKENS
 
+    p = model_price(model)
     cache_chars = cache_chars if cache_chars is not None else [0] * len(prompts)
-    tin = sum(_est_tokens(len(p)) for p in prompts)
+    tin = sum(_est_tokens(len(q)) for q in prompts)
     tout = EST_OUT_TOKENS * len(prompts)
-    first: dict[str, int] = {}         # prefix -> place of the first call that sent it
-    billed = 0.0                       # input tokens at the full input price
+    first: dict[str, int] = {}  # prefix -> place of the first call that sent it
+    billed = 0.0  # input tokens at the full input price
+    ceiling = 0.0  # the same with every cached prefix written, none read
     cached_calls = 0
-    for i, (p, c) in enumerate(zip(prompts, cache_chars)):
+    for i, (q, c) in enumerate(zip(prompts, cache_chars)):
         pre = _est_tokens(c) if c else 0
-        if pre < CACHE_MIN_TOKENS:
-            billed += _est_tokens(len(p))
+        if pre < p["cache_min_tokens"]:
+            billed += _est_tokens(len(q))
+            ceiling += _est_tokens(len(q))
             continue
-        start = first.setdefault(p[:c], i)
-        mult = CACHE_READ_MULT if i - start >= concurrency else CACHE_WRITE_MULT
-        billed += pre * mult + _est_tokens(len(p) - c)
+        start = first.setdefault(q[:c], i)
+        mult = p["cache_read_mult"] if i - start >= concurrency else p["cache_write_mult"]
+        billed += pre * mult + _est_tokens(len(q) - c)
+        ceiling += pre * max(1.0, p["cache_write_mult"]) + _est_tokens(len(q) - c)
         cached_calls += 1
-    return {"calls": len(prompts), "input_tokens": tin, "output_tokens": tout,
-            "prompt_chars": sum(len(p) for p in prompts), "cached_prefix_calls": cached_calls,
-            "usd": (billed * PRICE_IN + tout * PRICE_OUT) / 1e6,
-            "usd_no_cache": (tin * PRICE_IN + tout * PRICE_OUT) / 1e6,
-            "price_in_per_mtok": PRICE_IN, "price_out_per_mtok": PRICE_OUT}
+    return {
+        "model": model,
+        "calls": len(prompts),
+        "input_tokens": tin,
+        "output_tokens": tout,
+        "prompt_chars": sum(len(q) for q in prompts),
+        "cached_prefix_calls": cached_calls,
+        "usd": (billed * p["input"] + tout * p["output"]) / 1e6,
+        "usd_no_cache": (ceiling * p["input"] + tout * p["output"]) / 1e6,
+        "price_in_per_mtok": p["input"],
+        "price_out_per_mtok": p["output"],
+    }
 
 
-def price_tokens(t: dict) -> float:
+def price_tokens(t: dict, model: str = settings.TEACHER_CHECK_MODEL) -> float:
     """Direct-API dollars for billed tokens keyed like Spend.FIELDS (missing
     keys count 0): cache writes and reads at their multiples of the input
-    price, Opus 5 list prices from relabel."""
-    from src.analysis.relabel import PRICE_IN, PRICE_OUT
-    billed_in = (t.get("input_tokens", 0)
-                 + t.get("cache_creation_input_tokens", 0) * CACHE_WRITE_MULT
-                 + t.get("cache_read_input_tokens", 0) * CACHE_READ_MULT)
-    return (billed_in * PRICE_IN + t.get("output_tokens", 0) * PRICE_OUT) / 1e6
+    price, at `model`'s list prices (settings.MODEL_PRICES)."""
+    return token_usd(t, model)
 
 
 def with_pilot_and_batch_prices(est: dict) -> dict:
     """estimate_direct_cost's figures plus two more, still making no call:
-    the same token estimate at batch prices (relabel.BATCH_DISCOUNT), and a
-    pilot-calibrated figure at what settings.TEACHER_V2_PILOT was really
-    billed: input dollars per prompt character, output dollars per call, so
-    it follows the prompts' length rather than the characters-per-token
-    guess. Each direct and at batch prices."""
-    from src.analysis.relabel import BATCH_DISCOUNT
-
+    the same token estimate at batch prices (the model's batch_discount),
+    and a pilot-calibrated figure at what settings.TEACHER_V2_PILOT was
+    really billed: input dollars per prompt character, output dollars per
+    call, so it follows the prompts' length rather than the
+    characters-per-token guess. The pilot's tokens (Opus 5) are priced at
+    est["model"]'s rates. Each direct and at batch prices."""
+    model = est.get("model", settings.TEACHER_CHECK_MODEL)
+    discount = model_price(model)["batch_discount"]
     p = settings.TEACHER_V2_PILOT
     tokens = {f: p[f] for f in Spend.FIELDS}
-    usd_in_per_char = price_tokens({**tokens, "output_tokens": 0}) / p["prompt_chars"]
-    usd_out_per_call = price_tokens({"output_tokens": p["output_tokens"]}) / p["calls"]
+    usd_in_per_char = price_tokens({**tokens, "output_tokens": 0}, model) / p["prompt_chars"]
+    usd_out_per_call = price_tokens({"output_tokens": p["output_tokens"]}, model) / p["calls"]
     pilot = est["prompt_chars"] * usd_in_per_char + est["calls"] * usd_out_per_call
-    return {**est, "batch_discount": BATCH_DISCOUNT,
-            "usd_batch": est["usd"] * BATCH_DISCOUNT,
-            "usd_batch_no_cache": est["usd_no_cache"] * BATCH_DISCOUNT,
-            "pilot_usd_per_call": price_tokens(tokens) / p["calls"],
-            "usd_pilot": pilot, "usd_pilot_batch": pilot * BATCH_DISCOUNT}
+    return {
+        **est,
+        "batch_discount": discount,
+        "usd_batch": est["usd"] * discount,
+        "usd_batch_no_cache": est["usd_no_cache"] * discount,
+        "pilot_usd_per_call": price_tokens(tokens, model) / p["calls"],
+        "usd_pilot": pilot,
+        "usd_pilot_batch": pilot * discount,
+    }
 
 
 def _refuse_over_cap(n: int, cap: int) -> None:
@@ -878,15 +957,17 @@ def _refuse_over_cap(n: int, cap: int) -> None:
 
 class Spend:
     """Tokens the API billed across a run's calls (added from worker
-    threads), priced like estimate_direct_cost, so a pilot shows what a call
-    really costs and whether the prefix cache engaged."""
+    threads), priced like estimate_direct_cost at `model`'s rates, so a
+    pilot shows what a call really costs and whether the prefix cache
+    engaged."""
 
     FIELDS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens",
               "output_tokens")
 
-    def __init__(self):
+    def __init__(self, model: str = settings.TEACHER_CHECK_MODEL):
         import threading
         self._lock = threading.Lock()
+        self.model = model
         self.calls = 0
         self.tokens = dict.fromkeys(self.FIELDS, 0)
 
@@ -897,7 +978,7 @@ class Spend:
                 self.tokens[f] += int(getattr(usage, f, 0) or 0)
 
     def usd(self) -> float:
-        return price_tokens(self.tokens)
+        return price_tokens(self.tokens, self.model)
 
     def summary(self) -> str:
         t = self.tokens
@@ -918,7 +999,7 @@ def _teacher_scorer(model: str, max_tokens: int, effort: str):
     load_dotenv(settings.PROJECT_ROOT / ".env", override=True)  # host runs need the key
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY is not set (.env)")
-    spend = Spend()
+    spend = Spend(model)
 
     def call(prompt: str, cache_chars: int = 0):
         return score_prompt(prompt_content(prompt, cache_chars), model, max_tokens, effort,
@@ -951,6 +1032,49 @@ def read_label_cache(path: Path, prompt_version: str | None = None) -> pd.DataFr
     return cached
 
 
+RELABELLED_REASON = "labelled again: the post's text changed since this label was made"
+
+
+def current_label_ids(cached: pd.DataFrame, text_len: pd.Series) -> set[str]:
+    """Ids of the cached labels made from the text the post has now: their
+    input_chars equal text_len (id -> the text's length now). A label for
+    an id text_len lacks, or a cache with no input_chars, counts as current.
+    A label with no input_chars counts as current too (nothing to compare).
+    A to-do list leaves out only these, so a post whose text changed since
+    its label (x-backfill-text, collect --force and ts-fill-text move such
+    labels aside, but a cache they do not know would keep one) is labelled
+    again, and merge_new_labels archives the old label."""
+    if cached.empty:
+        return set()
+    ids = cached["id"].astype(str)
+    if "input_chars" not in cached:
+        return set(ids)
+    now = ids.map(text_len.groupby(level=0).first())
+    had = pd.Series(cached["input_chars"].to_numpy(dtype=float), index=ids.index)
+    ok = now.isna() | had.isna() | (had == now)
+    return set(ids[ok.to_numpy(dtype=bool)])
+
+
+def merge_new_labels(cached: pd.DataFrame, new: pd.DataFrame, out: Path) -> pd.DataFrame:
+    """Write the cache at `out` as `cached` plus `new`. A cached row for an
+    id that `new` labels again (made from a text the post no longer has:
+    current_label_ids) moves to <out>_superseded.parquet first
+    (superseded.archive, which never adds the same row twice), so the cache
+    keeps one label per id. Returns the frame written (nothing is written
+    when it is empty)."""
+    from src.superseded import archive
+
+    if len(cached) and len(new):
+        again = cached["id"].astype(str).isin(set(new["id"].astype(str)))
+        if again.any():
+            archive(cached[again], out, RELABELLED_REASON)
+            cached = cached[~again]
+    frame = pd.concat([cached, new], ignore_index=True) if len(cached) else new
+    if len(frame):
+        write_parquet_atomic(frame, out)
+    return frame
+
+
 def run_labels(todo: pd.DataFrame, cached: pd.DataFrame, out: Path, scorer=None, *, cap: int,
                model: str = settings.TEACHER_CHECK_MODEL, max_tokens: int = settings.TEACHER_MAX_TOKENS,
                effort: str = settings.TEACHER_EFFORT, concurrency: int = settings.LLM_CONCURRENCY,
@@ -978,11 +1102,7 @@ def run_labels(todo: pd.DataFrame, cached: pd.DataFrame, out: Path, scorer=None,
     failed = 0
 
     def save() -> pd.DataFrame:
-        new = pd.DataFrame(rows, columns=cols)
-        frame = pd.concat([cached, new], ignore_index=True) if len(cached) else new
-        if len(frame):
-            write_parquet_atomic(frame, out)
-        return frame
+        return merge_new_labels(cached, pd.DataFrame(rows, columns=cols), out)
 
     ex = ThreadPoolExecutor(max_workers=concurrency)
     try:
@@ -1070,7 +1190,14 @@ REPLY_TEACHER_V2_PREFIX = (
     '"reasoning": "<one sentence>"}}\n\n'
 )
 REPLY_TEACHER_V2_SUFFIX = 'Reply: """{reply}"""'
-REPLY_LABEL_VERSIONS = ("v1", "v2")
+# Each reply label file: v1, v2, and the reply_labels jobs (v2b, cat-v2 and
+# v2-rater on the stance sample, v2-fresh on the fresh random draws).
+REPLY_LABEL_VERSIONS = ("v1", "v2", "v2b", "cat-v2", "v2-fresh", "v2-rater")
+# A stance label set is one prompt and model: its labels can sit in more
+# than one file (one per id source), read together by reply-population. v2
+# is the stance sample's labels plus the fresh draws' (same prompt, same
+# model; the v2 file itself is never written by the fresh run).
+REPLY_LABEL_SETS = {"v1": ("v1",), "v2": ("v2", "v2-fresh"), "v2b": ("v2b",)}
 
 
 def reply_teacher_v2_prompt(parent: str, reply: str) -> tuple[str, int]:
@@ -1081,12 +1208,49 @@ def reply_teacher_v2_prompt(parent: str, reply: str) -> tuple[str, int]:
 
 def reply_labels_path(model: str = settings.TEACHER_CHECK_MODEL, version: str = "v1") -> Path:
     """The reply teacher labels: v1 teacher_labels_replies_<model>.parquet,
-    v2 teacher_labels_replies_v2_<model>.parquet."""
+    any other version teacher_labels_replies_<version>_<model>.parquet."""
     if version not in REPLY_LABEL_VERSIONS:
         raise ValueError(f"reply label version {version!r} is not one of {REPLY_LABEL_VERSIONS}")
     tag = model.replace("/", "_")
     infix = "" if version == "v1" else f"{version}_"
     return settings.PROCESSED_DIR / f"teacher_labels_replies_{infix}{tag}.parquet"
+
+
+def read_reply_label_set(
+    model: str = settings.TEACHER_CHECK_MODEL, label_set: str = "v2"
+) -> pd.DataFrame:
+    """Every label of a stance label set (REPLY_LABEL_SETS): its first file,
+    which must exist (FileNotFoundError, saying how to make it, if not),
+    plus those of its other files that do, one row per id
+    with a score. An id in two files keeps the first file's label (the fresh
+    run never sends an id the v2 file holds, so this only guards)."""
+    if label_set not in REPLY_LABEL_SETS:
+        raise ValueError(f"reply label set {label_set!r} is not one of {tuple(REPLY_LABEL_SETS)}")
+    frames = []
+    for i, version in enumerate(REPLY_LABEL_SETS[label_set]):
+        path = reply_labels_path(model, version)
+        if not path.exists():
+            if i:
+                continue
+            how = {
+                "v1": "`reply-teacher-check` makes them",
+                "v2": "`reply-teacher-check --v2` makes them",
+            }.get(version, f"`reply-label submit --job {version}`, then collect")
+            raise FileNotFoundError(
+                f"no {label_set} reply labels from {model} yet ({path.name}): {how}"
+            )
+        lab = pd.read_parquet(path)
+        lab["id"] = lab["id"].astype(str)
+        frames.append(lab[lab["score_teacher"].notna()].drop_duplicates("id"))
+    out = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+    twice = out["id"].duplicated()
+    if twice.any():
+        logger.warning(
+            "reply labels %s: %d ids are in more than one file; the first file's label is kept",
+            label_set,
+            int(twice.sum()),
+        )
+    return out[~twice].reset_index(drop=True)
 
 
 def tracked_post_texts(slugs, cache_path: Path | None = None) -> dict[str, tuple[str, str]]:
@@ -1127,22 +1291,39 @@ def reply_v2_inputs() -> pd.DataFrame:
     from src.analysis.event_study import STANCE_OUTPUT
 
     smp = pd.read_parquet(STANCE_OUTPUT, columns=["id", "tracked_slug"])
+    return reply_prompt_inputs(smp, reply_teacher_v2_prompt, REPLY_TEACHER_V2_PROMPT_VERSION)
+
+
+def reply_prompt_inputs(
+    smp: pd.DataFrame, build: Callable[[str, str], tuple[str, int]], prompt_version: str
+) -> pd.DataFrame:
+    """The sampled replies `smp` (id, tracked_slug) with their full text from
+    reply_sentiment.parquet, a has_text flag, and for those with text the
+    parent post's text and build(parent, reply) -> (prompt, cache_chars).
+    Raises on a sampled id the reply frame lacks or holds twice with
+    different contents, a parent post with no text, or a reply whose
+    parent_id is not its slug's tracked post: a paid wrong label."""
+    smp = smp[["id", "tracked_slug"]].copy()
     smp["id"] = smp["id"].astype(str)
     smp = smp.drop_duplicates("id")
     reps = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
     reps["id"] = reps["id"].astype(str)
     keep = ["id", "text"] + (["parent_id"] if "parent_id" in reps else [])
     reps = reps.loc[reps["id"].isin(set(smp["id"])), keep]
-    reps = reps.drop_duplicates()                    # a few ids were collected twice, identically
+    reps = reps.drop_duplicates()  # a few ids were collected twice, identically
     clash = reps["id"].duplicated(keep=False)
     if clash.any():
-        raise ValueError(f"{reps.loc[clash, 'id'].nunique()} sampled reply ids have more than one "
-                         f"row with different contents in {settings.REPLY_SENTIMENT_OUTPUT.name}")
+        raise ValueError(
+            f"{reps.loc[clash, 'id'].nunique()} sampled reply ids have more than one "
+            f"row with different contents in {settings.REPLY_SENTIMENT_OUTPUT.name}"
+        )
     j = smp.merge(reps, on="id", how="left", indicator=True)
     lost = j["_merge"] != "both"
     if lost.any():
-        raise LookupError(f"{int(lost.sum())} sampled replies are not in "
-                          f"{settings.REPLY_SENTIMENT_OUTPUT.name}: their full text is unknown")
+        raise LookupError(
+            f"{int(lost.sum())} sampled replies are not in "
+            f"{settings.REPLY_SENTIMENT_OUTPUT.name}: their full text is unknown"
+        )
     j = j.drop(columns="_merge")
     j["has_text"] = j["text"].map(has_text).astype(bool)
     posts = tracked_post_texts(j.loc[j["has_text"], "tracked_slug"].unique())
@@ -1150,15 +1331,19 @@ def reply_v2_inputs() -> pd.DataFrame:
         pid = j["tracked_slug"].map({s: p for s, (p, _) in posts.items()})
         off = j["has_text"] & j["parent_id"].notna() & (j["parent_id"].astype(str) != pid)
         if off.any():
-            raise ValueError("replies whose parent_id is not the tracked post resolved for their "
-                             f"slug: {', '.join(sorted(j.loc[off, 'tracked_slug'].unique()))}")
+            raise ValueError(
+                "replies whose parent_id is not the tracked post resolved for their "
+                f"slug: {', '.join(sorted(j.loc[off, 'tracked_slug'].unique()))}"
+            )
     j["parent_text"] = j["tracked_slug"].map({s: t for s, (_, t) in posts.items()})
-    built = [reply_teacher_v2_prompt(p, r) if ok else (None, 0)
-             for p, r, ok in zip(j["parent_text"], j["text"], j["has_text"])]
+    built = [
+        build(p, r) if ok else (None, 0)
+        for p, r, ok in zip(j["parent_text"], j["text"], j["has_text"])
+    ]
     j["prompt"] = [b[0] for b in built]
     j["cache_chars"] = [b[1] for b in built]
     j["input_chars"] = j["text"].fillna("").str.len()
-    j["prompt_version"] = REPLY_TEACHER_V2_PROMPT_VERSION
+    j["prompt_version"] = prompt_version
     return j
 
 
@@ -1182,7 +1367,7 @@ def reply_teacher_v2_estimate(model: str = settings.TEACHER_CHECK_MODEL, limit: 
     prices and at the pilot's measured rates. No API call."""
     inputs, cached, todo = reply_v2_todo(model, limit, seed)
     eligible = inputs[inputs["has_text"]]
-    est = estimate_direct_cost(todo["prompt"].tolist(), todo["cache_chars"].tolist())
+    est = estimate_direct_cost(todo["prompt"].tolist(), todo["cache_chars"].tolist(), model=model)
     return {"model": model, "sampled": len(inputs), "no_text": int((~inputs["has_text"]).sum()),
             "with_text": len(eligible), "cached": int(eligible["id"].isin(set(cached["id"])).sum()),
             "todo": len(todo), "cap": settings.REPLY_TEACHER_V2_MAX_CALLS,
@@ -1262,28 +1447,40 @@ def trump_labels_path(model: str = settings.TEACHER_CHECK_MODEL) -> Path:
     return settings.PROCESSED_DIR / f"teacher_check_trump_{model.replace('/', '_')}.parquet"
 
 
-def trump_sample(n: int = settings.TRUMP_TEACHER_CHECK_N, seed: int = settings.TEACHER_SAMPLE_SEED,
-                 col: str = "score_opus_distilled") -> pd.DataFrame:
+def trump_sample(
+    n: int | None = settings.TRUMP_TEACHER_CHECK_N,
+    seed: int = settings.TEACHER_SAMPLE_SEED,
+    col: str = "score_opus_distilled",
+) -> pd.DataFrame:
     """n of Trump's feed posts with text and a `col` score: those with the
     smallest seeded hash of their id. A fixed random sample that a growing
-    feed moves only where a new post hashes in, so a rerun relabels little."""
+    feed moves only where a new post hashes in, so a rerun relabels little.
+    n None is the whole feed (`teacher-check --source trump --all`), which
+    holds every smaller sample, so the labels already made are reused."""
     df = pd.read_parquet(settings.TRUMP_FEED_STANCE)
     df["id"] = df["id"].astype(str)
     d = df[df["text"].map(has_text).astype(bool) & df[col].notna()].drop_duplicates("id")
     key = d["id"].map(lambda i: hashlib.sha256(f"{seed}:{i}".encode()).hexdigest())
-    return d.assign(_key=key).sort_values("_key").head(n).drop(columns="_key").reset_index(drop=True)
+    d = d.assign(_key=key).sort_values("_key")
+    return (d if n is None else d.head(n)).drop(columns="_key").reset_index(drop=True)
 
 
-def trump_check_todo(n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
-                     seed: int = settings.TEACHER_SAMPLE_SEED,
-                     col: str = "score_opus_distilled") -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def trump_check_todo(
+    n: int | None = settings.TRUMP_TEACHER_CHECK_N,
+    model: str = settings.TEACHER_CHECK_MODEL,
+    seed: int = settings.TEACHER_SAMPLE_SEED,
+    col: str = "score_opus_distilled",
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """(sample, cached labels, posts still to label), each to-do post with the
-    broadcaster prompt relabel sends (llm_prompt with the feed's handle)."""
+    broadcaster prompt relabel sends (llm_prompt with the feed's handle). A
+    cached label made from another text of the post (current_label_ids) does
+    not count: the post is labelled again."""
     from src.analysis.sentiment import llm_prompt
 
     sample = trump_sample(n, seed, col)
     cached = read_label_cache(trump_labels_path(model), TRUMP_PROMPT_VERSION)
-    todo = sample[~sample["id"].isin(set(cached["id"]))]
+    done = current_label_ids(cached, sample.set_index("id")["text"].str.len())
+    todo = sample[~sample["id"].isin(done)]
     todo = pd.DataFrame({"id": todo["id"],
                          "prompt": [llm_prompt(t, u) for t, u in zip(todo["text"], todo["user"])],
                          "input_chars": todo["text"].str.len(),
@@ -1291,21 +1488,114 @@ def trump_check_todo(n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = setti
     return sample, cached, todo
 
 
-def trump_check_estimate(n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
-                         seed: int = settings.TEACHER_SAMPLE_SEED, col: str = "score_opus_distilled") -> dict:
+def trump_check_estimate(
+    n: int | None = settings.TRUMP_TEACHER_CHECK_N,
+    model: str = settings.TEACHER_CHECK_MODEL,
+    seed: int = settings.TEACHER_SAMPLE_SEED,
+    col: str = "score_opus_distilled",
+) -> dict:
     """What `teacher-check --source trump` would send, priced direct, at batch
-    prices and at the v2 pilot's measured rates. No API call."""
-    sample, cached, todo = trump_check_todo(n, model, seed, col)
-    return {"model": model, "sample": len(sample),
-            "cached": int(sample["id"].isin(set(cached["id"])).sum()), "todo": len(todo),
-            "cap": settings.TRUMP_TEACHER_CHECK_MAX_CALLS,
-            **with_pilot_and_batch_prices(estimate_direct_cost(todo["prompt"].tolist()))}
+    prices and at the v2 pilot's measured rates, and ("fit") on the token
+    usage the Trump check's own batches were billed
+    (settings.POST_PROMPT_TOKEN_FIT, post_labels.llm_prompt_cost). No API call."""
+    from src.analysis.post_labels import llm_prompt_cost
+
+    sample, _, todo = trump_check_todo(n, model, seed, col)
+    fit = llm_prompt_cost(todo["prompt"].str.len(), "trump", model)
+    return {
+        "model": model,
+        "sample": len(sample),
+        "cached": len(sample) - len(todo),
+        "todo": len(todo),
+        "cap": settings.TRUMP_TEACHER_CHECK_MAX_CALLS,
+        "fit": {
+            k: fit[k]
+            for k in (
+                "input_tokens",
+                "output_tokens",
+                "usd_batch",
+                "usd_batch_ceiling",
+                "usd_direct",
+                "output_measured",
+            )
+        },
+        **with_pilot_and_batch_prices(estimate_direct_cost(todo["prompt"].tolist(), model=model)),
+    }
 
 
-def trump_teacher_check(*, n: int = settings.TRUMP_TEACHER_CHECK_N, model: str = settings.TEACHER_CHECK_MODEL,
-                        max_tokens: int = settings.TEACHER_MAX_TOKENS, effort: str = settings.TEACHER_EFFORT,
-                        concurrency: int = settings.LLM_CONCURRENCY, seed: int = settings.TEACHER_SAMPLE_SEED,
-                        col: str = "score_opus_distilled", scorer=None) -> dict:
+def trump_columns_path() -> Path:
+    """The record of the model behind each score_<tag> column trump_merge
+    writes, next to the feed parquet."""
+    return settings.TRUMP_FEED_STANCE.with_name(settings.TRUMP_FEED_STANCE.stem + "_columns.json")
+
+
+def trump_merge(model: str = settings.TEACHER_CHECK_MODEL) -> tuple[pd.DataFrame, dict]:
+    """Write the Trump check's labels onto the feed parquet by id as
+    score_<tag> / label_<tag> (score_opus / label_opus for claude-opus-5:
+    the X tiers' scorer and prompt), replacing those two columns and leaving
+    every other (score_opus_distilled stays). A label made from another text
+    of the post (its input_chars no longer the text's length) is left out.
+    The column is claimed for the model first (relabel.claim_column, the
+    feed's own record): never two scorers in one series. score-posts keeps
+    these columns on the rows they are on, and the posts it adds have none
+    until the next merge; it reads the parquet when it starts and writes it
+    back when it ends, so a merge in between would be lost: refused while
+    its marker says it runs (refuse_while_scoring). Returns (feed,
+    coverage)."""
+    from src.analysis.relabel import claim_column
+
+    refuse_while_scoring(settings.TRUMP_FEED_STANCE, "the merge")
+    tag = model_tag(model)
+    col, lcol = f"score_{tag}", f"label_{tag}"
+    path = trump_labels_path(model)
+    if not path.exists():
+        raise FileNotFoundError(
+            f"no Trump labels from {model} ({path.name}): run `teacher-check --source trump "
+            f"--all --model {model}` first"
+        )
+    lab = read_label_cache(path, TRUMP_PROMPT_VERSION)
+    lab = lab.dropna(subset=["score_teacher"]).drop_duplicates("id").set_index("id")
+    feed = pd.read_parquet(settings.TRUMP_FEED_STANCE)
+    ids = feed["id"].astype(str)
+    # A cache with no input_chars (none recorded) counts every label as current.
+    chars = (
+        ids.map(lab["input_chars"])
+        if "input_chars" in lab
+        else feed["text"].fillna("").str.len()
+    )
+    held = ids.isin(lab.index)
+    stale = held & (chars != feed["text"].fillna("").str.len())
+    keep = held & ~stale
+    claim_column(col, model, trump_columns_path())
+    feed = feed.drop(columns=[c for c in (col, lcol) if c in feed])
+    feed[col] = ids.map(lab["score_teacher"]).where(keep).astype(float)
+    feed[lcol] = ids.map(lab["label_teacher"]).where(keep)
+    write_parquet_atomic(feed, settings.TRUMP_FEED_STANCE)
+    with_text = feed["text"].map(has_text).astype(bool)
+    coverage = {
+        "column": col,
+        "posts": len(feed),
+        "with_text": int(with_text.sum()),
+        "labelled": int(feed[col].notna().sum()),
+        "with_text_labelled": int((with_text & feed[col].notna()).sum()),
+        "stale": int(stale.sum()),
+        "labels": len(lab),
+    }
+    logger.info("trump merge: %s", coverage)
+    return feed, coverage
+
+
+def trump_teacher_check(
+    *,
+    n: int | None = settings.TRUMP_TEACHER_CHECK_N,
+    model: str = settings.TEACHER_CHECK_MODEL,
+    max_tokens: int = settings.TEACHER_MAX_TOKENS,
+    effort: str = settings.TEACHER_EFFORT,
+    concurrency: int = settings.LLM_CONCURRENCY,
+    seed: int = settings.TEACHER_SAMPLE_SEED,
+    col: str = "score_opus_distilled",
+    scorer=None,
+) -> dict:
     """Opus-label the trump_sample with the X teacher's prompt and settings
     into teacher_check_trump_<model>.parquet (incremental, capped by
     settings.TRUMP_TEACHER_CHECK_MAX_CALLS), then report how well `col`
@@ -1370,9 +1660,21 @@ def trump_teacher_report(model: str = settings.TEACHER_CHECK_MODEL, col: str = "
 # sends those ids again. A new submit archives the last state as
 # teacher_batch_<check>_<batch id>.json, and a streamed collect keeps the raw
 # results in teacher_batch_<check>_<batch id>_results.jsonl, so answers that
-# are paid for but not kept as labels stay on disk.
+# are paid for but not kept as labels stay on disk. When the stream breaks
+# (httpx ReadError on this host) the collect downloads the batch's
+# results_url to that file and reads it instead (batch_io). A check whose
+# requests carry private replies (carries_replies) has its batch deleted on
+# the API once collected, unless keep_batch; the state records it under
+# "delete". The reply-label jobs (reply_labels.py) add their own checks.
 
 BATCH_CUSTOM_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")   # the Batches API's custom_id rule
+
+
+def parse_stance_result(result) -> tuple[str, str, dict | None]:
+    """(id, outcome, label fields or None) for a stance answer: the fields
+    are score_teacher / label_teacher, judged by parse_batch_result."""
+    rid, outcome, sc, lab = parse_batch_result(result)
+    return rid, outcome, None if sc is None else {"score_teacher": sc, "label_teacher": lab}
 
 
 @dataclass(frozen=True)
@@ -1380,12 +1682,32 @@ class BatchCheck:
     """What the batch transport needs from a check: its prompt version, the
     settings name of its cap (read at call time), its label cache, its to-do
     rows ((model, params, limit) -> (cached labels, rows to label, each with
-    its prompt)) and its report ((model, params) -> report, written)."""
+    its prompt)) and its report ((model, params) -> report, written). parse
+    turns one result into (id, outcome, the value_cols of a kept label or
+    None). A check whose requests carry private replies has its batch
+    deleted on the API once collected (carries_replies). usd_cap_setting
+    names a dollar cap in settings, checked at submit against price_rows
+    ((rows, model) -> the rows' batch dollars with no cache hits, the
+    ceiling). With run_caps both caps bound the check's whole run: every
+    batch it has sent (batch_run_totals) plus this one, plus what
+    extra_spend (() -> {"calls", "usd"}) says the check has spent outside
+    its batches (a direct pilot). submit_guard ((model, params, limit,
+    rows) -> None) refuses a submit, before any call, for a reason of the
+    check's own."""
+
     prompt_version: str
     cap_setting: str
     labels_path: Callable[[str], Path]
     todo: Callable[[str, dict, int | None], tuple[pd.DataFrame, pd.DataFrame]]
     report: Callable[[str, dict], dict]
+    parse: Callable[[object], tuple[str, str, dict | None]] = parse_stance_result
+    value_cols: tuple[str, ...] = ("score_teacher", "label_teacher")
+    carries_replies: bool = False
+    usd_cap_setting: str | None = None
+    price_rows: Callable[[pd.DataFrame, str], float] | None = None
+    run_caps: bool = False
+    submit_guard: Callable[[str, dict, int | None, pd.DataFrame], None] | None = None
+    extra_spend: Callable[[], dict] | None = None
 
 
 def _reply_v2_batch_todo(model: str, params: dict, limit: int | None):
@@ -1401,11 +1723,29 @@ def _trump_batch_todo(model: str, params: dict, limit: int | None):
 BATCH_CHECKS = {
     "reply_v2": BatchCheck(REPLY_TEACHER_V2_PROMPT_VERSION, "REPLY_TEACHER_V2_MAX_CALLS",
                            lambda m: reply_labels_path(m, "v2"), _reply_v2_batch_todo,
-                           lambda m, p: reply_teacher_v2_report(m, p["col"])),
+                           lambda m, p: reply_teacher_v2_report(m, p["col"]),
+                           carries_replies=True),
     "trump": BatchCheck(TRUMP_PROMPT_VERSION, "TRUMP_TEACHER_CHECK_MAX_CALLS",
                         lambda m: trump_labels_path(m), _trump_batch_todo,
                         lambda m, p: trump_teacher_report(m, p["col"])),
 }
+
+
+def batch_checks() -> dict[str, BatchCheck]:
+    """BATCH_CHECKS plus the reply-label jobs' checks (reply_labels.py) and
+    the post-label jobs' (post_labels.py), imported here so neither module
+    needs the other at import."""
+    from src.analysis.post_labels import POST_BATCH_CHECKS
+    from src.analysis.reply_labels import REPLY_BATCH_CHECKS
+
+    return {**BATCH_CHECKS, **REPLY_BATCH_CHECKS, **POST_BATCH_CHECKS}
+
+
+def batch_check(check: str) -> BatchCheck:
+    checks = batch_checks()
+    if check not in checks:
+        raise ValueError(f"no batch check {check!r}: one of {', '.join(checks)}")
+    return checks[check]
 
 
 def _batch_client():
@@ -1415,8 +1755,7 @@ def _batch_client():
 
 
 def batch_state_path(check: str) -> Path:
-    if check not in BATCH_CHECKS:
-        raise ValueError(f"no batch check {check!r}: one of {', '.join(BATCH_CHECKS)}")
+    batch_check(check)
     return settings.PROCESSED_DIR / f"teacher_batch_{check}.json"
 
 
@@ -1429,6 +1768,54 @@ def batch_archive_path(check: str, batch_id: str, suffix: str = ".json") -> Path
 def read_batch_state(check: str) -> dict | None:
     path = batch_state_path(check)
     return json.loads(path.read_text()) if path.exists() else None
+
+
+def _state_matches(st: dict, match: dict | None) -> bool:
+    """Whether a batch state was sent with every setting in `match` (a model
+    compared without its date)."""
+    for k, v in (match or {}).items():
+        got = st.get(k)
+        if k == "model":
+            if got is None or undated(str(got)) != undated(str(v)):
+                return False
+        elif got != v:
+            return False
+    return True
+
+
+def batch_run_totals(check: str, match: dict | None = None) -> dict:
+    """What the check's batches have sent so far, from its state file and
+    its archived states (one per batch id): {"batches", "calls" (requests
+    submitted), "usd_batch" (the billed spend of each collected batch, the
+    recorded ceiling of one not collected yet), "stop_reasons" and
+    "failed_by_outcome" (summed over the collected batches)}. `match` keeps
+    only the batches sent with those settings (model, prompt_version,
+    max_tokens, effort). No call."""
+    path = batch_state_path(check)
+    states: dict[str, dict] = {}
+    for f in sorted(path.parent.glob(f"teacher_batch_{check}_*.json")) + [path]:
+        if not f.exists():
+            continue
+        st = json.loads(f.read_text())
+        if st.get("check") == check and st.get("batch_id") and _state_matches(st, match):
+            states[st["batch_id"]] = st  # the live file last: its record wins
+    usd = 0.0
+    stops: dict[str, int] = {}
+    failed: dict[str, int] = {}
+    for st in states.values():
+        spend = st.get("spend")
+        usd += float(spend["usd_batch"]) if spend else float(st.get("usd_ceiling_batch") or 0.0)
+        for k, v in ((spend or {}).get("stop_reasons") or {}).items():
+            stops[k] = stops.get(k, 0) + int(v)
+        for k, v in ((st.get("collected") or {}).get("failed_by_outcome") or {}).items():
+            failed[k] = failed.get(k, 0) + int(v)
+    return {
+        "batches": len(states),
+        "calls": sum(int(st.get("n_submitted") or 0) for st in states.values()),
+        "usd_batch": usd,
+        "stop_reasons": stops,
+        "failed_by_outcome": failed,
+    }
 
 
 def open_batch(check: str) -> dict | None:
@@ -1502,11 +1889,81 @@ def build_batch_requests(todo: pd.DataFrame, model: str, max_tokens: int, effort
     return reqs
 
 
+def run_spent(check: str) -> dict:
+    """What a run-capped check has sent and spent so far: its batches
+    (batch_run_totals) plus its extra_spend (a direct pilot). {"calls",
+    "usd_batch"}; zeros for a check whose caps bound each batch alone."""
+    spec = batch_check(check)
+    if not spec.run_caps:
+        return {"calls": 0, "usd_batch": 0.0}
+    tot = batch_run_totals(check)
+    extra = spec.extra_spend() if spec.extra_spend else {"calls": 0, "usd": 0.0}
+    return {
+        "calls": tot["calls"] + int(extra["calls"]),
+        "usd_batch": tot["usd_batch"] + float(extra["usd"]),
+    }
+
+
+def refuse_over_usd_cap(
+    spec: BatchCheck, todo: pd.DataFrame, model: str, spent: float = 0.0
+) -> float | None:
+    """The rows' batch dollars with no cache hits (the ceiling) when the
+    check has a dollar cap (None without one); raises, before any call,
+    when `spent` (the run's spend so far, with run_caps) plus that is over
+    the cap."""
+    if not (spec.usd_cap_setting and spec.price_rows):
+        return None
+    usd, cap = float(spec.price_rows(todo, model)), getattr(settings, spec.usd_cap_setting)
+    if spent + usd > cap:
+        so_far = f" on top of ${spent:.2f} the run has cost so far" if spent else ""
+        how = (
+            "raise it deliberately (it bounds the whole run: sending fewer at a time does "
+            "not get past it)"
+            if spec.run_caps
+            else "raise it deliberately, or send fewer (--post, --limit)"
+        )
+        raise RuntimeError(
+            f"${usd:.2f} at batch prices with no cache hits for {len(todo)} calls{so_far}, "
+            f"over the ${cap:g} cap ({spec.usd_cap_setting} in config/settings.py): {how}"
+        )
+    return usd
+
+
+def _refuse_over_run_cap(check: str, prior: int, n: int, cap: int) -> None:
+    if prior + n > cap:
+        raise RuntimeError(
+            f"{check}: {prior} calls already sent by the run + {n} now = {prior + n}, "
+            f"over the run cap of {cap} in config/settings.py: raise it deliberately"
+        )
+
+
+def _delete_before_archive(check: str, prev: dict, client) -> None:
+    """A reply batch still on the API (delete pending, failed, or kept by
+    --keep-batch) is deleted before a new submit archives its state, after
+    which no collect would try again. Raises, before the create call, when
+    the delete fails."""
+    from src.analysis.batch_io import delete_batch
+
+    if (prev.get("delete") or {}).get("status") not in ("pending", "failed", "kept"):
+        return
+    prev["delete"] = delete_batch(client, prev["batch_id"])
+    _write_json(batch_state_path(check), prev)
+    if prev["delete"]["status"] != "deleted":
+        raise RuntimeError(
+            f"{check}: batch {prev['batch_id']} could not be deleted on the API "
+            f"({prev['delete'].get('error')}), and a new submit would archive its state, "
+            "leaving its replies there for 29 days. Try again, or delete it in the Console "
+            "(Batches) and submit again: a batch already gone counts as deleted"
+        )
+
+
 def _api_refused(e: Exception) -> bool:
-    """The API answered the create call with a client error (4xx): no batch
-    was made. A timeout, a dropped connection or a 5xx leaves that unknown."""
-    import anthropic
-    return isinstance(e, anthropic.APIStatusError) and e.status_code < 500
+    """The API answered the create call with a refusal (batch_io.create_refused:
+    a 4xx or 529): no batch was made. A timeout, a dropped connection or
+    another 5xx leaves that unknown."""
+    from src.analysis.batch_io import create_refused
+
+    return create_refused(e)
 
 
 def teacher_batch_submit(check: str, *, params: dict, model: str = settings.TEACHER_CHECK_MODEL,
@@ -1515,24 +1972,42 @@ def teacher_batch_submit(check: str, *, params: dict, model: str = settings.TEAC
                          client=None) -> dict | None:
     """Submit the check's rows still to label (cached ids are never sent)
     as one batch and record it. Refuses while the check's last batch is
-    open, and over the check's cap, before any call. `params` fixes what
+    open, over the check's caps (with run_caps, its earlier batches and its
+    extra_spend count too) and when its submit_guard objects, before any
+    call. A reply batch
+    still on the API is deleted before its state is archived (refusing
+    while that fails). `params` fixes what
     collect recomputes the to-do rows and the report from (seed, col, and n
     for the Trump sample). The state is written as "submitting" before the
     create call and kept if the call dies without an answer, so a batch the
     API made is never silently orphaned; the last collected state is
     archived first. Returns the new state, or None when every row is
-    labelled and nothing was sent."""
-    spec = BATCH_CHECKS[check]
+    labelled and nothing was sent. The create call is sent once
+    (batch_io.create_batch): the SDK's own retry has no idempotency key."""
+    from src.analysis.batch_io import create_batch
+
+    spec = batch_check(check)
     refuse_open_batch(check, "a new batch")
     _, todo = spec.todo(model, params, limit)
-    _refuse_over_cap(len(todo), getattr(settings, spec.cap_setting))
     if todo.empty:
         logger.info("teacher batch %s: nothing to submit, every row is labelled", check)
         return None
+    cap = getattr(settings, spec.cap_setting)
+    if spec.run_caps:
+        prior = run_spent(check)
+        _refuse_over_run_cap(check, prior["calls"], len(todo), cap)
+    else:
+        prior = {"calls": 0, "usd_batch": 0.0}
+        _refuse_over_cap(len(todo), cap)
+    if spec.submit_guard:
+        spec.submit_guard(model, params, limit, todo)
+    ceiling = refuse_over_usd_cap(spec, todo, model, spent=prior["usd_batch"])
     reqs = build_batch_requests(todo, model, max_tokens, effort)
     client = client or _batch_client()
     path, prev = batch_state_path(check), read_batch_state(check)
     if prev and prev.get("batch_id"):
+        if spec.carries_replies:
+            _delete_before_archive(check, prev, client)
         _write_json(batch_archive_path(check, prev["batch_id"]), prev)
     ids = todo["id"].astype(str).tolist()
     st = {"check": check, "batch_id": None, "status": "submitting",
@@ -1541,9 +2016,11 @@ def teacher_batch_submit(check: str, *, params: dict, model: str = settings.TEAC
           "prompt_version": spec.prompt_version, "params": params, "limit": limit,
           "labels_file": spec.labels_path(model).name, "n_submitted": len(reqs), "ids": ids,
           "prompt_sha256": dict(zip(ids, todo["prompt"].map(prompt_sha)))}
+    if ceiling is not None:
+        st["usd_ceiling_batch"] = ceiling
     _write_json(path, st)
     try:
-        batch = client.messages.batches.create(requests=reqs)
+        batch = create_batch(client, reqs)  # one attempt: a SDK retry could make a second batch
     except Exception as e:
         if _api_refused(e):
             if prev:
@@ -1607,7 +2084,8 @@ def _result_record(result) -> dict:
             "content": [{"type": "text", "text": b.text} for b in msg.content
                         if getattr(b, "type", "") == "text"],
             "usage": ({f: int(getattr(usage, f, 0) or 0) for f in Spend.FIELDS}
-                      if usage is not None else None)}
+                      if usage is not None else None),
+            "stop_reason": getattr(msg, "stop_reason", None)}
     return out
 
 
@@ -1640,14 +2118,16 @@ def read_batch_results(path: Path) -> list:
         msg = res.get("message") or {}
         content = [NS(type=b.get("type"), text=b.get("text", "")) for b in msg.get("content", [])]
         usage = NS(**msg["usage"]) if msg.get("usage") else None
-        out.append(NS(custom_id=cid, result=NS(type=kind, message=NS(content=content, usage=usage))))
+        out.append(NS(custom_id=cid, result=NS(type=kind, message=NS(
+            content=content, usage=usage, stop_reason=msg.get("stop_reason")))))
     if bad:
         logger.warning("%s: %d lines that do not parse were skipped", path.name, bad)
     return out
 
 
-def teacher_batch_collect(check: str, *, client=None,
-                          results_file: Path | None = None) -> tuple[dict, dict | None]:
+def teacher_batch_collect(
+    check: str, *, client=None, results_file: Path | None = None, keep_batch: bool = False
+) -> tuple[dict, dict | None]:
     """Once the check's batch has ended, add its good answers to the check's
     label cache (the direct run's file, columns and prompt version) and,
     when the read held a result for every submitted id, mark the batch
@@ -1656,100 +2136,185 @@ def teacher_batch_collect(check: str, *, client=None,
     and leaves the batch open (report None): collect again from the stream
     or the whole file. Results for ids not submitted, already cached, no
     longer to label, or whose prompt changed since the submit are ignored
-    and logged. A collected batch only gets its report rebuilt, with no
-    call. Returns (state, report), report None while the batch is open.
-    `results_file` reads a results JSONL instead of the stream; a streamed
-    read is kept as one (batch_archive_path)."""
-    from src.analysis.relabel import BATCH_DISCOUNT
+    and logged. Returns (state, report), report None while the batch is
+    open. `results_file` reads a results JSONL instead of the stream; a
+    streamed read is kept as one (batch_archive_path), and when the stream
+    breaks the batch's results_url is downloaded there and read instead
+    (batch_io.stream_or_download).
 
-    spec = BATCH_CHECKS[check]
+    A check that carries replies has its batch deleted on the API once
+    collected (batch_io.delete_batch), so the replies are not kept there for
+    29 days; keep_batch skips that. A delete that failed, or a batch kept
+    earlier, is deleted by the next collect without keep_batch, or by the
+    next submit before it archives the state. Otherwise a collected batch
+    only gets its report rebuilt, with no call."""
+    from src.analysis.batch_io import delete_batch, stream_or_download
+
+    spec = batch_check(check)
     st = _submitted_state(check)
     if st["status"] == "collected":
-        logger.info("teacher batch %s: %s already collected; rebuilding the report",
-                    check, st["batch_id"])
+        if (
+            spec.carries_replies
+            and not keep_batch
+            and (st.get("delete") or {}).get("status") in ("pending", "failed", "kept")
+        ):
+            st["delete"] = delete_batch(client or _batch_client(), st["batch_id"])
+            _write_json(batch_state_path(check), st)
+        else:
+            logger.info(
+                "teacher batch %s: %s already collected; rebuilding the report",
+                check,
+                st["batch_id"],
+            )
         return st, spec.report(st["model"], st["params"])
     client = client or _batch_client()
     st = teacher_batch_status(check, client)
     if st["status"] != "ended":
-        logger.info("teacher batch %s: %s still %s (%s)",
-                    check, st["batch_id"], st["status"], st.get("counts"))
+        logger.info(
+            "teacher batch %s: %s still %s (%s)",
+            check,
+            st["batch_id"],
+            st["status"],
+            st.get("counts"),
+        )
         return st, None
     if st["prompt_version"] != spec.prompt_version:
-        raise ValueError(f"batch {st['batch_id']} was built with prompt {st['prompt_version']}, "
-                         f"not {spec.prompt_version}: its labels do not belong in this cache")
+        raise ValueError(
+            f"batch {st['batch_id']} was built with prompt {st['prompt_version']}, "
+            f"not {spec.prompt_version}: its labels do not belong in this cache"
+        )
     model, out = st["model"], spec.labels_path(st["model"])
     cached, todo = spec.todo(model, st["params"], None)
     now_sha = dict(zip(todo["id"].astype(str), todo["prompt"].map(prompt_sha)))
     sent_sha = st.get("prompt_sha256", {})
-    keep = todo.drop(columns=[c for c in ("prompt", "cache_chars") if c in todo])
-    rows_by_id = {str(r["id"]): r for r in keep.to_dict("records")}   # in to-do order
-    submitted, have = set(st["ids"]), set(cached["id"].astype(str))
+    keep = todo.drop(columns=[c for c in ("prompt", "cache_chars", "prefix_chars") if c in todo])
+    rows_by_id = {str(r["id"]): r for r in keep.to_dict("records")}  # in to-do order
+    # A cached id still to do holds a label made from an older text: not "have".
+    submitted, have = set(st["ids"]), set(cached["id"].astype(str)) - set(rows_by_id)
+    source = str(results_file) if results_file is not None else "stream"
     if results_file is not None:
         results = read_batch_results(Path(results_file))
     else:
-        results = list(client.messages.batches.results(st["batch_id"]))
-        write_batch_results(results, batch_archive_path(check, st["batch_id"], "_results.jsonl"))
-    spend, no_usage = Spend(), 0
+        archive = batch_archive_path(check, st["batch_id"], "_results.jsonl")
+        results, downloaded = stream_or_download(
+            client, st["batch_id"], archive, read_batch_results
+        )
+        if downloaded is None:
+            write_batch_results(results, archive)
+        else:
+            source = str(downloaded)
+    spend, no_usage = Spend(model), 0
+    outs: list[int] = []  # output tokens of each billed answer
+    stops: dict[str, int] = {}  # how the billed answers ended (max_tokens: cut short)
     answered: set[str] = set()
     new: dict[str, dict] = {}
     failed: dict[str, int] = {}
-    ignored = {"not_submitted": 0, "already_cached": 0, "repeated": 0, "no_longer_to_label": 0,
-               "prompt_changed": 0}
+    ignored = {
+        "not_submitted": 0,
+        "already_cached": 0,
+        "repeated": 0,
+        "no_longer_to_label": 0,
+        "prompt_changed": 0,
+    }
     for r in results:
-        rid, outcome, sc, lab = parse_batch_result(r)
+        rid, outcome, vals = spec.parse(r)
         if rid not in submitted:
-            ignored["not_submitted"] += 1       # another batch's result: not billed to this one
+            ignored["not_submitted"] += 1  # another batch's result: not billed to this one
             continue
         if rid in answered:
             ignored["repeated"] += 1
             continue
         answered.add(rid)
-        if r.result.type == "succeeded":        # billed, kept or not
+        if r.result.type == "succeeded":  # billed, kept or not
             usage = getattr(r.result.message, "usage", None)
             if usage is None:
                 no_usage += 1
             else:
                 spend.add(usage)
+                outs.append(int(getattr(usage, "output_tokens", 0) or 0))
+            stop = str(getattr(r.result.message, "stop_reason", None))
+            stops[stop] = stops.get(stop, 0) + 1
         if rid in have:
-            ignored["already_cached"] += 1      # e.g. an earlier short read
+            ignored["already_cached"] += 1  # e.g. an earlier short read
         elif rid not in rows_by_id:
             ignored["no_longer_to_label"] += 1  # left the sample since the submit
         elif rid in sent_sha and sent_sha[rid] != now_sha[rid]:
-            ignored["prompt_changed"] += 1      # its text changed since the submit
-        elif sc is None:
+            ignored["prompt_changed"] += 1  # its text changed since the submit
+        elif vals is None:
             failed[outcome] = failed.get(outcome, 0) + 1
         else:
-            new[rid] = {**rows_by_id[rid], "score_teacher": sc, "label_teacher": lab}
+            new[rid] = {**rows_by_id[rid], **vals}
     if any(ignored.values()):
-        logger.info("teacher batch %s: ignored results %s",
-                    check, {k: v for k, v in ignored.items() if v})
+        logger.info(
+            "teacher batch %s: ignored results %s", check, {k: v for k, v in ignored.items() if v}
+        )
     if new:
-        cols = list(keep.columns) + ["score_teacher", "label_teacher"]   # run_labels' columns
+        cols = list(keep.columns) + list(spec.value_cols)  # run_labels' columns
         add = pd.DataFrame([new[i] for i in rows_by_id if i in new], columns=cols)
-        write_parquet_atomic(pd.concat([cached, add], ignore_index=True) if len(cached) else add,
-                             out)
-    read = {"labelled": len(new), "failed": sum(failed.values()), "failed_by_outcome": failed,
-            "ignored": ignored}
+        merge_new_labels(cached, add, out)
+    read = {
+        "labelled": len(new),
+        "failed": sum(failed.values()),
+        "failed_by_outcome": failed,
+        "ignored": ignored,
+    }
     missing = len(submitted - answered)
     if missing:
-        st["short_read"] = {**read, "missing": missing, "results_read": len(results),
-                            "source": str(results_file) if results_file is not None else "stream"}
+        st["short_read"] = {
+            **read,
+            "missing": missing,
+            "results_read": len(results),
+            "source": source,
+        }
         _write_json(batch_state_path(check), st)
-        logger.warning("teacher batch %s: %d of %d submitted ids have no result in this read "
-                       "(a results file cut short, or another batch's?); %d labels added -> %s. "
-                       "The batch stays open: collect again from the stream or the whole file",
-                       check, missing, len(submitted), len(new), out)
+        logger.warning(
+            "teacher batch %s: %d of %d submitted ids have no result in this read "
+            "(a results file cut short, or another batch's?); %d labels added -> %s. "
+            "The batch stays open: collect again from the stream or the whole file",
+            check,
+            missing,
+            len(submitted),
+            len(new),
+            out,
+        )
         return st, None
     usd = spend.usd()
+    discount = model_price(model)["batch_discount"]
     st.pop("short_read", None)
-    st.update(status="collected", collected=read,
-              spend={**spend.tokens, "calls": spend.calls, "calls_without_usage": no_usage,
-                     "usd_direct": usd, "usd_batch": usd * BATCH_DISCOUNT})
+    st.update(
+        status="collected",
+        collected=read,
+        spend={
+            **spend.tokens,
+            "calls": spend.calls,
+            "calls_without_usage": no_usage,
+            "output_tokens_per_call": spend.tokens["output_tokens"] / spend.calls
+            if spend.calls
+            else None,
+            "output_tokens_p95": float(np.quantile(outs, 0.95)) if outs else None,
+            "stop_reasons": stops,
+            "usd_direct": usd,
+            "usd_batch": usd * discount,
+        },
+    )
+    if spec.carries_replies:
+        st["delete"] = {"status": "kept"} if keep_batch else {"status": "pending"}
     _write_json(batch_state_path(check), st)
     unknown = f"; usage missing for {no_usage} calls (not counted)" if no_usage else ""
-    logger.info("teacher batch %s: %d labels added, %d failed (the next submit sends them "
-                "again) -> %s; %s at direct prices, ≈ $%.2f at batch prices%s", check, len(new),
-                sum(failed.values()), out, spend.summary(), st["spend"]["usd_batch"], unknown)
+    logger.info(
+        "teacher batch %s: %d labels added, %d failed (the next submit sends them "
+        "again) -> %s; %s at direct prices, ≈ $%.2f at batch prices%s",
+        check,
+        len(new),
+        sum(failed.values()),
+        out,
+        spend.summary(),
+        st["spend"]["usd_batch"],
+        unknown,
+    )
+    if spec.carries_replies and not keep_batch:
+        st["delete"] = delete_batch(client, st["batch_id"])
+        _write_json(batch_state_path(check), st)
     return st, spec.report(model, st["params"])
 
 

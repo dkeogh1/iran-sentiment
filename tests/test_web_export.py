@@ -56,3 +56,48 @@ def test_replies_skips_uncovered_posts(tmp_path, monkeypatch, caplog):
     assert [r["slug"] for r in rows] == ["ceasefire"]  # NaN post left out, not nulls
     assert rows[0]["valence"] == 0.3  # mean of 0.2 and 0.4: no dupe, no textless
     assert "deal_complete left out" in caplog.text
+
+
+def test_replies_says_when_fresh_draws_are_pooled(tmp_path, monkeypatch, caplog):
+    """The published prose cites the 1,071-draw figures: an export that pools
+    the fresh draws says so, and one that does not stays quiet."""
+    monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
+    pd.DataFrame(
+        {"id": ["1"], "tracked_slug": ["ceasefire"], "text": ["no war"], "score_transformer": [0.2]}
+    ).to_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    est = {
+        f"assisted_{k}{s}": v
+        for k, v in (("mean", 0.1), ("pro", 0.5), ("anti", 0.3))
+        for s in ("", "_lo", "_hi")
+    }
+
+    def rp(fresh):
+        return pd.DataFrame(
+            [
+                {
+                    "post": "ceasefire",
+                    "n_replies": 2,
+                    "coverage": 1.0,
+                    "n_labelled": 130 + fresh,
+                    "n_labelled_fresh": fresh,
+                    **est,
+                },
+                {
+                    "post": "ALL",
+                    "n_replies": 2,
+                    "coverage": 1.0,
+                    "n_labelled": 130 + fresh,
+                    "n_labelled_fresh": fresh,
+                    **est,
+                },
+            ]
+        )
+
+    for fresh, warned in ((0, False), (998, True)):
+        caplog.clear()
+        monkeypatch.setattr(we.inf, "reply_population", lambda f=fresh: rp(f))
+        with caplog.at_level("INFO", logger="src.visualization.web_export"):
+            we.replies()
+        assert f"{130 + fresh} labelled random draws, {fresh} of them fresh" in caplog.text
+        assert ("1,071-draw figures" in caplog.text) is warned
+        assert ("REPLY_POPULATION_FRESH_DRAWS = False" in caplog.text) is warned

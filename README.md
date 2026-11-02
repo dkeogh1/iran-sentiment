@@ -410,7 +410,8 @@ to each post's count of replies with text, and the model's census figure
 is shifted by the weighted gap between Opus and the model on them
 (`python -m src.cli reply-population`, which writes
 `reply_population_score_opus_distilled_v2.csv`; 95% intervals from
-resampling within buckets). The estimand is the replies with text: the
+resampling within buckets, with a finite-population correction per
+bucket). The estimand is the replies with text: the
 6,357 replies with none (an image or GIF, or one or two characters) are
 left out, not imputed.
 
@@ -421,7 +422,7 @@ left out, not imputed.
 | Two-week ceasefire | 15,978 | -0.328 | +0.195 | +0.16 [+0.09, +0.25] | 28% | 48% |
 | "Hold off on our planned Military attack" | 8,420 | **-0.498** | +0.237 | **+0.37** [+0.29, +0.46] | 5% | **70%** |
 | "The Deal with Iran is now complete" | 11,979 | +0.200 | +0.222 | -0.04 [-0.14, +0.06] | **42%** | 31% |
-| "These fools, who think I haven't been tough enough" | 3,913 | -0.428 | +0.079 | +0.13 [+0.04, +0.23] | 22% | 37% |
+| "These fools, who think I haven't been tough enough" | 3,913 | -0.428 | +0.079 | +0.13 [+0.05, +0.23] | 22% | 37% |
 | "Striking Iranian Targets near Hormuz" | 4,193 | -0.273 | +0.322 | +0.35 [+0.28, +0.42] | 26% | 59% |
 | "Change the name Hormuz Strait to TRUMP STRAIT" | 10,432 | -0.057 | +0.058 | +0.08 [+0.04, +0.13] | 20% | 49% |
 | All eight | 92,306 | | +0.116 | +0.10 [+0.06, +0.13] | 28% | 45% |

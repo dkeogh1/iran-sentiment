@@ -21,6 +21,7 @@ from pathlib import Path
 import pandas as pd
 
 from config import settings
+from src.analysis.pricing import model_price, model_tag, undated
 from src.analysis.sentiment import llm_prompt, parse_llm_json
 from src.superseded import drop_superseded, stamp
 from src.text_rules import has_text
@@ -29,8 +30,10 @@ logger = logging.getLogger(__name__)
 
 # Measured 2026-09-18 on 14 posts at effort=low: 217 in / 86 out per post.
 EST_IN_TOKENS, EST_OUT_TOKENS = 217, 86
-PRICE_IN, PRICE_OUT = 5.0, 25.0        # Opus 5 $/MTok (claude-api reference table)
-BATCH_DISCOUNT = 0.5
+# Opus 5's row of settings.MODEL_PRICES; estimate_cost prices any model by its own.
+PRICE_IN = settings.MODEL_PRICES["claude-opus-5"]["input"]
+PRICE_OUT = settings.MODEL_PRICES["claude-opus-5"]["output"]
+BATCH_DISCOUNT = settings.MODEL_PRICES["claude-opus-5"]["batch_discount"]
 
 
 def _client():
@@ -42,9 +45,36 @@ def _client():
 
 
 def tag_for(model: str) -> str:
-    """Column suffix for a teacher model: claude-opus-5 -> opus."""
-    parts = model.split("-")
-    return parts[1] if len(parts) > 1 else model
+    """Column suffix for a teacher model: claude-opus-5 -> opus,
+    claude-opus-5-5 -> opus55, claude-fable-5-1 -> fable51 (pricing.model_tag:
+    no two models share a column)."""
+    return model_tag(model)
+
+
+def columns_path() -> Path:
+    """The record of the model behind each score_<tag> column merge writes,
+    next to sentiment_all.parquet."""
+    return settings.PROCESSED_DIR / "sentiment_all_columns.json"
+
+
+def claim_column(col: str, model: str, path: Path | None = None) -> None:
+    """Record `col` as `model`'s before merge writes it. Refuses a column
+    recorded (or known, settings.SCORE_COLUMN_MODELS) as another model's:
+    never two scorers in one series (AGENTS.md). `path` is the record of
+    another frame (default: sentiment_all's, columns_path)."""
+    path = path or columns_path()
+    reg = json.loads(path.read_text()) if path.exists() else {}
+    held = reg.get(col) or settings.SCORE_COLUMN_MODELS.get(col)
+    if held is not None and undated(held) != undated(model):
+        raise ValueError(
+            f"{col} holds labels from {held}, not {model}: a merge never writes one "
+            "model's labels into another's column (settings.MODEL_TAGS)"
+        )
+    if reg.get(col) != model:
+        from src.analysis.stance_local import _write_json
+
+        reg[col] = model
+        _write_json(path, dict(sorted(reg.items())))  # temp file, then rename
 
 
 def state_path() -> Path:
@@ -55,8 +85,13 @@ def labels_path(model: str) -> Path:
     return settings.PROCESSED_DIR / f"teacher_labels_{model.replace('/', '_')}.parquet"
 
 
-def estimate_cost(n: int) -> float:
-    return n * (EST_IN_TOKENS * PRICE_IN + EST_OUT_TOKENS * PRICE_OUT) / 1e6 * BATCH_DISCOUNT
+def estimate_cost(n: int, model: str = settings.TEACHER_CHECK_MODEL) -> float:
+    """Batch dollars for n posts at `model`'s prices (settings.MODEL_PRICES),
+    on the token counts measured for Opus 5 (another model's are unmeasured)."""
+    p = model_price(model)
+    return (
+        n * (EST_IN_TOKENS * p["input"] + EST_OUT_TOKENS * p["output"]) / 1e6 * p["batch_discount"]
+    )
 
 
 def posts_to_label(df: pd.DataFrame, model: str, only_ids: set[str] | None = None) -> pd.DataFrame:
@@ -93,11 +128,33 @@ def build_requests(posts: pd.DataFrame, model: str, max_tokens: int, effort: str
     return reqs
 
 
+def refuse_model(model: str) -> None:
+    """relabel writes the stance of record's own model only
+    (settings.TEACHER_CHECK_MODEL). It has no call or dollar cap and its
+    estimate rests on that model's measured output, so another model (a
+    second rater) goes through `post-label --job rater`, which has both caps
+    and a pilot (docs/decisions.md 2026-11-02, Rejected)."""
+    if undated(model) != undated(settings.TEACHER_CHECK_MODEL):
+        raise ValueError(
+            f"relabel labels with {settings.TEACHER_CHECK_MODEL} only (no cap, and its estimate "
+            f"is that model's output length): label posts with {model} through `post-label "
+            f"estimate|pilot|submit --job rater --model {model}`"
+        )
+
+
 def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
            max_tokens: int = settings.TEACHER_MAX_TOKENS, effort: str = settings.TEACHER_EFFORT,
            only_ids: set[str] | None = None) -> dict:
-    """Create the batch and record its id. Refuses if a batch is still open."""
+    """Create the batch and record its id. Refuses a model other than
+    settings.TEACHER_CHECK_MODEL (refuse_model), a batch still open, and a
+    submit that stopped before it recorded a batch id (batch_io.guarded_create:
+    the create is sent once, behind a "submitting" record)."""
+    from src.analysis.batch_io import guarded_create, pending_message
+
+    refuse_model(model)
     st = json.loads(state_path().read_text()) if state_path().exists() else {}
+    if st.get("status") == "submitting":
+        raise RuntimeError(f"relabel: {pending_message(state_path(), st)}")
     if st.get("batch_id") and st.get("status") not in (None, "ended", "collected"):
         raise RuntimeError(f"batch {st['batch_id']} is still {st['status']} -- collect it first")
     posts = posts_to_label(df, model, only_ids)
@@ -105,18 +162,24 @@ def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
         logger.info("relabel: nothing to submit (all posts already labelled by %s)", model)
         return st
     client = _client()
-    batch = client.messages.batches.create(requests=build_requests(posts, model, max_tokens, effort))
-    st = {"batch_id": batch.id, "model": model, "effort": effort, "max_tokens": max_tokens,
-          "n_submitted": int(len(posts)), "status": batch.processing_status,
-          "ids": posts["id"].astype(str).tolist(), "submitted_at": stamp()}
-    state_path().parent.mkdir(parents=True, exist_ok=True)
+    ids = posts["id"].astype(str).tolist()
+    st = {"model": model, "effort": effort, "max_tokens": max_tokens,
+          "n_submitted": int(len(posts)), "ids": ids, "submitted_at": stamp()}
+    batch = guarded_create(
+        client, build_requests(posts, model, max_tokens, effort), state_path(), st
+    )
+    st.update(batch_id=batch.id, status=batch.processing_status)
     state_path().write_text(json.dumps(st))
     logger.info("relabel: submitted batch %s with %d requests", batch.id, len(posts))
     return st
 
 
 def status() -> dict:
+    from src.analysis.batch_io import pending_message
+
     st = json.loads(state_path().read_text())
+    if not st.get("batch_id"):
+        raise RuntimeError(f"relabel: {pending_message(state_path(), st)}")
     b = _client().messages.batches.retrieve(st["batch_id"])
     st["status"] = b.processing_status
     st["counts"] = {k: getattr(b.request_counts, k) for k in
@@ -146,16 +209,21 @@ def parse_result(result) -> dict:
 
 def collect(results_file: Path | None = None) -> dict:
     """Pull results of the recorded batch into the teacher parquet (append).
-    results_file: a downloaded results JSONL, for when the SDK's results
-    stream breaks (it did on 2026-09-23 and 2026-10-05)."""
+    results_file: a downloaded results JSONL. Without one the results are
+    streamed, and when the stream breaks (it did on 2026-09-23 and
+    2026-10-05) the batch's results_url is downloaded and read instead."""
+    from src.analysis.batch_io import stream_or_download
     from src.analysis.topic_label import _batch_time, _file_results
 
     st = status()
     if st["status"] != "ended":
         logger.info("relabel: batch %s still %s (%s)", st["batch_id"], st["status"], st.get("counts"))
         return st
-    results = (_file_results(results_file) if results_file
-               else _client().messages.batches.results(st["batch_id"]))
+    if results_file:
+        results = list(_file_results(results_file))
+    else:   # the stream, or results_url downloaded when it breaks
+        dest = state_path().with_name(f"relabel_batch_{st['batch_id']}_results.jsonl")
+        results, _ = stream_or_download(_client(), st["batch_id"], dest, _file_results)
     rows = [parse_result(r) for r in results]
     new = pd.DataFrame(rows)
     good = new[new["score_teacher"].notna()].drop(columns=["outcome"])
@@ -164,8 +232,9 @@ def collect(results_file: Path | None = None) -> dict:
     if lp.exists():
         prev = pd.read_parquet(lp)
         good = pd.concat([prev[~prev["id"].isin(good["id"])], good], ignore_index=True)
-    lp.parent.mkdir(parents=True, exist_ok=True)
-    good.to_parquet(lp, index=False)
+    from src.analysis.stance_local import write_parquet_atomic
+
+    write_parquet_atomic(good, lp)  # temp file, then rename: a killed write keeps the old labels
     bad = new[new["score_teacher"].isna()]
     st["status"] = "collected"
     st["collected"] = {"succeeded": int(len(new) - len(bad)), "failed": int(len(bad)),
@@ -179,6 +248,7 @@ def collect(results_file: Path | None = None) -> dict:
 def merge(df: pd.DataFrame, model: str = settings.TEACHER_CHECK_MODEL) -> pd.DataFrame:
     """Join teacher labels onto the frame as score_<tag> / label_<tag>."""
     tag = tag_for(model)
+    claim_column(f"score_{tag}", model)
     lab = pd.read_parquet(labels_path(model)).rename(
         columns={"score_teacher": f"score_{tag}", "label_teacher": f"label_{tag}"})
     lab["id"] = lab["id"].astype(str)

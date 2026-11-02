@@ -24,7 +24,9 @@ Hand these to the user, with the estimate, instead of running them:
     both have `--estimate` (no API call, no credentials). `x-counts --report`
     is free.
   - `relabel submit|resubmit` and `topic-label submit` (Anthropic Batch API):
-    `relabel estimate` / `topic-label estimate` print the cost.
+    `relabel estimate` / `topic-label estimate` print the cost. relabel
+    labels with claude-opus-5 only (no cap, an estimate on its output
+    length): a second rater's model is `post-label --job rater`.
   - `analyze --llm`, `stance`, `teacher-check`, `reply-teacher-check` (direct
     Anthropic API): estimate from the post count (Haiku has run about
     $0.50-1.50 per 1,000 posts, README *Cost*; `teacher-check` ~$1 and
@@ -34,6 +36,66 @@ Hand these to the user, with the estimate, instead of running them:
     `--batch submit` (half price): `--estimate` prints both, calibrated on a
     measured pilot (~$0.0043 a call direct). `--batch status|collect` and
     `--report` are free.
+  - `reply-label submit --job v2b|cat-v2|v2-fresh` (Batch API only):
+    `reply-label estimate` prices it from the usage the 2026-10-05 v2 batch
+    was billed (`settings.REPLY_V2_BATCH_USAGE`), at the model's own row of
+    `settings.MODEL_PRICES`, and makes no call. Its ceiling (no cache hits:
+    every request on a post whose prefix can cache writes it) is what the
+    dollar caps are checked against. v2-fresh sends the fresh draws
+    (`reply-fresh-sample`, free, records them first and refuses a run over
+    the caps) one post at a time (`--post`, enforced; without it only a
+    `--limit` pilot of at most `REPLY_UNMEASURED_PILOT_MAX_CALLS`);
+    `REPLY_FRESH_MAX_CALLS` and `REPLY_FRESH_MAX_USD` bound the whole run,
+    earlier batches included. Another `--model` writes its own label file;
+    a job with a dollar cap sends a model whose output length is unmeasured
+    no more than `REPLY_UNMEASURED_PILOT_MAX_CALLS` calls in all (its earlier
+    batches of that prompt and model counted) until its tokens a call are in
+    `REPLY_OUTPUT_TOKENS`, recorded as `{"mean", "p95"}` from the pilot's
+    collect line (the ceiling takes the p95; unmeasured, twice Opus 5's
+    length). A submit refuses once an earlier batch of the job on that model
+    had an answer cut at max_tokens: raise `REPLY_LABEL_MAX_TOKENS`. Pilot
+    cat-v2 first (`--limit 50`) and read the report's `check <post>` lines
+    (de-escalation replies Opus files as anti-war that v2 scored pro) before
+    the full batch. `v2-rater` (the second rater's reply arm,
+    `settings.SECOND_RATER_MODEL`, claude-opus-5-5 by default) refuses
+    claude-opus-5, the v2 labels' own model; its caps bound its whole run
+    too, and its report leads with coverage (replies still unlabelled,
+    failures by outcome, stop reasons). `status|collect|report` are free.
+  - `teacher-check --source trump --all` (his whole feed on score_opus's
+    model and prompt; `TRUMP_TEACHER_CHECK_MAX_CALLS` covers every post with
+    text): `--all --estimate` adds a usage-fit figure from the check's own
+    batches (~$5.10 by Batch for the 2,822 left on 2026-11-02). Then
+    `--merge` (free) writes score_opus / label_opus onto the feed parquet by
+    id. score-posts keeps them on the rows it has, and the posts it adds
+    have none until the next `--merge`. Never run `--merge` while
+    score-posts runs: it reads the parquet when it starts and writes it back
+    as it read it when it ends (the merge refuses while score-posts'
+    `<feed>.scoring` marker names a live process on dkbl1). On the GPU path
+    the marker is on dkbl2, so run `--merge` only after `sync-data.sh pull`
+    of a score-trump-feed Job, never between push and pull: the pull puts
+    the PVC's feed parquet, without the merge, over dkbl1's. The pull also
+    brings back the PVC's `teacher_check_*` files, so push sends them too
+    (since 2026-11-02): never pull from a PVC that was not pushed after the
+    last host-side `--all` collect, or its older label cache replaces
+    dkbl1's (`sync-data.sh verify` lists what would change). Switching Trump's stance of record off
+    `score_opus_distilled` (`_phase_frame`) is the user's call.
+  - `post-label pilot|submit --job stance-topic|rater|stance-topic-nohandle`
+    (src/analysis/post_labels.py): `post-label estimate` makes no call and
+    writes nothing. `pilot` (direct, `--n` 50 by default, at most
+    `POST_PILOT_MAX_CALLS`) measures the billed tokens, the cache and how
+    answers stop, and the estimate is calibrated on it. Only a pilot of the
+    job's current prompt version, `POST_LABEL_MAX_TOKENS` and
+    `POST_LABEL_EFFORT`, with `POST_PILOT_MIN_BILLED` (40) billed answers
+    pooled, counts: without one, batches send at most `POST_PILOT_MAX_CALLS`
+    calls in all, and once a pilot (of any size) or a collected batch of the
+    current request has an answer stopped at max_tokens no batch goes,
+    `--limit` or not. A pilot is on record (at its direct ceiling) before its
+    first call and saves its labels every `POST_PILOT_SAVE_EVERY` answers.
+    Pilot each job on each model first. Caps: `POST_*_MAX_CALLS` / `POST_*_MAX_USD` bound each
+    job's whole run, every pilot (at direct prices) and batch on any model,
+    plus the next batch at its ceiling (no cache hits, output at the pilot's
+    p95): no `--limit` split gets past them; a pilot refuses too.
+    `status|collect|report` are free.
 - **The user's Truth Social account.** `ts-login` (the security code goes to
   the user), `collect-replies`, and `collect-truth` unless `--anonymous`. Free,
   but rate-limited and tied to the account.
@@ -103,8 +165,16 @@ python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm
 python -m src.cli visualize  # regenerate all figures
 python -m src.cli summary    # stats tables (default --score is the stance of record)
 python -m src.cli phases     # tier x phase stance with CIs, split into war posts / topic share
-                             #   [--source x|trump] [--by tier|user] [--topic llm|keyword|either]
-python -m src.cli reply-population  # reply audience's Opus-corrected stance per post (free)
+                             #   [--source x|trump] [--by tier|user] [--topic llm|keyword|either|opus]
+                             #   [--score score_opus_stance|score_opus55|...] (post-label columns)
+python -m src.cli reply-population  # reply audience's Opus stance per post, direct and corrected (free)
+                                    #   [--labels v1|v2|v2b] [--first-draws]; v2 pools the fresh draws
+python -m src.cli reply-label report --job v2b  # v2 vs v2b, paired on the first draws (free)
+python -m src.cli reply-fresh-sample  # draw and record the fresh reply sample (free; --dry-run)
+python -m src.cli reply-label estimate --job v2b|cat-v2|v2-fresh|v2-rater [--post SLUG]  # no API call
+python -m src.cli post-label estimate --job stance-topic|rater|stance-topic-nohandle  # no API call
+python -m src.cli post-label report --job stance-topic  # rater agreement, filter misses (free)
+python -m src.cli topic-label unjudgeable --results-file F  # record Haiku's no-verdict posts (free)
 python -m src.cli teacher-retest    # Opus label test-retest on 497 posts (free)
 python -m src.cli export-web # chart JSON for the dkweb blog post
 python -m src.cli backup     # sync data/ to the off-box S3 bucket (after any paid run)
@@ -117,9 +187,22 @@ timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
 `collect` -> `merge` for the new posts; `topic-label estimate|submit|status|collect`;
 `phases`, `visualize`, `export-web`; `backup`.
 
-A batch `collect` (`relabel`, `topic-label`, `--batch collect`) streams results
-through the SDK, which breaks on this host (httpx `ReadError`): download the
-batch's `results_url` and pass the file with `--results-file`.
+A batch `collect` (`relabel`, `topic-label`, `--batch collect`, `reply-label
+collect`) streams results through the SDK, which breaks on this host (httpx
+`ReadError`); it then downloads the batch's `results_url` itself (resuming a
+cut download) and reads that. `--results-file` still reads a file you
+downloaded. A collect of a batch that carried replies (`reply-teacher-check
+--v2`, `reply-label`) deletes the batch on the API once every result is in,
+so the replies are not kept there for 29 days; `--keep-batch` skips that.
+A failed or kept delete is retried by the next collect without
+`--keep-batch` and by the next submit, which refuses while it fails; a
+batch already gone (404, say deleted in the Console) counts as deleted.
+Every batch create is sent once (no SDK retry: it has no idempotency key,
+so a lost answer would make a second, unrecorded batch). A create that
+dies without an answer leaves a "submitting" state with no batch id, and
+every submit refuses until you check the Console's Batches page and fill
+in the id (or, if no batch was made, restore the state, as the message
+says).
 
 ## Layout
 
@@ -131,8 +214,11 @@ src/     cli.py (every command), backup.py
                   ts_fill_text.py (Truth Social posts with no words), x_counts.py (counts/all
                   and its report), x_archive.py (search/all probe)
   analysis/       sentiment.py (VADER, RoBERTa, LLM stance), event_study.py (replies),
-                  relabel.py, topic_label.py (Batch API), inference.py (CIs, shift-share),
-                  stance_local.py (GPU experiments)
+                  relabel.py, topic_label.py (Batch API), inference.py (CIs, shift-share,
+                  reply population, fresh draws), stance_local.py (GPU experiments, teacher
+                  checks, batch transport), reply_labels.py (v2b, cat-v2, v2-fresh),
+                  batch_io.py (results download, batch delete), pricing.py (model prices, tags),
+                  post_labels.py (alternate post raters: stance-topic, second rater, no-handle)
   visualization/  plots.py, web_export.py
 data/    raw/x/<handle>.jsonl, raw/x_sampling/ (collect windows), raw/x_counts/,
          raw/x_archive/, raw/truthsocial/, processed/sentiment_all.parquet,
@@ -198,7 +284,64 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 - Reply population shares come from `reply-population` (Opus-corrected
   against the v2 reply labels, `settings.REPLY_TEACHER_LABELS_VERSION`), not
   raw `score_opus_distilled`, which runs ~15 points pro-war (63% vs 49% for
-  the v2 Opus labels on the 1,157 labelled replies with text).
+  the v2 Opus labels on the 1,157 labelled replies with text). Its direct
+  columns (`opus_*`) weight the labels alone by bucket.
+- Reply label files: one per prompt, model and id source
+  (`stance_local.reply_labels_path`). The v2 label set is the stance
+  sample's file plus the fresh draws' (`teacher_labels_replies_v2-fresh_*`,
+  same prompt and model, never written into the v2 file); v2b (v2 without
+  the praise rule) and cat-v2 (Opus categories with the parent post) have
+  their own. The Haiku categories in `stance_sample.parquet` stay as
+  history. The first random draws (`reply_sample_draws.parquet`) and the
+  fresh ones (`reply_sample_draws_fresh.parquet`) are frozen: never redraw.
+- Set two reply label sets against each other on the same draws only: v2
+  pools the fresh draws, v1 and v2b label the first draws alone
+  (`reply-population --first-draws`; `reply-label report --job v2b` for
+  the paired v2 - v2b difference). A post's fresh draws join only once
+  nearly all are labelled (`REPLY_FRESH_POOL_MIN_SHARE`): until its batch
+  is collected the labelled ones are reused flipper labels. The reply
+  bootstrap CIs carry the finite-population correction.
+- A model's relabel columns are `score_<tag>` with a tag no other model has
+  (`settings.MODEL_TAGS`: claude-opus-5 `opus`, claude-opus-5-5 `opus55`,
+  claude-fable-5-1 `fable51`); `relabel merge` refuses a column
+  `sentiment_all_columns.json` records as another model's. Every estimate
+  prices a model by its own row of `settings.MODEL_PRICES` and refuses one
+  with none.
+- Alternate post raters (`post-label`) keep their own label files
+  (`post_labels_<job>_<model>.parquet`) and columns, named by the model's
+  tag: `score_opus_stance` / `topic_opus` (the stance-topic prompt on
+  claude-opus-5), `score_opus55` (the score_opus prompt on claude-opus-5-5;
+  the rater job refuses claude-opus-5 and Haiku, whose `score_<tag>` are
+  existing series), `score_opus_stance_nohandle` / `topic_opus_nohandle`.
+  They are never written into sentiment_all.parquet or the Trump feed:
+  `phases --score <col>` joins them from the label file onto the frame's
+  war candidates (keyword OR Haiku) when the post's text is the one
+  labelled (`post_labels.attach`), and `phases --topic opus` counts a
+  candidate as a war post when its stance-topic label says `iran_war`. On
+  such a column `phases` reports the war-post columns only (the all-post,
+  share and share-effect figures are NaN in its CSVs: the column holds
+  candidates only). The random unflagged posts only measure what the
+  filters miss and never join a series; the no-handle arm is a paired
+  subsample for its report only (its ALL row weights each tier by its pool
+  over its pairs). A label made from a text the post no longer has is
+  never used, and the post is labelled again (the old label moves to the
+  cache's `*_superseded` archive; x-backfill-text, `collect --force` and
+  ts-fill-text move these caches' labels there too, as for relabel's).
+  None of these goes into `STANCE_SCORE_COL` or `PLOT_SCORE_COLS`; making
+  one a definition of record is the user's call, with a decisions.md entry.
+  The random posts (`post_random_draws.parquet`) and the no-handle subsample
+  (`post_nohandle_draws.parquet`) are frozen by the first pilot or submit:
+  never redraw.
+- `score_opus` on Trump's feed comes only from `teacher-check --source trump
+  --merge` (the check's labels, claude-opus-5, llm_prompt), claimed in
+  `truthsocial_trump_stance_columns.json` like relabel's columns.
+- Each answer Haiku gives with no about-the-war verdict (link shares) is
+  recorded in `topic_unjudgeable.parquet` (post, batch, the length of the
+  text it was sent); a post with `TOPIC_UNJUDGEABLE_MIN_ATTEMPTS` (3) of
+  them on the same text is not sent to `topic-label` again
+  (`--retry-unjudgeable` overrides): retries still recover a fifth to a
+  third. With no Haiku label, `war_flag` counts it by the keyword pattern
+  as before. Errored or expired requests are retried, not recorded.
 - A scorer fit on the Opus-labelled replies (`reply-distill`) enters
   `reply-population` only as a cross-fit column (`--crossfit`: each post
   scored by a fit that never saw its labels); `reply-population` refuses
@@ -363,8 +506,11 @@ The host's restic drive is often unplugged, so S3 is the copy to count on.
 
 ### Blog charts (dkweb)
 
-Rerun `export-web` after any rescoring, then `npm run build` in dkweb. Stance
-colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
+Rerun `export-web` after any rescoring, then `npm run build` in dkweb. Once
+the v2-fresh labels are in, `replies.json` pools them
+(`REPLY_POPULATION_FRESH_DRAWS`) and export-web warns: the README, STATUS
+and the dkweb post cite the 1,071-draw figures, so update that prose (or
+set the flag False) before publishing. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
 `global.css`.
 
 ## Docs map

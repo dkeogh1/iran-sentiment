@@ -13,6 +13,8 @@ Commands:
   summary         Print stats tables (by account, tier, and weekly trend)
   event-study     Per-post reply stats + event-window broadcaster deltas
   stance          LLM stance classification on a stratified reply sample
+  reply-label     Opus reply labels by job (v2b, cat-v2, v2-fresh), Batch API (paid)
+  reply-fresh-sample  Draw and freeze the fresh random reply sample (free)
   status          Report what's been collected and what's missing
   run-all         Full pipeline: collect → analyze → visualize → summary
 """
@@ -1237,6 +1239,19 @@ def _refuse_over_cap(todo: int, cap: int, fix: str) -> None:
 @click.option("--n", type=int, default=None,
               help=f"Posts to label (default {settings.TEACHER_CHECK_N} for x, spread across "
                    f"tiers; {settings.TRUMP_TEACHER_CHECK_N} for trump)")
+@click.option(
+    "--all",
+    "whole_feed",
+    is_flag=True,
+    help="(trump) Every post of his feed with text, not a sample: the labels "
+    "already made are reused; then --merge puts them on the feed as score_opus",
+)
+@click.option(
+    "--merge",
+    is_flag=True,
+    help="(trump) Write the cached labels onto the feed parquet by id as "
+    "score_<tag> / label_<tag> (score_opus for claude-opus-5); no API call",
+)
 @click.option("--model", default=settings.TEACHER_CHECK_MODEL, show_default=True)
 @click.option("--estimate", is_flag=True, help="Count and price the calls; no API call")
 @click.option("--yes", is_flag=True,
@@ -1248,25 +1263,44 @@ def _refuse_over_cap(todo: int, cap: int, fix: str) -> None:
               help="(--batch collect) Read a downloaded results JSONL instead of streaming it")
 @click.option("--report", is_flag=True,
               help="(trump) Rebuild the report from the cached labels; no API call")
-def teacher_check_cmd(source: str, n: int | None, model: str, estimate: bool, yes: bool,
-                      batch: str | None, results_file: str | None, report: bool):
+def teacher_check_cmd(source: str, n: int | None, whole_feed: bool, merge: bool, model: str,
+                      estimate: bool, yes: bool, batch: str | None, results_file: str | None,
+                      report: bool):
     """Relabel a sample with a stronger Claude model and report disagreement:
     with the Haiku labels on X posts (per tier + worst cases), or with the
     distilled scorer on Trump's own feed (by phase, war posts). API only.
-    The Trump check runs direct or, with --batch, at batch prices."""
+    The Trump check runs direct or, with --batch, at batch prices; --all
+    takes his whole feed, and --merge writes its labels onto the feed."""
     from src.analysis import stance_local as sl
     if source == "trump":
         _check_batch_flags(batch, results_file, report, estimate=estimate)
-        _trump_check(n or settings.TRUMP_TEACHER_CHECK_N, model, estimate, yes, batch,
-                     results_file, report)
+        if whole_feed and n is not None:
+            raise click.UsageError("--all and --n: the whole feed, or a sample of n")
+        if merge and (batch or estimate or report or whole_feed or n is not None):
+            raise click.UsageError("--merge runs on its own: it writes the cached labels")
+        if merge:
+            _trump_merge(model)
+            return
+        _trump_check(
+            None if whole_feed else n or settings.TRUMP_TEACHER_CHECK_N,
+            model,
+            estimate,
+            yes,
+            batch,
+            results_file,
+            report,
+        )
         return
-    if batch or results_file or report:
-        raise click.UsageError("--batch, --results-file and --report go with --source trump")
+    if batch or results_file or report or whole_feed or merge:
+        raise click.UsageError(
+            "--batch, --results-file, --report, --all and --merge go with --source trump"
+        )
     from src.analysis.sentiment import llm_prompt
     n = n or settings.TEACHER_CHECK_N
     df = _load_scored_frame()
     sample, cached, todo = sl.teacher_check_todo(df, n=n, model=model)
-    est = sl.estimate_direct_cost([llm_prompt(t, u) for t, u in zip(todo["text"], todo["user"])])
+    est = sl.estimate_direct_cost([llm_prompt(t, u) for t, u in zip(todo["text"], todo["user"])],
+                                  model=model)
     click.echo(f"{len(sample)} sampled, {len(cached)} cached; {_fmt_estimate({**est, 'model': model})}")
     # No prompt: the k8s teacher-check Job runs this with no stdin, and
     # starting that Job is the approval (AGENTS.md, paid runs).
@@ -1306,7 +1340,7 @@ def _fmt_batch_estimate(est: dict) -> str:
     """The token estimate's ceiling at batch prices. No cached-prefix figure:
     the pilot showed it low, and caching in a batch is best-effort."""
     return (f"at batch prices ({est['batch_discount']:g} x direct): "
-            f"≈ ${est['usd_batch_no_cache']:.2f} with no prefix cache (the ceiling); no API call")
+            f"≈ ${est['usd_batch_no_cache']:.2f} with no cache hits (the ceiling); no API call")
 
 
 def _fmt_pilot_estimate(est: dict, batch: bool) -> str:
@@ -1330,53 +1364,104 @@ def _refuse_open_batch(check: str, doing: str) -> None:
         sys.exit(1)
 
 
-def _batch_poll(check: str, action: str, results_file: str | None, show) -> None:
+def _batch_poll(
+    check: str,
+    action: str,
+    results_file: str | None,
+    show,
+    keep_batch: bool = False,
+    again: str = "--batch collect",
+) -> None:
     """--batch status / collect for a check; `show(report, state)` prints the
-    report a collect writes."""
+    report a collect writes; `again` is the command that collects it again."""
     from pathlib import Path as _P
 
     from src.analysis import stance_local as sl
+
     try:
         if action == "status":
             st, rep = sl.teacher_batch_status(check), None
         else:
             st, rep = sl.teacher_batch_collect(
-                check, results_file=_P(results_file) if results_file else None)
+                check,
+                results_file=_P(results_file) if results_file else None,
+                keep_batch=keep_batch,
+            )
     except FileNotFoundError as e:
         click.secho(str(e), fg="yellow")
         sys.exit(1)
-    except RuntimeError as e:      # a submit that never recorded its batch id
+    except RuntimeError as e:  # a submit that never recorded its batch id
         click.secho(str(e), fg="red")
         sys.exit(1)
     click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
     if st.get("spend"):
         s = st["spend"]
-        click.echo(f"billed: {s['input_tokens']:,} input, "
-                   f"{s['cache_creation_input_tokens']:,} cache-write, "
-                   f"{s['cache_read_input_tokens']:,} cache-read, {s['output_tokens']:,} output "
-                   f"tokens ≈ ${s['usd_batch']:.2f} at batch prices "
-                   f"(${s['usd_direct']:.2f} direct)")
+        click.echo(
+            f"billed: {s['input_tokens']:,} input, "
+            f"{s['cache_creation_input_tokens']:,} cache-write, "
+            f"{s['cache_read_input_tokens']:,} cache-read, {s['output_tokens']:,} output "
+            f"tokens ≈ ${s['usd_batch']:.2f} at batch prices "
+            f"(${s['usd_direct']:.2f} direct)"
+        )
         if s.get("calls_without_usage"):
-            click.secho(f"{s['calls_without_usage']} results carried no usage: the bill above "
-                        "leaves them out", fg="yellow")
+            click.secho(
+                f"{s['calls_without_usage']} results carried no usage: the bill above "
+                "leaves them out",
+                fg="yellow",
+            )
+        if s.get("output_tokens_per_call") is not None:
+            p95 = s.get("output_tokens_p95")
+            click.echo(
+                f"output {s['output_tokens_per_call']:.1f} tokens a call"
+                + (f" (p95 {p95:.0f})" if p95 is not None else "")
+                + f"; stop reasons {s.get('stop_reasons')}"
+            )
+        if (s.get("stop_reasons") or {}).get("max_tokens"):
+            click.secho(
+                f"{s['stop_reasons']['max_tokens']} answers stopped at max_tokens "
+                f"({st.get('max_tokens')}; thinking counts against it): raise it before "
+                "the next batch",
+                fg="yellow",
+            )
+    dl = st.get("delete") or {}
+    if dl.get("status") == "deleted":
+        click.echo(f"batch {st['batch_id']} deleted on the API (its replies are not kept there)")
+    elif dl.get("status") == "kept":
+        click.echo(
+            f"batch {st['batch_id']} kept on the API (--keep-batch): {again} without "
+            "--keep-batch, or the next submit, deletes it; else its results stay there "
+            "for 29 days"
+        )
+    elif dl.get("status") == "failed":
+        click.secho(
+            f"batch {st['batch_id']}: delete failed ({dl.get('error')}); {again} "
+            "to retry (the next submit tries too, and refuses while it fails), or "
+            "delete it in the Console",
+            fg="yellow",
+        )
     if st.get("short_read") and st["status"] != "collected":
         sr = st["short_read"]
-        click.secho(f"short read ({sr['source']}): {sr['missing']} of {st['n_submitted']} "
-                    f"submitted ids have no result in it, {sr['ignored']['not_submitted']} "
-                    f"results were for ids not in this batch; {sr['labelled']} labels added. "
-                    "The batch stays open: --batch collect again from the stream or the whole "
-                    "results file.", fg="red")
+        click.secho(
+            f"short read ({sr['source']}): {sr['missing']} of {st['n_submitted']} "
+            f"submitted ids have no result in it, {sr['ignored']['not_submitted']} "
+            f"results were for ids not in this batch; {sr['labelled']} labels added. "
+            f"The batch stays open: {again} again from the stream or the whole "
+            "results file.",
+            fg="red",
+        )
         sys.exit(1)
     if rep is not None:
         show(rep, st)
 
 
-def _echo_submitted(st: dict | None, cmd: str) -> None:
+def _echo_submitted(st: dict | None, then: str) -> None:
+    """The submitted batch, and `then`: the commands that poll and collect it."""
     if st is None:
         click.echo("nothing submitted: every row is labelled")
         return
-    click.echo(f"batch {st['batch_id']} {st['status']}  ({st['n_submitted']} requests); "
-               f"then: {cmd} --batch status / collect")
+    click.echo(
+        f"batch {st['batch_id']} {st['status']}  ({st['n_submitted']} requests); then: {then}"
+    )
 
 
 def _print_trump_report(rep: dict, model: str) -> None:
@@ -1391,23 +1476,75 @@ def _print_trump_report(rep: dict, model: str) -> None:
         click.echo(_agreement_row(f"  {r['phase']}", r))
 
 
-def _trump_check(n: int, model: str, estimate: bool, yes: bool, batch: str | None = None,
+def _trump_merge(model: str) -> None:
+    """teacher-check --source trump --merge."""
+    from src.analysis import stance_local as sl
+
+    if sl.open_batch("trump"):
+        click.secho(
+            "a Trump batch is open: its labels are not merged until it is collected", fg="yellow"
+        )
+    try:
+        _, cov = sl.trump_merge(model)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:  # RuntimeError: score-posts runs
+        click.secho(str(e), fg="red")
+        sys.exit(1)
+    click.echo(
+        f"{cov['column']} on {cov['with_text_labelled']} of {cov['with_text']} feed posts "
+        f"with text ({cov['labelled']} of {cov['posts']} rows) -> "
+        f"{settings.TRUMP_FEED_STANCE}"
+    )
+    if cov["stale"]:
+        click.secho(
+            f"{cov['stale']} labels were made from another text of the post: left out", fg="yellow"
+        )
+    if cov["with_text_labelled"] < cov["with_text"]:
+        click.secho(
+            f"{cov['with_text'] - cov['with_text_labelled']} posts with text have no "
+            "label: `phases --source trump --score " + cov["column"] + "` leaves them "
+            "out (teacher-check --source trump --all labels them)",
+            fg="yellow",
+        )
+
+
+def _fmt_fit_estimate(est: dict) -> str:
+    """The run priced on the usage the Trump check's own batches were billed."""
+    f, fit = est["fit"], settings.POST_PROMPT_TOKEN_FIT["trump"]
+    basis = (
+        "measured"
+        if f["output_measured"]
+        else f"{settings.POST_PROMPT_TOKEN_FIT['model']}'s, unmeasured for {est['model']}"
+    )
+    return (
+        f"usage-fit: ≈ ${f['usd_batch']:.2f} at batch prices (≈ ${f['usd_direct']:.2f} "
+        f"direct; ceiling ${f['usd_batch_ceiling']:.2f} at the p95 output): "
+        f"{fit['tokens_per_char']:g} input tokens a prompt character + "
+        f"{fit['fixed_tokens']:g}, {fit['output_tokens']:g} output tokens a call ({basis}), "
+        f"fit on the 2026-10-05/06 Trump check batches; no API call"
+    )
+
+
+def _trump_check(n: int | None, model: str, estimate: bool, yes: bool, batch: str | None = None,
                  results_file: str | None = None, report: bool = False) -> None:
-    """teacher-check --source trump: direct, or through a batch."""
+    """teacher-check --source trump: direct, or through a batch; n None is
+    the whole feed."""
     from src.analysis import stance_local as sl
     if report:
         _print_trump_report(sl.trump_teacher_report(model), model)
         return
     if batch in ("status", "collect"):
         _batch_poll("trump", batch, results_file,
-                    lambda rep, st: _print_trump_report(rep, st["model"]))
+                    lambda rep, st: _print_trump_report(rep, st["model"]),
+                    again="teacher-check --source trump --batch collect")
         return
     est = sl.trump_check_estimate(n=n, model=model)
-    click.echo(f"Trump feed: {est['sample']} sampled posts with text, {est['cached']} cached, "
+    what = "posts with text (the whole feed)" if n is None else "sampled posts with text"
+    click.echo(f"Trump feed: {est['sample']} {what}, {est['cached']} cached, "
                f"cap {est['cap']}; {_fmt_estimate(est)}")
     if batch:
         click.echo(_fmt_batch_estimate(est))
     click.echo(_fmt_pilot_estimate(est, bool(batch)))
+    click.echo(_fmt_fit_estimate(est))
     if sl.open_batch("trump"):
         if estimate:
             click.secho("a Trump batch is open: these calls include its requests", fg="yellow")
@@ -1415,12 +1552,14 @@ def _trump_check(n: int, model: str, estimate: bool, yes: bool, batch: str | Non
             _refuse_open_batch("trump", "a new batch" if batch else "a direct run")
     _refuse_over_cap(est["todo"], est["cap"],
                      "raise TRUMP_TEACHER_CHECK_MAX_CALLS deliberately or lower --n")
+    if estimate and est["todo"] and n is None:
+        click.echo("then: teacher-check --source trump --merge (score_opus on the feed)")
     if estimate or not _confirm_paid(est["todo"], yes):
         return
     if batch == "submit":
         params = {"n": n, "seed": settings.TEACHER_SAMPLE_SEED, "col": "score_opus_distilled"}
         st = sl.teacher_batch_submit("trump", params=params, model=model)
-        _echo_submitted(st, "teacher-check --source trump")
+        _echo_submitted(st, "teacher-check --source trump --batch status / collect")
         return
     rep = sl.trump_teacher_check(n=n, model=model)
     _print_trump_report(rep, model)
@@ -1601,36 +1740,59 @@ def relabel_cmd(action: str, model: str, yes: bool, results_file: str | None):
     API (half price, ~1 h). Steps: estimate -> submit -> status -> collect
     -> merge; `resubmit` retries the ids that failed in the last collect."""
     from src.analysis import relabel as rl
+    if action in ("estimate", "submit", "resubmit"):
+        try:
+            rl.refuse_model(model)  # another model is a second rater: post-label --job rater
+        except ValueError as e:
+            click.secho(str(e), fg="red")
+            sys.exit(1)
     if action in ("estimate", "submit", "resubmit", "merge"):
         df = _load_scored_frame()
     if action == "estimate":
+        from src.analysis.pricing import model_price
         n = len(rl.posts_to_label(df, model))
-        click.echo(f"{n} posts to label with {model}; batch cost ≈ ${rl.estimate_cost(n):.2f} "
-                   f"(direct would be ≈ ${rl.estimate_cost(n) / rl.BATCH_DISCOUNT:.2f})")
+        usd = rl.estimate_cost(n, model)
+        click.echo(f"{n} posts to label with {model}; batch cost ≈ ${usd:.2f} "
+                   f"(direct would be ≈ ${usd / model_price(model)['batch_discount']:.2f}; "
+                   f"columns score_{rl.tag_for(model)} / label_{rl.tag_for(model)})")
         return
     if action in ("submit", "resubmit"):
         only = None
         if action == "resubmit":
             st = json.loads(rl.state_path().read_text())
+            if st.get("status") == "submitting":
+                from src.analysis.batch_io import pending_message
+
+                click.secho(f"relabel: {pending_message(rl.state_path(), st)}", fg="red")
+                sys.exit(1)
             only = set(st.get("collected", {}).get("failed_ids", []))
             if not only:
                 click.echo("nothing to resubmit")
                 return
         n = len(rl.posts_to_label(df, model, only))
-        click.echo(f"{n} posts -> {model}, batch cost ≈ ${rl.estimate_cost(n):.2f}")
+        click.echo(f"{n} posts -> {model}, batch cost ≈ ${rl.estimate_cost(n, model):.2f}")
         if n and not yes and not click.confirm("Submit?", default=False):
             click.echo("Aborted.")
             return
-        st = rl.submit(df, model=model, only_ids=only)
+        try:
+            st = rl.submit(df, model=model, only_ids=only)
+        except RuntimeError as e:  # a batch still open, or a submit with no batch id
+            click.secho(str(e), fg="red")
+            sys.exit(1)
         click.echo(f"batch {st.get('batch_id')} {st.get('status')}  ({st.get('n_submitted')} requests)")
         return
+    if action in ("status", "collect"):
+        from pathlib import Path as _P
+        try:
+            st = (rl.status() if action == "status"
+                  else rl.collect(_P(results_file) if results_file else None))
+        except RuntimeError as e:  # a submit that recorded no batch id
+            click.secho(str(e), fg="red")
+            sys.exit(1)
     if action == "status":
-        st = rl.status()
         click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('counts')}")
         return
     if action == "collect":
-        from pathlib import Path as _P
-        st = rl.collect(_P(results_file) if results_file else None)
         click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
         return
     if action == "merge":
@@ -1649,11 +1811,45 @@ def _fmt_ci(r, k: str) -> str:
 
 def _phase_frame(source: str, score: str | None):
     """(frame, score column, group column) for `phases`: the X accounts or
-    Trump's own Truth Social feed."""
+    Trump's own Truth Social feed. A column the frame lacks that a
+    post-label job writes (score_opus_stance, score_opus55, ...) is joined
+    from its label file onto the war candidates (post_labels.attach)."""
     if source == "trump":
-        df = pd.read_parquet(settings.TRUMP_FEED_STANCE)
-        return df, score or "score_opus_distilled", "user"
-    return _load_scored_frame(), score or settings.STANCE_SCORE_COL, None
+        df, col, group = (
+            pd.read_parquet(settings.TRUMP_FEED_STANCE),
+            score or "score_opus_distilled",
+            "user",
+        )
+    else:
+        df, col, group = _load_scored_frame(), score or settings.STANCE_SCORE_COL, None
+    if col not in df.columns:
+        from src.analysis.post_labels import attach
+
+        try:
+            df = attach(df, col)
+        except (LookupError, ValueError) as e:
+            hint = ""
+            if source == "trump" and col == "score_opus":
+                hint = (
+                    ": `teacher-check --source trump --all` labels the feed, then `--merge` "
+                    "writes score_opus onto it"
+                )
+            elif source == "x" and col == settings.STANCE_SCORE_COL:
+                hint = ": `relabel merge` writes it (analyze rewrites the frame without it)"
+            click.secho(f"{e}{hint}", fg="red")
+            sys.exit(1)
+    return df, col, group
+
+
+def _score_coverage(df, score: str) -> tuple[int, int]:
+    """(posts with text in the phases, of them with a `score`), search rows out."""
+    from src.analysis import inference as inf
+
+    d = df[inf.has_text(df["text"])]
+    if "user" in d:
+        d = d[~d["user"].astype(str).str.startswith("search:")]
+    d = d[inf.assign_phase(d["created_at"]).notna()]
+    return len(d), int(d[score].notna().sum())
 
 
 @main.command()
@@ -1661,21 +1857,57 @@ def _phase_frame(source: str, score: str | None):
               help="X broadcaster accounts, or Trump's own Truth Social feed")
 @click.option("--by", "group", type=click.Choice(["tier", "user"]), default="tier", show_default=True)
 @click.option("--score", default=None, help="Score column (default: stance of record for the source)")
-@click.option("--topic", "topic_source", type=click.Choice(["llm", "keyword", "either"]),
-              default=settings.TOPIC_SOURCE, show_default=True,
-              help="About-the-war flag: Haiku labels (strict), keyword pattern (loose), or either")
+@click.option(
+    "--topic",
+    "topic_source",
+    type=click.Choice(["llm", "keyword", "either", "opus"]),
+    default=settings.TOPIC_SOURCE,
+    show_default=True,
+    help="About-the-war flag: Haiku labels (strict), keyword pattern (loose), either, "
+    "or opus (an either post whose Opus stance-topic label says iran_war)",
+)
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
 def phases(source: str, group: str, score: str | None, topic_source: str, n_boot: int):
     """Stance by phase with account-day block-bootstrap 95% CIs, split into
     war posts and the rest, and each phase's change from the first split into
     topic-share and on-war stance effects. Writes CSVs to data/processed/."""
     from src.analysis import inference as inf
+    from src.analysis.post_labels import column_owner
+
     df, score, default_group = _phase_frame(source, score)
     group = default_group or group
-    d = inf.prepare(df, score, group=group, topic_source=topic_source)
+    # A post-label column holds the war candidates only: every all-post and
+    # share figure would be a figure over the candidates under the same name.
+    owner = column_owner(score)
+    war_only = owner is not None
+    # A stance-topic score is null off the Iran war, so its war posts are the
+    # --topic flag AND Opus's iran_war class, whatever --topic says.
+    topic_scored = war_only and owner[0].kind == "stance_topic"
+    n_text, n_scored = _score_coverage(df, score)
+    if n_scored < n_text:
+        why = (
+            " (its job scores only the war candidates its Opus topic class calls iran_war: "
+            "only the war-post columns are reported)"
+            if topic_scored
+            else " (its job labels war candidates only: only the war-post columns are reported)"
+            if war_only
+            else ""
+        )
+        click.secho(
+            f"{score} covers {n_scored} of {n_text} posts with text in the phases: the "
+            f"rest leave every mean{why}",
+            fg="yellow",
+        )
+    try:
+        d = inf.prepare(df, score, group=group, topic_source=topic_source)
+    except FileNotFoundError as e:  # --topic opus before any stance-topic label
+        click.secho(str(e), fg="red")
+        sys.exit(1)
     boot = inf.bootstrap_cells(d, score, n_boot=n_boot)
     stats, contrasts = inf.phase_stats(boot), inf.phase_contrasts(boot)
     gaps = inf.phase_gaps(boot, settings.PHASE_GAPS) if group == "tier" else pd.DataFrame()
+    if war_only:
+        stats, contrasts, gaps = (inf.war_posts_only(t) for t in (stats, contrasts, gaps))
     tag = f"{source}_{group}_{score}_{topic_source}"
     stats.to_csv(settings.PROCESSED_DIR / f"phases_{tag}.csv", index=False)
     contrasts.to_csv(settings.PROCESSED_DIR / f"phase_contrasts_{tag}.csv", index=False)
@@ -1683,6 +1915,37 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
         gaps.to_csv(settings.PROCESSED_DIR / f"phase_gaps_{tag}.csv", index=False)
 
     chk = inf.topic_filter_check(d, score)
+    if war_only:
+        which = " Opus classes iran_war" if topic_scored else ""
+        click.echo(
+            f"\n{len(d)} war candidates{which} with {score}, topic={topic_source}: "
+            f"{chk['on_topic_share']:.0%} of them are war posts by that flag; the all-post, "
+            "share and share-effect columns are left blank (NaN in the CSVs)"
+        )
+        if topic_scored and topic_source != "opus":
+            src = " --source trump" if source == "trump" else ""
+            ref = "score_opus" if source == "trump" else settings.STANCE_SCORE_COL
+            click.secho(
+                f"{score} is null wherever Opus's topic class is not iran_war, so these war "
+                f"posts are the {topic_source} flag AND Opus iran_war, not the {topic_source} "
+                f"flag alone: set it against `phases{src} --score {ref} --topic opus` (the "
+                "same war set once every candidate is labelled), not the default phases",
+                fg="yellow",
+            )
+        click.echo(f"\n{'group':22s}{'phase':22s}{'n':>6s}{'war':>6s}  {'war posts only':24s}")
+        for _, r in stats.iterrows():
+            click.echo(
+                f"{r['group']:22s}{r['phase']!s:22s}{r['n']:>6d}{r['n_on']:>6d}  "
+                f"{_fmt_ci(r, 'mean_on'):24s}"
+            )
+        click.echo("\nWar-post stance change from the first phase:")
+        for _, r in contrasts.iterrows():
+            click.echo(f"{r['group']:22s}{r['phase']!s:22s}{_fmt_ci(r, 'on_topic_change'):24s}")
+        if not gaps.empty:
+            click.echo("\nGaps (war posts):")
+            for _, r in gaps.iterrows():
+                click.echo(f"{r['pair']:30s}{r['phase']!s:22s}{_fmt_ci(r, 'mean_on')}")
+        return
     click.echo(f"\n{len(d)} posts, {score}, topic={topic_source}: {chk['on_topic_share']:.0%} about the war; "
                f"mean |stance| {chk['mean_abs_on']:.2f} on vs {chk['mean_abs_off']:.2f} off; "
                f"{chk['strong_captured']:.0%} of |stance|>=0.3 posts are flagged on-war")
@@ -1705,26 +1968,68 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
 @main.command("reply-population")
 @click.option("--col", default="score_opus_distilled", show_default=True)
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
-@click.option("--labels", "labels_version", type=click.Choice(["v1", "v2"]),
-              default=settings.REPLY_TEACHER_LABELS_VERSION, show_default=True,
-              help="Reply teacher labels to weight (settings.REPLY_TEACHER_LABELS_VERSION)")
-def reply_population_cmd(col: str, n_boot: int, labels_version: str):
+@click.option(
+    "--labels",
+    "labels_version",
+    type=click.Choice(["v1", "v2", "v2b"]),
+    default=settings.REPLY_TEACHER_LABELS_VERSION,
+    show_default=True,
+    help="Reply label set to weight (settings.REPLY_TEACHER_LABELS_VERSION; v2 includes "
+    "the fresh draws' labels, v2b is v2 without the praise rule)",
+)
+@click.option(
+    "--first-draws",
+    is_flag=True,
+    help="Only the first random draws, not the fresh ones: set v2 against v1 or v2b "
+    "on the same draws",
+)
+def reply_population_cmd(col: str, n_boot: int, labels_version: str, first_draws: bool):
     """Opus stance of each tracked post's whole reply audience, estimated from
-    the Opus-labelled reply sample: direct (weighted sample) and model-assisted
-    (distilled census + weighted correction), with bootstrap CIs. No API.
-    The CSV name carries the label version past v1."""
+    the Opus-labelled reply sample: direct (design-weighted labels of the
+    random draws, first and fresh) and model-assisted (distilled census +
+    weighted correction), with bootstrap CIs. No API. The CSV name carries
+    the label set past v1."""
     from src.analysis.inference import reply_population
-    rp = reply_population(col=col, n_boot=n_boot, labels_version=labels_version)
+
+    try:
+        rp = reply_population(
+            col=col,
+            n_boot=n_boot,
+            labels_version=labels_version,
+            fresh=False if first_draws else None,
+        )
+    except FileNotFoundError as e:
+        click.secho(str(e), fg="yellow")
+        sys.exit(1)
     suffix = "" if labels_version == "v1" else f"_{labels_version}"
+    suffix += "_first_draws" if first_draws else ""
     rp.to_csv(settings.PROCESSED_DIR / f"reply_population_{col}{suffix}.csv", index=False)
     click.echo(f"Opus labels: {labels_version}")
-    click.echo(f"\n{'post':20s}{'replies':>8s}{'lab':>5s}  {'model mean':>10s}  {'Opus-corrected mean':24s}"
-               f"{'model pro':>10s}  {'corrected pro':24s}{'model anti':>11s}  {'corrected anti'}")
+    click.echo(
+        f"\n{'post':20s}{'replies':>8s}{'lab':>5s}  {'model mean':>10s}  {'Opus-corrected mean':24s}"
+        f"{'model pro':>10s}  {'corrected pro':24s}{'model anti':>11s}  {'corrected anti'}"
+    )
     for _, r in rp.iterrows():
-        click.echo(f"{r['post']:20s}{r['n_replies']:>8d}{r['n_labelled']:>5d}  {r['model_mean']:>+10.3f}  "
-                   f"{_fmt_ci(r, 'assisted_mean'):24s}{r['model_pro']:>10.0%}  "
-                   f"{r['assisted_pro']:.0%} [{r['assisted_pro_lo']:.0%}, {r['assisted_pro_hi']:.0%}]{'':8s}"
-                   f"{r['model_anti']:>11.0%}  {r['assisted_anti']:.0%} [{r['assisted_anti_lo']:.0%}, {r['assisted_anti_hi']:.0%}]")
+        click.echo(
+            f"{r['post']:20s}{r['n_replies']:>8d}{r['n_labelled']:>5d}  {r['model_mean']:>+10.3f}  "
+            f"{_fmt_ci(r, 'assisted_mean'):24s}{r['model_pro']:>10.0%}  "
+            f"{r['assisted_pro']:.0%} [{r['assisted_pro_lo']:.0%}, {r['assisted_pro_hi']:.0%}]{'':8s}"
+            f"{r['model_anti']:>11.0%}  {r['assisted_anti']:.0%} [{r['assisted_anti_lo']:.0%}, {r['assisted_anti_hi']:.0%}]"
+        )
+    click.echo("\nDirect: the labels alone, weighted by bucket (n labelled, of them fresh draws):")
+    click.echo(
+        f"{'post':20s}{'lab':>6s}{'fresh':>6s}  {'mean':24s}{'pro':18s}{'anti':18s}{'neutral'}"
+    )
+    for _, r in rp.iterrows():
+        click.echo(
+            f"{r['post']:20s}{r['n_labelled']:>6d}{r['n_labelled_fresh']:>6d}  "
+            f"{_fmt_ci(r, 'opus_mean'):24s}{_fmt_share(r, 'opus_pro'):18s}"
+            f"{_fmt_share(r, 'opus_anti'):18s}{_fmt_share(r, 'opus_neutral')}"
+        )
+
+
+def _fmt_share(r, k: str) -> str:
+    return f"{r[k]:.0%} [{r[k + '_lo']:.0%}, {r[k + '_hi']:.0%}]"
 
 
 @main.command("teacher-retest")
@@ -1775,28 +2080,75 @@ def backup(dry_run: bool):
 # ── topic-label ─────────────────────────────────────────────────────
 
 @main.command("topic-label")
-@click.argument("action", type=click.Choice(["estimate", "submit", "status", "collect"]))
+@click.argument(
+    "action", type=click.Choice(["estimate", "submit", "status", "collect", "unjudgeable"])
+)
 @click.option("--yes", is_flag=True, help="Submit without the confirmation prompt")
-@click.option("--results-file", type=click.Path(exists=True), default=None,
-              help="collect from a downloaded results JSONL instead of streaming it")
-def topic_label_cmd(action: str, yes: bool, results_file: str | None):
+@click.option(
+    "--results-file",
+    type=click.Path(exists=True),
+    default=None,
+    help="collect (or unjudgeable): read a downloaded results JSONL instead of streaming it",
+)
+@click.option(
+    "--retry-unjudgeable",
+    is_flag=True,
+    help="(estimate / submit) Send the posts recorded as unjudgeable again",
+)
+def topic_label_cmd(action: str, yes: bool, results_file: str | None, retry_unjudgeable: bool):
     """Label every broadcaster post as about the Iran war or not (Haiku,
     Batch API). `phases` uses the labels to split stance changes into topic
-    share and on-war stance. Steps: estimate -> submit -> status -> collect."""
+    share and on-war stance. Steps: estimate -> submit -> status -> collect.
+    Each answer with no verdict (link shares) is recorded, and a post with
+    TOPIC_UNJUDGEABLE_MIN_ATTEMPTS of them on the same text counts as
+    unjudgeable and is not sent again; `unjudgeable --results-file F`
+    records an already collected batch's (free, no API)."""
+    from pathlib import Path as _P
+
     from src.analysis import topic_label as tl
+
+    if retry_unjudgeable and action not in ("estimate", "submit"):
+        raise click.UsageError("--retry-unjudgeable goes with estimate / submit")
+    if action == "unjudgeable":
+        if not results_file:
+            raise click.UsageError("unjudgeable needs --results-file")
+        got = tl.unjudgeable_from_file(_P(results_file))
+        click.echo(
+            f"{got['recorded']} no-verdict answers recorded -> {tl.unjudgeable_path()}; "
+            f"{got['unjudgeable']} of these posts now have "
+            f"{settings.TOPIC_UNJUDGEABLE_MIN_ATTEMPTS}+ (unjudgeable: not sent again)"
+        )
+        return
     if action in ("estimate", "submit"):
-        n = len(tl.posts_to_label())
-        click.echo(f"{n} posts to label with {settings.LLM_MODEL}; batch cost ≈ ${tl.estimate_cost(n):.2f}")
+        n = len(tl.posts_to_label(retry_unjudgeable=retry_unjudgeable))
+        click.echo(
+            f"{n} posts to label with {settings.LLM_MODEL}; batch cost ≈ ${tl.estimate_cost(n):.2f}"
+        )
+        if not retry_unjudgeable:
+            skipped = int(tl.skipped_unjudgeable(tl.posts_to_label(retry_unjudgeable=True)).sum())
+            if skipped:
+                click.echo(
+                    f"{skipped} posts recorded as unjudgeable are left out "
+                    "(--retry-unjudgeable sends them again)"
+                )
         if action == "estimate" or n == 0:
             return
         if not yes and not click.confirm("Submit?", default=False):
             click.echo("Aborted.")
             return
-        st = tl.submit()
+        try:
+            st = tl.submit(retry_unjudgeable=retry_unjudgeable)
+        except RuntimeError as e:  # a batch still open, or a submit with no batch id
+            click.secho(str(e), fg="red")
+            sys.exit(1)
         click.echo(f"batch {st['batch_id']} {st['status']}  ({st['n_submitted']} requests)")
         return
-    from pathlib import Path as _P
-    st = tl.status() if action == "status" else tl.collect(_P(results_file) if results_file else None)
+    try:
+        st = (tl.status() if action == "status"
+              else tl.collect(_P(results_file) if results_file else None))
+    except RuntimeError as e:  # a submit that recorded no batch id
+        click.secho(str(e), fg="red")
+        sys.exit(1)
     click.echo(f"batch {st['batch_id']}: {st['status']}  {st.get('collected') or st.get('counts')}")
 
 
@@ -1836,27 +2188,53 @@ def score_posts_cmd(inputs, out: str, model_dir: str | None, col: str, max_len: 
               help="(--batch collect) Read a downloaded results JSONL instead of streaming it")
 @click.option("--report", is_flag=True,
               help="(--v2) Rebuild the report from the cached v2 labels; no API call")
-def reply_teacher_check_cmd(model: str, col: str, v2: bool, estimate: bool, limit: int | None,
-                            yes: bool, batch: str | None, results_file: str | None, report: bool):
+@click.option(
+    "--keep-batch",
+    is_flag=True,
+    help="(--batch collect) Keep the batch on the API; by default it is deleted once "
+    "collected, so the replies are not kept there for 29 days",
+)
+def reply_teacher_check_cmd(
+    model: str,
+    col: str,
+    v2: bool,
+    estimate: bool,
+    limit: int | None,
+    yes: bool,
+    batch: str | None,
+    results_file: str | None,
+    report: bool,
+    keep_batch: bool,
+):
     """Relabel the reply stance sample with the teacher and report how well
     the distilled reply scores reproduce it (domain-shift check). API only.
     v1 (default) is the broadcaster prompt on the stored first 100 characters;
     --v2 sends the full reply with its parent post and compares with v1,
     direct or, with --batch, at batch prices."""
     if not v2:
-        if estimate or limit or yes or batch or results_file or report:
-            raise click.UsageError("--estimate, --limit, --yes, --batch, --results-file and "
-                                   "--report go with --v2")
+        if estimate or limit or yes or batch or results_file or report or keep_batch:
+            raise click.UsageError(
+                "--estimate, --limit, --yes, --batch, --results-file, "
+                "--report and --keep-batch go with --v2"
+            )
         _reply_teacher_v1(model, col)
         return
     from src.analysis import stance_local as sl
     _check_batch_flags(batch, results_file, report, estimate=estimate, limit=limit)
+    if keep_batch and batch != "collect":
+        raise click.UsageError("--keep-batch goes with --batch collect")
     if report:
         _print_reply_v2_report(sl.reply_teacher_v2_report(model, col), col, model)
         return
     if batch in ("status", "collect"):
-        _batch_poll("reply_v2", batch, results_file,
-                    lambda rep, st: _print_reply_v2_report(rep, st["params"]["col"], st["model"]))
+        _batch_poll(
+            "reply_v2",
+            batch,
+            results_file,
+            lambda rep, st: _print_reply_v2_report(rep, st["params"]["col"], st["model"]),
+            keep_batch=keep_batch,
+            again="reply-teacher-check --v2 --batch collect",
+        )
         return
     est = sl.reply_teacher_v2_estimate(model=model, limit=limit)
     click.echo(f"reply sample: {est['sampled']} replies, {est['no_text']} without text (skipped), "
@@ -1878,7 +2256,7 @@ def reply_teacher_check_cmd(model: str, col: str, v2: bool, estimate: bool, limi
     if batch == "submit":
         params = {"seed": settings.TEACHER_SAMPLE_SEED, "col": col}
         st = sl.teacher_batch_submit("reply_v2", params=params, model=model, limit=limit)
-        _echo_submitted(st, "reply-teacher-check --v2")
+        _echo_submitted(st, "reply-teacher-check --v2 --batch status / collect")
         return
     rep = sl.reply_teacher_check_v2(model=model, col=col, limit=limit)
     _print_reply_v2_report(rep, col, model)
@@ -1921,7 +2299,464 @@ def _reply_teacher_v1(model: str, col: str) -> None:
         click.echo(f"{r['tier']:22s}{r['n']:>5d}{r['pearson']:>9.3f}{r['sign_agreement']:>10.1%}{r['sign_flip_rate']:>7.1%}")
 
 
+# ── reply-label / reply-fresh-sample (src/analysis/reply_labels.py) ──
+
+REPLY_LABEL_JOBS = ("v2b", "cat-v2", "v2-fresh", "v2-rater")  # reply_labels.JOBS (a test checks)
+
+
+def _fmt_reply_job_estimate(est: dict) -> list[str]:
+    u = settings.REPLY_V2_BATCH_USAGE
+    seen = "fresh draws" if est["ids"] == "fresh" else "stance sample"
+    pv = (
+        " (a preview: posts without recorded fresh draws are drawn as `reply-fresh-sample` "
+        "would draw them, nothing written)"
+        if est["preview"]
+        else ""
+    )
+    caps = f"cap {est['cap']} calls" + (f", ${est['usd_cap']:g}" if est["usd_cap"] else "")
+    if est["run_caps"]:
+        caps += " for the whole run"
+    lines = [
+        (
+            f"reply-label {est['job']} ({est['prompt_version']}, {est['model']}): {seen}{pv}: "
+            f"{est['inputs']} replies, {est['no_text']} without text (skipped), "
+            f"{est['with_text']} with text, {est['labelled']} labelled by this prompt and model; "
+            f"{caps}"
+        ),
+        f"to do by post: {est['todo_by_post']}",
+        (
+            f"{est['calls']} calls: ~{est['input_tokens']:,} input + ~{est['output_tokens']:,} "
+            f"output tokens ≈ ${est['usd_batch']:.2f} at batch prices with the prefix cache on "
+            f"{', '.join(est['cached_posts']) or 'no post'} (ceiling ≈ "
+            f"${est['usd_batch_ceiling']:.2f}: no cache hits, every request there writes the "
+            f"prefix; ≈ ${est['usd_direct_ceiling']:.2f} direct); no API call"
+        ),
+        (
+            f"calibrated on the 2026-10-05 v2 batch: each post's prefix tokens, "
+            f"{u['tokens_per_reply_char']:.3f} tokens per reply character, "
+            f"{est['output_tokens_per_call']:g} output tokens a call "
+            f"({est['output_tokens_ceiling_per_call']:g} at the ceiling), a cache read on "
+            f"{est['cache_hit_share']:.0%} of a post's calls where its prefix reaches "
+            f"{est['cache_min_tokens']} tokens; ${est['price_in_per_mtok']:g} / "
+            f"${est['price_out_per_mtok']:g} per MTok x {est['batch_discount']:g}"
+        ),
+    ]
+    if est["run_caps"]:
+        lines.append(
+            f"the run so far: {est['prior_batches']} batches, {est['prior_calls']} calls, "
+            f"${est['prior_usd_batch']:.2f}; with these {est['run_calls']} calls, ceiling "
+            f"${est['run_usd_ceiling']:.2f}"
+        )
+    if not est["output_measured"] and est["job"] != "cat-v2":
+        lines.append(
+            f"token counts are {settings.REPLY_V2_BATCH_USAGE['model']}'s: {est['model']}'s "
+            "output length is unmeasured (pilot with --limit)"
+        )
+    elif est["model"] != settings.REPLY_V2_BATCH_USAGE["model"]:
+        lines.append(f"input token counts are {settings.REPLY_V2_BATCH_USAGE['model']}'s")
+    if est["job"] == "cat-v2":
+        lines.append(
+            "output tokens for categories are unmeasured (settings.REPLY_CAT_EST_OUTPUT_TOKENS)"
+        )
+    return lines
+
+
+@main.command("reply-label")
+@click.argument("action", type=click.Choice(["estimate", "submit", "status", "collect", "report"]))
+@click.option(
+    "--job",
+    "job_name",
+    type=click.Choice(REPLY_LABEL_JOBS),
+    required=True,
+    help="v2b: v2 without the praise rule; cat-v2: the six reply categories with the "
+    "parent post; v2-fresh: v2 on the fresh random draws; v2-rater: v2 on the second "
+    "rater's model",
+)
+@click.option(
+    "--model",
+    default=None,
+    help="Labels go to a file named for the model: another model is another file "
+    f"(default {settings.TEACHER_CHECK_MODEL}; v2-rater {settings.SECOND_RATER_MODEL})",
+)
+@click.option(
+    "--post",
+    default=None,
+    help="(estimate / submit) Only this tracked post's replies: one batch per post",
+)
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1),
+    default=None,
+    help="(estimate / submit) Pilot: the first N still to do, dealt across posts",
+)
+@click.option("--yes", is_flag=True, help="(submit) Submit without the confirmation prompt")
+@click.option(
+    "--results-file",
+    type=click.Path(exists=True),
+    default=None,
+    help="(collect) Read a downloaded results JSONL instead of streaming it",
+)
+@click.option(
+    "--keep-batch",
+    is_flag=True,
+    help="(collect) Keep the batch on the API for now; by default it is deleted once "
+    "collected, so the replies are not kept there for 29 days. A later collect "
+    "without it, or the next submit, deletes it",
+)
+def reply_label_cmd(
+    action: str,
+    job_name: str,
+    model: str,
+    post: str | None,
+    limit: int | None,
+    yes: bool,
+    results_file: str | None,
+    keep_batch: bool,
+):
+    """Opus labels on Truth Social replies through the Message Batches API,
+    one job per prompt and id source, each in its own label file: estimate
+    (no API call) -> submit -> status -> collect (-> report, no call).
+    Paid: estimate first and ask (AGENTS.md)."""
+    from src.analysis import reply_labels as rl
+    from src.analysis import stance_local as sl
+
+    j = rl.job(job_name)
+    model = model or j.default_model()
+    if action in ("status", "collect", "report") and (post or limit or yes):
+        raise click.UsageError("--post, --limit and --yes go with estimate / submit")
+    if results_file and action != "collect":
+        raise click.UsageError("--results-file goes with collect")
+    if keep_batch and action != "collect":
+        raise click.UsageError("--keep-batch goes with collect")
+    if action == "report":
+        for line in rl.summary_lines(rl.job_report(j.name, model)):
+            click.echo(line)
+        return
+    if action in ("status", "collect"):
+        _batch_poll(
+            j.check,
+            action,
+            results_file,
+            lambda rep, st: [click.echo(x) for x in rl.summary_lines(rep)],
+            keep_batch=keep_batch,
+            again=f"reply-label collect --job {j.name}",
+        )
+        return
+    try:
+        est = rl.job_estimate(j.name, model=model, post=post, limit=limit)
+    except (FileNotFoundError, LookupError, ValueError) as e:
+        click.secho(str(e), fg="red")
+        sys.exit(1)
+    for line in _fmt_reply_job_estimate(est):
+        click.echo(line)
+    if sl.open_batch(j.check):
+        if action == "estimate":
+            click.secho(f"a {j.check} batch is open: these calls include its requests", fg="yellow")
+        else:
+            _refuse_open_batch(j.check, "a new batch")
+    _refuse_over_cap(
+        est["run_calls"],
+        est["cap"],
+        f"raise {j.cap_setting} deliberately"
+        + (" (it bounds the whole run)" if est["run_caps"] else ", or use --post / --limit"),
+    )
+    if est["usd_cap"] is not None and est["run_usd_ceiling"] > est["usd_cap"]:
+        so_far = " with the run's earlier batches" if est["prior_calls"] else ""
+        click.secho(
+            f"${est['run_usd_ceiling']:.2f} at the ceiling{so_far} is over the "
+            f"${est['usd_cap']:g} cap: raise {j.usd_cap_setting} deliberately"
+            + ("" if est["run_caps"] else ", or use --post / --limit"),
+            fg="red",
+        )
+        sys.exit(1)
+    if action == "estimate":
+        if est["problem"]:
+            click.secho(f"a submit would refuse: {est['problem']}", fg="yellow")
+        return
+    if est["preview"]:
+        click.secho(
+            "no fresh draws recorded for some posts: run `reply-fresh-sample` first", fg="red"
+        )
+        sys.exit(1)
+    if est["problem"]:
+        click.secho(est["problem"], fg="red")
+        sys.exit(1)
+    if not _confirm_paid(est["todo"], yes):
+        return
+    params = {"seed": settings.TEACHER_SAMPLE_SEED, "post": post}
+    try:
+        st = sl.teacher_batch_submit(
+            j.check,
+            params=params,
+            model=model,
+            max_tokens=settings.REPLY_LABEL_MAX_TOKENS,
+            limit=limit,
+        )
+    except RuntimeError as e:  # a cap, a guard, or an earlier batch still to delete
+        click.secho(str(e), fg="red")
+        sys.exit(1)
+    _echo_submitted(
+        st, f"reply-label status --job {j.name}, then reply-label collect --job {j.name}"
+    )
+
+
+POST_LABEL_JOBS = (
+    "stance-topic",
+    "rater",
+    "stance-topic-nohandle",
+)  # post_labels.JOBS (a test checks)
+
+
+def _fmt_post_pilot(p: dict) -> str:
+    return (
+        f"pilot at max_tokens {p['max_tokens']}: {p['calls']} calls ({p['billed']} billed, "
+        f"{p['kept']} kept, failed {p['failed'] or 0}); input {p['input_tokens_per_call']:.0f} "
+        f"tokens a call ({p['input_scale']:.3f} x the estimate's), output {p['output_mean']:.1f} "
+        f"a call (p95 {p['output_p95']:.0f}, max {p['output_max']}); stop reasons "
+        f"{p['stop_reasons']}; ${p['usd_direct']:.3f} direct"
+    )
+
+
+def _fmt_post_estimate(est: dict) -> list[str]:
+    fit = settings.POST_PROMPT_TOKEN_FIT
+    pv = " (a preview: the first pilot or submit records the draw)" if est["preview"] else ""
+    lines = [
+        (
+            f"post-label {est['job']} ({est['prompt_version']}, {est['model']}, effort "
+            f"{est['effort']}, max_tokens {est['max_tokens']}): columns "
+            f"{', '.join(est['columns'].values())}"
+        ),
+        (
+            f"posts{pv}: {est['posts']}; {est['labelled']} labelled by this prompt and model; "
+            f"cap {est['cap']} calls, ${est['usd_cap']:g}"
+        ),
+        f"to do by set: { {k: v['calls'] for k, v in est['by_set'].items()} }",
+        (
+            f"{est['calls']} calls: ~{est['input_tokens']:,} input + ~{est['output_tokens']:,} "
+            f"output tokens ≈ ${est['usd_batch']:.2f} at batch prices (ceiling "
+            f"${est['usd_batch_ceiling']:.2f}; ≈ ${est['usd_direct']:.2f} direct); no API call"
+        ),
+        (
+            f"input: {fit['x']['tokens_per_char']:g} (X) / {fit['trump']['tokens_per_char']:g} "
+            f"(Trump) tokens an llm_prompt character + {fit['x']['fixed_tokens']:g} / "
+            f"{fit['trump']['fixed_tokens']:g}, other characters at "
+            f"{fit['instruction_chars_per_token']:g} a token, x {est['input_scale']:.3f}; output "
+            f"{est['output_tokens_per_call']:.1f} tokens a call: {est['output_basis']}; "
+            f"${est['price_in_per_mtok']:g} / ${est['price_out_per_mtok']:g} per MTok x "
+            f"{est['batch_discount']:g}"
+        ),
+    ]
+    if est["prior_calls"]:
+        lines.append(
+            f"the run so far (pilots and {est['prior_batches']} batches, any model): "
+            f"{est['prior_calls']} calls, ${est['prior_usd']:.2f}; with these "
+            f"{est['run_calls']} calls, ceiling ${est['run_usd_ceiling']:.2f}"
+        )
+    if est["pilot"]:
+        lines.append(_fmt_post_pilot(est["pilot"]))
+    return lines
+
+
+@main.command("post-label")
+@click.argument(
+    "action", type=click.Choice(["estimate", "pilot", "submit", "status", "collect", "report"])
+)
+@click.option(
+    "--job",
+    "job_name",
+    type=click.Choice(POST_LABEL_JOBS),
+    required=True,
+    help="stance-topic: topic class + position on the Iran war, with the handle (war "
+    "candidates + random unflagged posts); rater: the score_opus prompt on the second "
+    "rater's model (war candidates); stance-topic-nohandle: stance-topic without the "
+    "handle on a paired subsample",
+)
+@click.option(
+    "--model",
+    default=None,
+    help=f"Default: {settings.TEACHER_CHECK_MODEL}; rater {settings.SECOND_RATER_MODEL}. "
+    "Another model is another label file and columns",
+)
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1),
+    default=None,
+    help="(estimate / submit) The first N still to do, dealt across sets, sources and tiers",
+)
+@click.option(
+    "--n",
+    "pilot_n",
+    type=click.IntRange(min=1, max=settings.POST_PILOT_MAX_CALLS),
+    default=settings.POST_PILOT_N,
+    show_default=True,
+    help="(pilot) Direct calls that measure the billed tokens and how answers stop",
+)
+@click.option("--yes", is_flag=True, help="(pilot / submit) Without the confirmation prompt")
+@click.option(
+    "--results-file",
+    type=click.Path(exists=True),
+    default=None,
+    help="(collect) Read a downloaded results JSONL instead of streaming it",
+)
+def post_label_cmd(
+    action: str,
+    job_name: str,
+    model: str | None,
+    limit: int | None,
+    pilot_n: int,
+    yes: bool,
+    results_file: str | None,
+):
+    """Alternate raters on broadcaster posts, each job in its own label file
+    and columns, never score_opus: estimate (no API call) -> pilot (direct,
+    measures tokens) -> submit -> status -> collect (-> report, no call).
+    `phases --score <column>` and `phases --topic opus` read the labels.
+    Paid: estimate first and ask (AGENTS.md)."""
+    from src.analysis import post_labels as pl
+    from src.analysis import stance_local as sl
+
+    j = pl.job(job_name)
+    model = model or j.default_model()
+    if action in ("status", "collect", "report") and (limit or yes):
+        raise click.UsageError("--limit and --yes go with estimate / pilot / submit")
+    if results_file and action != "collect":
+        raise click.UsageError("--results-file goes with collect")
+    if limit and action == "pilot":
+        raise click.UsageError("a pilot takes --n, not --limit")
+    if action == "report":
+        try:
+            rep = pl.job_report(j.name, model)
+        except (FileNotFoundError, LookupError, ValueError) as e:
+            click.secho(str(e), fg="red")
+            sys.exit(1)
+        for line in pl.summary_lines(rep):
+            click.echo(line)
+        return
+    if action in ("status", "collect"):
+        _batch_poll(
+            j.check,
+            action,
+            results_file,
+            lambda rep, st: [click.echo(x) for x in pl.summary_lines(rep)],
+            again=f"post-label collect --job {j.name}",
+        )
+        return
+    try:
+        est = pl.job_estimate(j.name, model, limit=pilot_n if action == "pilot" else limit)
+    except (FileNotFoundError, LookupError, KeyError, ValueError) as e:
+        click.secho(str(e), fg="red")
+        sys.exit(1)
+    for line in _fmt_post_estimate(est):
+        click.echo(line)
+    if sl.open_batch(j.check):
+        if action == "estimate":
+            click.secho(f"a {j.check} batch is open: these calls include its requests", fg="yellow")
+        else:
+            _refuse_open_batch(j.check, "a pilot" if action == "pilot" else "a new batch")
+    if action == "pilot":
+        click.echo(f"pilot: {est['todo']} direct calls ≈ ${est['usd_direct']:.2f}")
+        if not _confirm_paid(est["todo"], yes):
+            return
+        try:
+            got = pl.run_pilot(j.name, model, pilot_n)
+        except (RuntimeError, ValueError) as e:
+            click.secho(str(e), fg="red")
+            sys.exit(1)
+        if got:
+            click.echo(_fmt_post_pilot(got))
+            if got["stop_reasons"].get("max_tokens"):
+                click.secho(
+                    "answers stopped at max_tokens: raise POST_LABEL_MAX_TOKENS and pilot again "
+                    "before any batch",
+                    fg="yellow",
+                )
+        click.echo("the run, calibrated on the pilot:")
+        for line in _fmt_post_estimate(pl.job_estimate(j.name, model))[2:4]:
+            click.echo(line)
+        return
+    over = []
+    so_far = " with the run so far" if est["prior_calls"] else ""
+    if est["run_calls"] > est["cap"]:
+        over.append(
+            f"{est['run_calls']} calls{so_far} is over the cap ({est['cap']}): raise "
+            f"{j.cap_setting} deliberately (it bounds the whole run)"
+        )
+    if est["run_usd_ceiling"] > est["usd_cap"]:
+        over.append(
+            f"${est['run_usd_ceiling']:.2f} at the ceiling{so_far} is over the "
+            f"${est['usd_cap']:g} cap: raise {j.usd_cap_setting} deliberately (it bounds the "
+            "whole run)" + ("" if est["output_measured"] else "; a pilot replaces the guess")
+        )
+    if est["problem"]:
+        over.append(est["problem"])
+    if action == "estimate":
+        for why in over:
+            click.secho(f"a submit would refuse: {why}", fg="yellow")
+        return
+    if over:
+        for why in over:
+            click.secho(why, fg="red")
+        sys.exit(1)
+    if not _confirm_paid(est["todo"], yes):
+        return
+    pl.freeze_sets(j)
+    try:
+        st = sl.teacher_batch_submit(
+            j.check,
+            params={"seed": settings.TEACHER_SAMPLE_SEED},
+            model=model,
+            max_tokens=settings.POST_LABEL_MAX_TOKENS,
+            effort=settings.POST_LABEL_EFFORT,
+            limit=limit,
+        )
+    except (RuntimeError, FileNotFoundError) as e:
+        click.secho(str(e), fg="red")
+        sys.exit(1)
+    _echo_submitted(st, f"post-label status --job {j.name}, then post-label collect --job {j.name}")
+
+
+@main.command("reply-fresh-sample")
+@click.option(
+    "--n",
+    "n_per_post",
+    default=settings.REPLY_FRESH_PER_POST,
+    show_default=True,
+    type=click.IntRange(min=1, max=settings.REPLY_FRESH_PER_POST),
+    help="Replies to draw per tracked post (at most REPLY_FRESH_PER_POST)",
+)
+@click.option("--dry-run", is_flag=True, help="Show the draw; record nothing")
+def reply_fresh_sample_cmd(n_per_post: int, dry_run: bool):
+    """Draw a second random sample of replies with text per tracked post,
+    in proportion to its valence buckets, from those not already among the
+    first draws (fixed seed), and record it in its own manifest before any
+    of it is sent. A post already recorded is never redrawn. Refuses to
+    record a manifest whose run would pass REPLY_FRESH_MAX_CALLS or, at the
+    no-call ceiling, REPLY_FRESH_MAX_USD. Free: no API. Then
+    `reply-label estimate|submit --job v2-fresh --post <slug>`."""
+    from src.analysis.inference import draw_fresh_sample, fresh_draws_path
+    from src.analysis.reply_labels import refuse_fresh_run
+
+    try:
+        draws, summary = draw_fresh_sample(
+            n_per_post=n_per_post, write=not dry_run, check=refuse_fresh_run
+        )
+    except (ValueError, LookupError) as e:
+        click.secho(f"nothing recorded: {e}", fg="red")
+        sys.exit(1)
+    click.echo(f"{'post':22s}{'bucket':12s}{'with text':>10s}{'first draws':>12s}{'drawn':>7s}")
+    for r in summary.itertuples():
+        frozen = "  (recorded before: frozen)" if r.frozen else ""
+        click.echo(
+            f"{r.post:22s}{r.bucket:12s}{r.with_text:>10d}{r.first_draws:>12d}{r.drawn:>7d}{frozen}"
+        )
+    click.echo(
+        f"{len(draws)} fresh draws"
+        + (" (dry run: nothing recorded)" if dry_run else f" in {fresh_draws_path()}")
+    )
+
+
 # ── status ──────────────────────────────────────────────────────────
+
 
 @main.command()
 def status():

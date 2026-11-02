@@ -12,17 +12,28 @@ Uncertainty and composition checks behind the published numbers.
                      from the Opus-labelled reply sample weighted back to the
                      population, directly and model-assisted (distilled score
                      + the sample's mean correction)
+  draw_fresh_sample  a second, frozen random sample of replies per post
+                     (proportional across the valence buckets) whose v2
+                     labels join the first draws in reply_population
+  reply_category_population
+                     the six reply categories' population shares, Opus
+                     (cat-v2) and Haiku (`stance`), on the first draws
   teacher_retest     Opus labelled the same 497 posts twice (direct teacher
                      check, then the batch relabel): how much does it move?
 
-Everything here reads cached parquets; nothing calls an API. One write:
+Everything here reads cached parquets; nothing calls an API. Two writes:
 reply_population (and so export-web) records the reply sample's draws in
-REPLY_DRAWS_MANIFEST the first time it sees a post `stance` has sampled.
+REPLY_DRAWS_MANIFEST the first time it sees a post `stance` has sampled, and
+draw_fresh_sample (`reply-fresh-sample`) records the fresh draws in their own
+manifest before any of them is sent.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import warnings
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -64,10 +75,16 @@ def war_flag(d: pd.DataFrame, source: str = settings.TOPIC_SOURCE) -> pd.Series:
     topic label, the pattern where there is none (link-only posts Haiku
     would not judge). "either": flagged by one or the other -- Haiku is
     strict (it drops the Pope's war appeals that never name Iran), the
-    pattern is loose (it misses unnamed strikes, catches "culture war")."""
+    pattern is loose (it misses unnamed strikes, catches "culture war").
+    "opus": an "either" post whose Opus stance-topic label says iran_war
+    (post_labels.opus_war_flag; an unlabelled candidate counts as "either"
+    does, a post neither filter flags never counts)."""
     kw = on_topic(d["text"])
     if source == "keyword":
         return kw
+    if source == "opus":
+        from src.analysis.post_labels import opus_war_flag
+        return opus_war_flag(d, war_flag(d, "either"))
     from src.analysis.topic_label import load_labels
     lab = load_labels()
     if lab is None:
@@ -219,6 +236,32 @@ def phase_gaps(boot: dict, pairs: list[tuple[str, str]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+# The phases columns that need every post with text scored: on a column
+# that only the war candidates carry (a post-label job's), each would be a
+# figure over the candidates under its all-post name.
+ALL_POST_COLUMNS = (
+    "share",
+    "mean_all",
+    "mean_off",
+    "all",
+    "share_effect",
+    "on_topic_effect",
+    "off_topic_effect",
+)
+
+
+def war_posts_only(table: pd.DataFrame) -> pd.DataFrame:
+    """A phase_stats / phase_contrasts / phase_gaps table with every
+    ALL_POST_COLUMNS figure (and its interval) blanked to NaN, the war-post
+    columns (mean_on, on_topic_change) and counts left as they are."""
+    cols = [f"{c}{s}" for c in ALL_POST_COLUMNS for s in ("", "_lo", "_hi")]
+    out = table.copy()
+    for c in cols:
+        if c in out:
+            out[c] = np.nan
+    return out
+
+
 def topic_filter_check(d: pd.DataFrame, score_col: str) -> dict:
     """How well the keyword filter separates stance-bearing posts: mean |stance|
     and share of posts with |stance| >= 0.3 inside and outside the filter."""
@@ -245,8 +288,40 @@ def _per_post(d: pd.DataFrame) -> str:
     return ", ".join(f"{s} ({n})" for s, n in d.groupby("tracked_slug").size().items())
 
 
-def reply_draws(replies: pd.DataFrame, n_per_bucket: int = 50,
-                score_col: str = "score_transformer") -> pd.DataFrame:
+def reply_draws(
+    replies: pd.DataFrame,
+    n_per_bucket: int = 50,
+    score_col: str = "score_transformer",
+    fresh: bool = False,
+) -> pd.DataFrame:
+    """The random draws of the Opus-labelled reply sample (_stance_draws),
+    and with `fresh` the fresh draws as well (draw_fresh_sample's manifest),
+    each tagged with its draw_set ("stance" for the first). A fresh draw is
+    drawn from the replies with text not already among the first draws, so
+    within a post and bucket the two together are one simple random sample
+    and reply_population weights them alike."""
+    draws = _stance_draws(replies, n_per_bucket, score_col)
+    if not fresh:
+        return draws
+    first = draws.assign(id=draws["id"].astype(str), draw_set="stance")
+    fr = read_fresh_draws()
+    if fr.empty:
+        return first
+    dup = fr["id"].isin(set(first["id"]))
+    if dup.any():
+        logger.warning(
+            "reply draws: %d fresh draws are also first draws; counted once: %s",
+            int(dup.sum()),
+            _per_post(fr[dup]),
+        )
+    return pd.concat(
+        [first, fr.loc[~dup, ["id", "tracked_slug", "bucket", "draw_set"]]], ignore_index=True
+    )
+
+
+def _stance_draws(
+    replies: pd.DataFrame, n_per_bucket: int = 50, score_col: str = "score_transformer"
+) -> pd.DataFrame:
     """The random bucket draws of the Opus-labelled reply sample: id,
     tracked_slug, bucket at draw time, kept in REPLY_DRAWS_MANIFEST so a later
     reply collection never moves a post's draws. Posts it lacks are drawn now
@@ -312,101 +387,492 @@ def reply_draws(replies: pd.DataFrame, n_per_bucket: int = 50,
     return pd.concat(parts, ignore_index=True) if parts else have
 
 
-def reply_population(col: str = "score_opus_distilled", model: str = settings.TEACHER_CHECK_MODEL,
-                     n_boot: int = settings.BOOTSTRAP_N, seed: int = settings.BOOTSTRAP_SEED,
-                     labels_version: str | None = None) -> pd.DataFrame:
+def _stance_shares(y: np.ndarray) -> dict[str, np.ndarray]:
+    return {
+        "mean": y,
+        "pro": (y > STANCE_BAND).astype(float),
+        "anti": (y < -STANCE_BAND).astype(float),
+        "neutral": (np.abs(y) <= STANCE_BAND).astype(float),
+    }
+
+
+def _weighted(
+    p: pd.DataFrame,
+    smp: pd.DataFrame,
+    arrays: dict[str, np.ndarray],
+    n_boot: int,
+    rng: np.random.Generator,
+    nan_ok: bool = False,
+):
+    """(coverage, replicates or None, uncovered strata) for one post (or ALL):
+    each array (one value per row of smp, the labelled draws) averaged within
+    its (post, draw-time bucket) stratum and weighted by that stratum's share
+    of the population p (current buckets). Replicate 0 is the sample, then
+    n_boot resamples of the labelled rows within each stratum, one shared
+    resample per stratum for every array. Each stratum's replicate
+    deviations from its sample mean are scaled by sqrt(1 - n_h / N_h), its
+    labelled draws over its population (the finite-population correction:
+    the fresh draws sample up to a third of a stratum). Replicates are None
+    when part of the population sits in a stratum with no labelled draw
+    (coverage < 1). nan_ok averages the non-NaN values of a stratum (labels
+    some rows lack)."""
+    strata = smp.groupby(["tracked_slug", "bucket"]).indices
+    n_pop = p.groupby(["tracked_slug", "bucket"]).size()
+    total = float(n_pop.sum())
+    coverage = float(n_pop[n_pop.index.isin(list(strata))].sum()) / total if total else 0.0
+    if coverage < 1:
+        uncovered = [
+            f"{s}/{STANCE_BUCKET_NAMES[b]}" for s, b in n_pop.index if (s, b) not in strata
+        ]
+        return coverage, None, uncovered
+    reps = {k: np.zeros(1 + n_boot) for k in arrays}
+    for key, idx in strata.items():
+        n_h = n_pop.get(key, 0)
+        wt = n_h / total  # a draw-time bucket since emptied weighs nothing
+        fpc = np.sqrt(max(0.0, 1.0 - len(idx) / n_h)) if n_h else 0.0
+        pick = np.vstack([np.arange(len(idx)), rng.integers(0, len(idx), (n_boot, len(idx)))])
+        for k, a in arrays.items():
+            if not nan_ok:
+                m = a[idx][pick].mean(axis=1)
+            else:
+                with warnings.catch_warnings():  # a resample of only NaN rows is a NaN replicate
+                    warnings.simplefilter("ignore", RuntimeWarning)
+                    m = np.nanmean(a[idx][pick], axis=1)
+            m[1:] = m[0] + fpc * (m[1:] - m[0])
+            reps[k] += wt * m
+    return coverage, reps, []
+
+
+def _reply_frames(col: str, fresh: bool) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+    """(population, random draws, replies without text per post) as
+    reply_population weighs them: the population is each post's replies
+    with text and a `col` and RoBERTa score, one row per id, bucketed by
+    current valence; the draws are reply_draws (with the fresh ones when
+    `fresh`), each with its draw_set and draw-time bucket."""
+    replies = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    replies["id"] = replies["id"].astype(str)
+    draws = reply_draws(replies, fresh=fresh)  # fixed first
+    if "draw_set" not in draws:
+        draws = draws.assign(draw_set="stance")
+    draws = draws.assign(id=draws["id"].astype(str), bucket=draws["bucket"].astype(int))
+    replies = replies.drop_duplicates("id")  # a few ids were collected twice
+    text = has_text(replies["text"])
+    n_no_text = (~text).groupby(replies["tracked_slug"]).sum()
+    pop = replies[text & replies[col].notna() & replies["score_transformer"].notna()].copy()
+    unscored = text & replies[col].isna()
+    if unscored.any():
+        logger.warning(
+            "reply population: %d replies with text have no %s and are left out: %s",
+            int(unscored.sum()),
+            col,
+            _per_post(replies[unscored]),
+        )
+    pop["bucket"] = stance_bucket(pop["score_transformer"]).astype(int)
+    return pop, draws, n_no_text
+
+
+def _whole_fresh_posts(lab: pd.DataFrame, pop: pd.DataFrame, draws: pd.DataFrame) -> pd.DataFrame:
+    """lab less the fresh draws of each post whose fresh draws in the
+    population are not yet labelled to settings.REPLY_FRESH_POOL_MIN_SHARE:
+    until a post's batch is collected its only labelled fresh draws are
+    those whose label was reused (the flipper cohort), not a random part."""
+    fr = draws[(draws["draw_set"] != "stance") & draws["id"].isin(set(pop["id"]))]
+    if fr.empty:
+        return lab
+    drawn = fr.groupby("tracked_slug")["id"].nunique()
+    is_fresh = lab["draw_set"] != "stance"
+    got = lab[is_fresh].groupby("tracked_slug")["id"].nunique().reindex(drawn.index, fill_value=0)
+    short = (got / drawn) < settings.REPLY_FRESH_POOL_MIN_SHARE
+    if short.any():
+        logger.info(
+            "reply population: fresh draws left out until labelled (labelled / drawn): %s",
+            ", ".join(f"{s} ({got[s]}/{drawn[s]})" for s in drawn.index[short]),
+        )
+    return lab[~(is_fresh & lab["tracked_slug"].isin(set(drawn.index[short])))]
+
+
+def reply_population(
+    col: str = "score_opus_distilled",
+    model: str = settings.TEACHER_CHECK_MODEL,
+    n_boot: int = settings.BOOTSTRAP_N,
+    seed: int = settings.BOOTSTRAP_SEED,
+    labels_version: str | None = None,
+    fresh: bool | None = None,
+) -> pd.DataFrame:
     """Per tracked post: the distilled model's population numbers, the Opus
-    stance estimated directly from the labelled sample, and the model-assisted
-    estimate (population model value + the sample's weighted Opus-minus-model
-    correction). The Opus labels are the reply teacher's `labels_version`
-    (default settings.REPLY_TEACHER_LABELS_VERSION; stance_local.reply_labels_path).
+    stance estimated directly from the labelled sample (opus_*: the
+    design-weighted mean and pro / anti / neutral shares of the labels), and
+    the model-assisted estimate (assisted_*: population model value + the
+    sample's weighted Opus-minus-model correction). The Opus labels are the
+    reply teacher's label set `labels_version` (default
+    settings.REPLY_TEACHER_LABELS_VERSION; stance_local.REPLY_LABEL_SETS: v2
+    is the stance sample's file plus the fresh draws').
 
     The estimand is the replies with text: the population is each post's
     replies with has_text and a `col` score, one row per id (n_no_text counts
-    the image / GIF-only ones left out). The sample is the random bucket draws
-    of stratified_stance_sample (reply_draws; the flipper cohort and an
-    earlier extra batch are not random) that are in the population and carry
-    an Opus label, each weighted by its draw-time bucket's population size
-    (current valence) over its labelled count. If any of a post's population
-    sits in a bucket with no labelled draw, its opus_* and assisted_* are NaN
-    rather than renormalised over the covered buckets; `coverage` is the
-    share of its population in labelled buckets, and ALL is NaN unless every
-    post is covered. CIs resample the labelled rows within each bucket; the
-    model terms are a census and carry no sampling error.
+    the image / GIF-only ones left out). The sample is the random draws
+    (reply_draws; the flipper cohort and an earlier extra batch are not
+    random) that are in the population and carry a label of the set, each
+    weighted by its draw-time bucket's population size (current valence)
+    over its labelled count. The fresh draws join (n_labelled_fresh counts
+    them) when `fresh` (default settings.REPLY_POPULATION_FRESH_DRAWS) and
+    the set has the fresh file (v2), and for a post only once its fresh
+    draws are labelled to settings.REPLY_FRESH_POOL_MIN_SHARE. Two label
+    sets compare on the same draws only: v1 and v2b label the first draws
+    alone, so set them against v2 with fresh=False, or with
+    reply_population_paired. If any of a post's population sits in a bucket
+    with no labelled draw, its opus_* and assisted_* are NaN rather than
+    renormalised over the covered buckets; `coverage` is the share of its
+    population in labelled buckets, and ALL is NaN unless every post is
+    covered. CIs resample the labelled rows within each bucket; the model
+    terms are a census and carry no sampling error.
 
     A `col` whose model was fit on the labelled replies is refused (its
     recorded fit, stance_local.reply_column_entry): its errors on the sample
     are in-sample, so the correction would shrink with no gain in accuracy.
     A cross-fit column (`reply-distill --crossfit`) scores each post with a
     model that never saw that post's labels."""
-    from src.analysis.stance_local import reply_column_entry, reply_labels_path
+    from src.analysis.stance_local import (
+        REPLY_LABEL_SETS,
+        read_reply_label_set,
+        reply_column_entry,
+        reply_labels_path,
+    )
+
     fit = reply_column_entry(col)
     if fit and fit.get("trained_on_reply_labels") and not fit.get("crossfit"):
-        raise ValueError(f"{col} comes from {fit.get('model_dir')}, fit on the labelled replies "
-                         "this corrects against: weight a cross-fit column instead "
-                         "(reply-distill --crossfit)")
-    replies = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
-    replies["id"] = replies["id"].astype(str)
-    draws = reply_draws(replies)                     # fixed before any filtering
-    draws = draws.assign(id=draws["id"].astype(str), bucket=draws["bucket"].astype(int))
-    replies = replies.drop_duplicates("id")          # a few ids were collected twice
-    text = has_text(replies["text"])
-    n_no_text = (~text).groupby(replies["tracked_slug"]).sum()
-    pop = replies[text & replies[col].notna() & replies["score_transformer"].notna()].copy()
-    unscored = text & replies[col].isna()
-    if unscored.any():
-        logger.warning("reply population: %d replies with text have no %s and are left out: %s",
-                       int(unscored.sum()), col, _per_post(replies[unscored]))
-    pop["bucket"] = stance_bucket(pop["score_transformer"]).astype(int)
+        raise ValueError(
+            f"{col} comes from {fit.get('model_dir')}, fit on the labelled replies "
+            "this corrects against: weight a cross-fit column instead "
+            "(reply-distill --crossfit)"
+        )
     version = labels_version or settings.REPLY_TEACHER_LABELS_VERSION
-    labels = pd.read_parquet(reply_labels_path(model, version))
-    labels["id"] = labels["id"].astype(str)
-    labels = labels[labels["score_teacher"].notna()].drop_duplicates("id")
-    lab = (pop.drop(columns="bucket").merge(draws[["id", "bucket"]], on="id")
-              .merge(labels[["id", "score_teacher"]], on="id"))
+    labels = read_reply_label_set(model, version)
+    pools = "v2-fresh" in REPLY_LABEL_SETS.get(version, ())
+    want = settings.REPLY_POPULATION_FRESH_DRAWS if fresh is None else fresh
+    pop, draws, n_no_text = _reply_frames(col, want and pools)
+    lab = (
+        pop.drop(columns="bucket")
+        .merge(draws[["id", "bucket", "draw_set"]], on="id")
+        .merge(labels[["id", "score_teacher"]], on="id")
+    )
+    if want and pools:
+        lab = _whole_fresh_posts(lab, pop, draws)
+    elif want and reply_labels_path(model, "v2-fresh").exists():
+        logger.warning(
+            "reply population: the %s labels are on the first draws only, while the v2 "
+            "figures pool the fresh draws: set the two on the same draws (--first-draws, "
+            "or `reply-label report --job v2b` for v2 against v2b, paired)",
+            version,
+        )
     rng = np.random.default_rng(seed)
-
-    def stats(y: np.ndarray) -> dict[str, np.ndarray]:
-        return {"mean": y, "pro": (y > STANCE_BAND).astype(float), "anti": (y < -STANCE_BAND).astype(float)}
 
     rows = []
     for slug in list(pop["tracked_slug"].dropna().unique()) + ["ALL"]:
         p = pop if slug == "ALL" else pop[pop["tracked_slug"] == slug]
         smp = lab if slug == "ALL" else lab[lab["tracked_slug"] == slug]
-        strata = smp.groupby(["tracked_slug", "bucket"]).indices
-        n_pop = p.groupby(["tracked_slug", "bucket"]).size()
-        total = float(n_pop.sum())
-        coverage = float(n_pop[n_pop.index.isin(list(strata))].sum()) / total if total else 0.0
-        model_pop = {k: float(v.mean()) for k, v in stats(p[col].values).items()}
-        row = {"post": slug, "labels": version, "n_replies": len(p),
-               "n_no_text": int(n_no_text.sum() if slug == "ALL" else n_no_text.get(slug, 0)),
-               "n_labelled": int(smp["id"].nunique()), "coverage": coverage}
+        model_pop = {k: float(v.mean()) for k, v in _stance_shares(p[col].values).items()}
+        y = _stance_shares(smp["score_teacher"].values)
+        f = _stance_shares(smp[col].values)
+        arrays = {
+            **{f"opus_{k}": y[k] for k in model_pop},
+            **{f"assisted_{k}": y[k] - f[k] for k in model_pop},
+        }
+        coverage, reps, uncovered = _weighted(p, smp, arrays, n_boot, rng)
+        row = {
+            "post": slug,
+            "labels": version,
+            "n_replies": len(p),
+            "n_no_text": int(n_no_text.sum() if slug == "ALL" else n_no_text.get(slug, 0)),
+            "n_labelled": int(smp["id"].nunique()),
+            "n_labelled_fresh": int(smp.loc[smp["draw_set"] != "stance", "id"].nunique()),
+            "coverage": coverage,
+        }
         for k, v in model_pop.items():
             row[f"model_{k}"] = v
-        # replicate 0 = observed sample, then n_boot within-bucket resamples
-        reps = {f"{kind}_{k}": np.zeros(1 + n_boot) for kind in ("opus", "assisted") for k in model_pop}
-        if coverage < 1:
-            uncovered = [f"{s}/{STANCE_BUCKET_NAMES[b]}" for s, b in n_pop.index
-                         if (s, b) not in strata]
-            logger.warning("reply population: %s has %.1f%% of its replies in buckets with no "
-                           "labelled draw (%s); Opus estimates left NaN",
-                           slug, 100 * (1 - coverage), ", ".join(uncovered))
-            reps = {name: np.full(1 + n_boot, np.nan) for name in reps}
+        if reps is None:
+            logger.warning(
+                "reply population: %s has %.1f%% of its replies in buckets with no "
+                "labelled draw (%s); Opus estimates left NaN",
+                slug,
+                100 * (1 - coverage),
+                ", ".join(uncovered),
+            )
+            reps = {name: np.full(1 + n_boot, np.nan) for name in arrays}
         else:
-            for key, idx in strata.items():
-                wt = n_pop.get(key, 0) / total    # a draw-time bucket since emptied weighs nothing
-                y = stats(smp["score_teacher"].values[idx])
-                f = stats(smp[col].values[idx])
-                pick = np.vstack([np.arange(len(idx)),
-                                  rng.integers(0, len(idx), (n_boot, len(idx)))])
-                for k in model_pop:
-                    reps[f"opus_{k}"] += wt * y[k][pick].mean(axis=1)
-                    reps[f"assisted_{k}"] += wt * (y[k] - f[k])[pick].mean(axis=1)
             for k, v in model_pop.items():
                 reps[f"assisted_{k}"] += v
         for name, v in reps.items():
             row[name], row[f"{name}_lo"], row[f"{name}_hi"] = _ci(v)
         rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def reply_population_paired(
+    a: str = "v2",
+    b: str = "v2b",
+    col: str = "score_opus_distilled",
+    model: str = settings.TEACHER_CHECK_MODEL,
+    n_boot: int = settings.BOOTSTRAP_N,
+    seed: int = settings.BOOTSTRAP_SEED,
+) -> pd.DataFrame:
+    """Two reply label sets' direct population estimates on the same draws:
+    the first random draws (not the fresh ones) that carry a label of both,
+    weighted as reply_population weighs them, with one shared within-bucket
+    resample, so each post's b - a difference (diff_*) gets a paired CI
+    and a sampling shift cannot pass for the prompt's effect. Per post and
+    ALL: {a}_* and {b}_* mean and pro / anti / neutral shares, diff_*. No
+    API."""
+    from src.analysis.stance_local import read_reply_label_set
+
+    pop, draws, _ = _reply_frames(col, fresh=False)
+    la = read_reply_label_set(model, a)[["id", "score_teacher"]].rename(
+        columns={"score_teacher": "y_a"}
+    )
+    lb = read_reply_label_set(model, b)[["id", "score_teacher"]].rename(
+        columns={"score_teacher": "y_b"}
+    )
+    lab = (
+        pop.drop(columns="bucket")
+        .merge(draws[["id", "bucket"]], on="id")
+        .merge(la, on="id")
+        .merge(lb, on="id")
+    )
+    rng = np.random.default_rng(seed)
+    rows = []
+    for slug in list(pop["tracked_slug"].dropna().unique()) + ["ALL"]:
+        p = pop if slug == "ALL" else pop[pop["tracked_slug"] == slug]
+        smp = lab if slug == "ALL" else lab[lab["tracked_slug"] == slug]
+        ya, yb = _stance_shares(smp["y_a"].values), _stance_shares(smp["y_b"].values)
+        arrays = {
+            **{f"{a}_{k}": ya[k] for k in ya},
+            **{f"{b}_{k}": yb[k] for k in yb},
+            **{f"diff_{k}": yb[k] - ya[k] for k in ya},
+        }
+        coverage, reps, uncovered = _weighted(p, smp, arrays, n_boot, rng)
+        if reps is None:
+            logger.warning(
+                "reply population %s vs %s: %s has %.1f%% of its replies in buckets with no "
+                "draw labelled by both (%s); left NaN",
+                a,
+                b,
+                slug,
+                100 * (1 - coverage),
+                ", ".join(uncovered),
+            )
+            reps = {name: np.full(1 + n_boot, np.nan) for name in arrays}
+        row = {
+            "post": slug,
+            "labels": f"{b} - {a}",
+            "n_replies": len(p),
+            "n_labelled": int(smp["id"].nunique()),
+            "coverage": coverage,
+        }
+        for name, v in reps.items():
+            row[name], row[f"{name}_lo"], row[f"{name}_hi"] = _ci(v)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+# ── Fresh reply draws and the reply categories ─────────────────────
+
+
+def fresh_draws_path() -> Path:
+    """The fresh draws' manifest, next to REPLY_DRAWS_MANIFEST."""
+    return settings.PROCESSED_DIR / settings.REPLY_FRESH_DRAWS_NAME
+
+
+def read_fresh_draws() -> pd.DataFrame:
+    path = fresh_draws_path()
+    if not path.exists():
+        return pd.DataFrame(columns=["id", "tracked_slug", "bucket", "draw_set"])
+    d = pd.read_parquet(path)
+    return d.assign(id=d["id"].astype(str), bucket=d["bucket"].astype(int))
+
+
+def _allocate(n: int, sizes: pd.Series, room: pd.Series) -> dict[int, int]:
+    """n split across buckets in proportion to `sizes` (largest remainder),
+    none past its `room`; what a full bucket cannot take goes to the rest."""
+    alloc = dict.fromkeys(sizes.index, 0)
+    left = min(n, int(room.reindex(sizes.index, fill_value=0).sum()))
+    while left > 0:
+        open_ = [b for b in sizes.index if alloc[b] < room.get(b, 0)]
+        share = sizes[open_] / sizes[open_].sum() * left
+        whole = np.floor(share).astype(int)
+        order = (share - whole).sort_values(ascending=False, kind="stable").index
+        add = whole.to_dict()
+        for b in order[: left - int(whole.sum())]:
+            add[b] += 1
+        for b in open_:
+            alloc[b] += min(add[b], int(room.get(b, 0)) - alloc[b])
+        new_left = min(n, int(room.reindex(sizes.index, fill_value=0).sum())) - sum(alloc.values())
+        if new_left == left:
+            break
+        left = new_left
+    return {int(b): int(k) for b, k in alloc.items()}
+
+
+def draw_fresh_sample(
+    replies: pd.DataFrame | None = None,
+    n_per_post: int = settings.REPLY_FRESH_PER_POST,
+    seed: int = settings.REPLY_FRESH_SEED,
+    write: bool = False,
+    check=None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(fresh draws of every post, a per post x bucket count table): for each
+    tracked post the manifest lacks, n_per_post replies with text, split
+    across the valence buckets in proportion to the post's replies with text
+    in each, drawn within a bucket from those not already first draws
+    (REPLY_DRAWS_MANIFEST) as the smallest seeded hashes of their ids. A
+    reply that already carries a v2 label (the flipper cohort, an earlier
+    extra batch) can be drawn: its label is reused, never paid again. A post
+    the manifest holds is frozen and never redrawn. With `write` the new
+    draws are recorded (temp file, then rename) before anything is sent,
+    once `check(manifest)` (when given: reply_labels.refuse_fresh_run, the
+    run's calls and dollar ceiling against its caps) has not raised.
+
+    The run is sized by its caps: n_per_post above settings
+    REPLY_FRESH_PER_POST is refused, and so is recording a manifest of more
+    draws than REPLY_FRESH_MAX_CALLS; a bigger run is a deliberate settings
+    change."""
+    if n_per_post > settings.REPLY_FRESH_PER_POST:
+        raise ValueError(
+            f"{n_per_post} fresh draws a post is over REPLY_FRESH_PER_POST "
+            f"({settings.REPLY_FRESH_PER_POST}) in config/settings.py: raise it deliberately"
+        )
+    if replies is None:
+        replies = pd.read_parquet(
+            settings.REPLY_SENTIMENT_OUTPUT,
+            columns=["id", "tracked_slug", "text", "score_transformer"],
+        )
+    r = replies.assign(id=replies["id"].astype(str)).drop_duplicates("id")
+    r = r[has_text(r["text"]) & r["score_transformer"].notna() & r["tracked_slug"].notna()]
+    r = r.assign(bucket=stance_bucket(r["score_transformer"]).astype(int))
+    first = set()
+    if settings.REPLY_DRAWS_MANIFEST.exists():
+        first = set(
+            pd.read_parquet(settings.REPLY_DRAWS_MANIFEST, columns=["id"])["id"].astype(str)
+        )
+    have = read_fresh_draws()
+    frozen = set(have["tracked_slug"])
+    picked, summary = [], []
+    for slug in sorted(r["tracked_slug"].unique()):
+        f = r[r["tracked_slug"] == slug]
+        sizes = f.groupby("bucket").size()
+        elig = f[~f["id"].isin(first)]
+        room = elig.groupby("bucket").size()
+        if slug in frozen:
+            got = have[have["tracked_slug"] == slug].groupby("bucket").size()
+            alloc = {int(b): int(got.get(b, 0)) for b in sizes.index}
+        else:
+            alloc = _allocate(n_per_post, sizes, room)
+            for b, k in alloc.items():
+                e = elig[elig["bucket"] == b]
+                key = e["id"].map(lambda i: hashlib.sha256(f"{seed}:{i}".encode()).hexdigest())
+                picked.append(
+                    e.assign(_key=key).sort_values("_key").head(k)[["id", "tracked_slug", "bucket"]]
+                )
+        for b in sizes.index:
+            summary.append(
+                {
+                    "post": slug,
+                    "bucket": STANCE_BUCKET_NAMES[int(b)],
+                    "with_text": int(sizes[b]),
+                    "first_draws": int(sizes[b] - room.get(b, 0)),
+                    "drawn": alloc.get(int(b), 0),
+                    "frozen": slug in frozen,
+                }
+            )
+    new = (
+        pd.concat(picked, ignore_index=True)
+        if picked
+        else pd.DataFrame(columns=["id", "tracked_slug", "bucket"])
+    )
+    new = new.assign(
+        draw_set=f"fresh-{seed}",
+        seed=seed,
+        n_per_post=n_per_post,
+        recorded_at=pd.Timestamp.now(tz="UTC"),
+    )
+    out = pd.concat([have, new], ignore_index=True) if len(have) else new
+    if write and len(new):
+        if len(out) > settings.REPLY_FRESH_MAX_CALLS:
+            raise ValueError(
+                f"{len(out)} fresh draws would be recorded, over REPLY_FRESH_MAX_CALLS "
+                f"({settings.REPLY_FRESH_MAX_CALLS}) in config/settings.py: raise it "
+                "deliberately, or draw fewer a post"
+            )
+        if check is not None:
+            check(out)
+        path = fresh_draws_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        out.to_parquet(tmp, index=False)
+        tmp.replace(path)
+        logger.info(
+            "fresh reply draws: recorded %d draws for %s -> %s", len(new), _per_post(new), path
+        )
+    return out.reset_index(drop=True), pd.DataFrame(summary)
+
+
+def reply_category_population(
+    model: str = settings.TEACHER_CHECK_MODEL,
+    n_boot: int = settings.BOOTSTRAP_N,
+    seed: int = settings.BOOTSTRAP_SEED,
+) -> pd.DataFrame:
+    """Per tracked post (and ALL) and category (event_study.STANCE_CATEGORIES):
+    the category's share of the post's replies with text, from the Opus
+    categories (reply_labels job cat-v2) on the first random draws only
+    (REPLY_DRAWS_MANIFEST: not the flipper cohort, not the fresh draws),
+    weighted as reply_population weights them, with within-bucket bootstrap
+    CIs; and the same for the Haiku categories `stance` gave those draws
+    (event_study.STANCE_PROMPT, no parent post), with the same weights and
+    resamples. NaN where a bucket has no labelled draw."""
+    from src.analysis.event_study import STANCE_CATEGORIES, STANCE_OUTPUT
+    from src.analysis.stance_local import reply_labels_path
+
+    replies = pd.read_parquet(
+        settings.REPLY_SENTIMENT_OUTPUT, columns=["id", "tracked_slug", "text", "score_transformer"]
+    )
+    replies["id"] = replies["id"].astype(str)
+    draws = reply_draws(replies)
+    draws = draws.assign(id=draws["id"].astype(str), bucket=draws["bucket"].astype(int))
+    replies = replies.drop_duplicates("id")
+    pop = replies[has_text(replies["text"]) & replies["score_transformer"].notna()].copy()
+    pop["bucket"] = stance_bucket(pop["score_transformer"]).astype(int)
+    cats = pd.read_parquet(reply_labels_path(model, "cat-v2"), columns=["id", "category"])
+    cats = cats.assign(id=cats["id"].astype(str)).dropna().drop_duplicates("id")
+    haiku = pd.read_parquet(STANCE_OUTPUT, columns=["id", "stance"])
+    haiku = haiku.assign(id=haiku["id"].astype(str)).drop_duplicates("id")
+    lab = (
+        pop[["id", "tracked_slug"]]
+        .merge(draws[["id", "bucket"]], on="id")
+        .merge(cats, on="id")
+        .merge(haiku, on="id", how="left")
+    )
+    rng = np.random.default_rng(seed)
+    rows = []
+    for slug in list(pop["tracked_slug"].dropna().unique()) + ["ALL"]:
+        p = pop if slug == "ALL" else pop[pop["tracked_slug"] == slug]
+        smp = lab if slug == "ALL" else lab[lab["tracked_slug"] == slug]
+        judged = smp["stance"].isin(STANCE_CATEGORIES).values
+        arrays = {}
+        for c in STANCE_CATEGORIES:
+            arrays[f"opus:{c}"] = (smp["category"] == c).values.astype(float)
+            arrays[f"haiku:{c}"] = np.where(judged, (smp["stance"] == c).values, np.nan)
+        coverage, reps, _ = _weighted(p, smp, arrays, n_boot, rng, nan_ok=True)
+        for c in STANCE_CATEGORIES:
+            row = {
+                "post": slug,
+                "category": c,
+                "n_replies": len(p),
+                "n_labelled": int(smp["id"].nunique()),
+                "coverage": coverage,
+            }
+            for kind in ("opus", "haiku"):
+                v = reps[f"{kind}:{c}"] if reps is not None else np.full(1 + n_boot, np.nan)
+                row[f"{kind}_share"], row[f"{kind}_lo"], row[f"{kind}_hi"] = _ci(v)
+            rows.append(row)
     return pd.DataFrame(rows)
 
 

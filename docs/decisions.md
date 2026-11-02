@@ -4,6 +4,282 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-02: One alternate post-rater path; Trump's whole feed on score_opus; unjudgeable topic posts
+
+- **Decision:** labels on broadcaster posts beyond score_opus go through one
+  path, `post-label estimate|pilot|submit|status|collect|report --job <job>`
+  (src/analysis/post_labels.py), whose parameters are the model, the prompt
+  version and the post set, on the batch transport the teacher checks use.
+  Each job has its own label file, state file, caps and report, and its
+  columns carry the model's tag; none is ever merged into score_opus or
+  sentiment_all.parquet. `phases --score <col>` joins a job's column from
+  its label file onto the frame's war candidates (keyword OR Haiku) when the
+  post's text is the one labelled, and `phases --topic opus` counts a
+  candidate as a war post when its stance-topic label says `iran_war`.
+  - `stance-topic` (claude-opus-5): a new prompt that classes the post
+    (iran_war / war_or_peace_general / other_conflict / not_war) and scores
+    the author's position on U.S. military action against Iran, null off
+    the Iran war, with the handle where llm_prompt has it (just before the
+    post). The topic definitions are topic_prompt's, the scale and "position,
+    not tone" v2's; it adds that a repost counts as the author's post. The
+    instructions come first, ~710 tokens, so they go as a cached prefix
+    (Opus 5's minimum is 512). Columns `score_opus_stance`, `topic_opus`. Set:
+    the 4,925 war candidates (X accounts 4,479, Trump 446) plus 1,500 X posts
+    no filter flags (the smallest seeded hashes of their ids, frozen by the
+    first pilot or submit), which only measure what the filters miss.
+  - `rater` (claude-opus-5-5, effort low): llm_prompt, the score_opus prompt
+    byte for byte, on the 4,925 candidates. Column `score_opus55`; the job
+    refuses claude-opus-5 and Haiku (their `score_<tag>` are existing
+    series). Its reply arm is `reply-label --job v2-rater`: the v2 prompt
+    unchanged on the 1,157 v2 replies, in its own file, set against the v2
+    labels by its report.
+  - `stance-topic-nohandle`: stance-topic without the sentence naming the
+    author, on a seeded paired subsample of the X candidates: all 272
+    religious and 86 opposition posts, 400 each of admin, pro-war MAGA,
+    anti-war MAGA and media (1,958). Its report pairs it with stance-topic's
+    labels by tier; its columns are no series.
+  - Reports (aggregates only): Pearson, Spearman, MAE, sign flips and
+    Bland-Altman (mean and SD of new - score_opus, 95% limits) by tier and
+    phase; the topic class against which filter flagged each candidate; the
+    random arm's Iran-war share with a Wilson interval and what it implies
+    for the unflagged pool; the no-handle shift by tier with its interval.
+- **Trump's whole feed:** `TRUMP_TEACHER_CHECK_MAX_CALLS` raised from 500 to
+  3,300 so `teacher-check --source trump --all` can label every post with
+  text (3,222; the 400 labelled already are reused, 2,822 to do).
+  `--merge` writes score_opus / label_opus onto the feed parquet by id
+  (score_opus_distilled stays), claimed in the feed's own column record;
+  `phases --source trump --score score_opus` then works. The Trump default
+  in `phases` stays score_opus_distilled: switching it is the user's call.
+  Not merged yet: score-posts may still be writing that parquet.
+- **Pilots and caps:** `post-label pilot` (direct, 50 calls by default)
+  sends the batch's own request and records the billed input (with cache
+  writes and reads) and output tokens and each answer's stop reason; the
+  estimate is then calibrated on it (input scale, output mean, p95 for the
+  ceiling, whether the cache engaged). Only a pilot of the job's current
+  prompt version, max_tokens and effort counts. Without one, batches of a
+  model and prompt send at most `POST_PILOT_MAX_CALLS` (100) calls in all,
+  except llm_prompt on claude-opus-5, whose output the usage fit measures;
+  and once such a pilot has a max_tokens stop no batch goes, `--limit` or
+  not (Opus 5.5 always thinks, and thinking counts against max_tokens).
+  Each job's caps bound its whole run: every pilot (direct prices) and
+  batch (billed, or its ceiling until collected), on any model, plus the
+  next batch's no-call ceiling (no cache hits, output at the pilot's p95,
+  twice the guess before a pilot). Batch collects now record output tokens
+  a call (mean and p95) and stop reasons for every check.
+- **Estimates (no call, 2026-11-02, batch prices):** Trump's feed $5.10 on
+  the check batches' usage fit (0.3628 tokens a character + 35, 77 output;
+  ceiling $6.06), against the old characters / 2 figure of $5.99.
+  stance-topic $13.82 (6,425 calls, output guessed at 110, 89% cache reads;
+  pre-pilot ceiling $34.39 over the $30 cap until a pilot replaces the
+  guess), rater on Opus 5.5 $10.75 (4,925 calls, output guessed at twice
+  Opus 5's 84; ceiling $18.96, cap $20), no-handle $4.17 (1,958 calls;
+  ceiling $10.44 before a pilot, cap $9.50), the reply arm $1.69 (ceiling
+  $3.14 at twice Opus 5's 67.8 output tokens while unmeasured, cap $4).
+  Each 50-call pilot is about $0.21-0.23 direct (ceilings $0.39-0.54); the
+  reply arm's 50-call batch pilot $0.07. The caps hold the run's ceiling up to a pilot p95 of
+  ~160 output tokens on the stance-topic jobs and ~350 on the rater.
+- **Topic-label failures:** each answer Haiku gives with no verdict (a
+  link share: it starts explaining it can't open the link and runs out of
+  its 32 tokens) is recorded in `topic_unjudgeable.parquet` with its batch
+  and the length of the text it was sent (a submit records each length), and
+  a post with three such answers on the same text
+  (`TOPIC_UNJUDGEABLE_MIN_ATTEMPTS`) is not sent again
+  (`--retry-unjudgeable` overrides; `topic-label unjudgeable
+  --results-file` records a past batch's for free). It keeps no Haiku
+  label, so `war_flag` counts it by the keyword pattern as before; errored
+  or expired requests are retried, not recorded.
+- **Review fixes (same day, before any spend):**
+  - The post caps bounded each batch, so `submit --limit` batches (which
+    the refusal message suggested) could together pass a dollar cap, and
+    repeated `--limit 100` batches could skip the pilot: the caps now bound
+    the run as v2-fresh's do (pilots included), the unmeasured gate counts
+    the batches already sent, and no message offers `--limit` as a way
+    round a cap. The same holds for the reply arm (`v2-rater`).
+  - A max_tokens stop in the pilot now refuses every batch (`--limit`
+    used to switch the check off), and a pilot of another prompt version or
+    effort no longer counts as a measurement.
+  - The reply ceiling priced output at the mean even unmeasured: it is twice
+    Opus 5's length until measured, and a pilot-measured model is recorded
+    with its p95 (`{"mean", "p95"}`), which the ceiling takes; Opus 5's
+    1,141-call mean stays as both (over thousands of calls the mean bounds
+    the total). v2-fresh without `--post` is only a pilot-sized `--limit`.
+    A reply submit refuses once a batch of the job on that model had an
+    answer cut at max_tokens (`REPLY_LABEL_MAX_TOKENS`).
+  - Unjudgeable after one no-verdict was too soon: in the four topic batches
+    to 2026-11-02, 30% of the posts got a verdict on the next try after one
+    no-verdict, 25% after two, 20% after three or more (389 posts are
+    unlabelled with a no-verdict: 214 with one, 102 with two, 73 with three
+    or more). A resend costs ~$0.0001, so a post waits for three, counted
+    per batch or file on the same text, and an answer is put down to the
+    text the submit sent, never one changed since.
+  - A label made from an older text counted as done, so the post was never
+    labelled again while every reader dropped the label: it is now to do,
+    and the new label replaces it (the old one to `*_superseded`); the
+    text-change paths (x-backfill-text, `collect --force`, ts-fill-text)
+    now move the post-label caches' labels aside as they do relabel's.
+  - `column_owner` claimed score_opus for the rater on claude-opus-5 (a
+    pair the job refuses), which sent the reader of a missing score_opus to
+    a refused command: refused pairs own no column. `phases` on a
+    post-label column (war candidates only) printed all-post, share and
+    share-effect figures that were really candidate figures: they are NaN
+    and only the war-post columns print.
+  - The no-handle report's ALL row pooled a subsample that takes two tiers
+    whole and 400 of each larger one: it now weights each tier's pairs by
+    its pool over its pairs (the interval: see the second look below).
+  - score-posts does keep score_opus (the doc said it drops it), but it
+    reads the feed when it starts and writes it back whole when it ends, so
+    a `--merge` meanwhile would be lost: it now writes the file atomically
+    with a `<feed>.scoring` marker, and the merge refuses while the marker
+    names a live process (on dkbl1: the GPU Job's run is on dkbl2, so a
+    merge goes after its `sync-data.sh pull`, AGENTS.md).
+- **Second look at the fixes (same day, before any spend):**
+  - Every batch create (the checks, post-label, reply-label, relabel,
+    topic-label) is sent once: the SDK retried a timed-out or dropped
+    create with no idempotency key, so a batch the server had made would be
+    made again and only the second recorded (billed outside the run caps,
+    and a reply batch never deleted). A failure without an answer keeps a
+    "submitting" state (relabel and topic-label now write one too) that
+    every submit refuses on; a 4xx or 529 answer, which comes before any
+    batch exists, puts the last state back.
+  - relabel refuses any model but claude-opus-5 (the path rejected below
+    still ran end to end, uncapped, at Opus 5's output length).
+  - A pilot counts as the measurement only with `POST_PILOT_MIN_BILLED`
+    (40) billed answers pooled: a `--n 1` pilot set the ceiling the dollar
+    cap is checked against at one answer's length and opened the unmeasured
+    gate. A smaller one is shown but stays a guess; its max_tokens stops
+    still refuse.
+  - A max_tokens stop in a collected post-label batch of the current
+    request refuses the next submit, as the reply path already did (cut
+    answers are not kept, so they would go again and be cut again).
+  - A pilot is on record before its first call (in_progress, at its direct
+    ceiling) and saves its labels and usage every `POST_PILOT_SAVE_EVERY`
+    answers: a pilot killed outright (dkbl1 powers off) lost both, so its
+    posts were paid again and its spend left the caps.
+  - The collect of a reply batch syncs the disk before the delete, which
+    cannot be undone (a new label file or results archive could still be
+    in memory when the results left the API). The unjudgeable record, the
+    column records and the relabel and topic-label caches are written
+    temp-then-rename.
+  - The no-handle ALL interval is the linearized one of its weighted ratio
+    (e = 1{both iran_war} (shift - the weighted shift), stratified by
+    tier), which counts that the posts both arms call iran_war are a random
+    subset: the earlier "stratified" formula left that term out. Each
+    tier's pairs are a sample of that tier's, with no finite-population
+    correction, as in the per-tier rows (Opus's answers are draws too).
+  - `phases --score score_opus_stance` says that its war posts are the
+    `--topic` flag AND Opus's iran_war class (the score is null off it)
+    and names the like-for-like baseline, `phases --score score_opus
+    --topic opus`; export-web warns when replies.json pools the fresh
+    draws, since the published prose cites the 1,071-draw figures.
+- **Why:** every published stance rests on one model and one prompt that
+  asks for "sentiment" and names the author; the Pope's -0.77 and the
+  administration's keyword-only war posts rest on the loose filter; Trump's
+  feed is the one published stance series not on score_opus. Each paid run
+  still gets its own estimate and the user's go.
+- **Rejected:** `relabel --model claude-opus-5-5` (no cap, a model-blind
+  estimate, and before the tag fix it merged into score_opus); writing the
+  new columns into sentiment_all.parquet (`analyze` rewrites it, and a read-
+  time join cannot put a random-arm label into a series); Fable 5.1 as the
+  second rater (the user chose Opus 5.5); the no-handle arm on all
+  candidates (paired differences have little variance, so ~1,900 measure a
+  tier's shift to about +-0.02); a prompt for stance-topic with the post
+  first (its instructions could not be cached).
+
+## 2026-11-02: One reply-label path; per-model prices and tags; batches deleted after collect
+
+- **Decision:** further Opus reply labels go through one path, `reply-label
+  estimate|submit|status|collect|report --job <job>`, whose parameters are
+  the prompt version, the model and the id source, on the v2 run's prompt
+  code, id-keyed label cache and batch transport. Three jobs, each with its
+  own label file, state file, cap and report, none writing the v1 or v2
+  files:
+  - `v2b`: the v2 prompt less the one sentence that makes praise of a
+    strike a position for the war and praise of a ceasefire, a deal or a
+    hold-off one against (both halves, so the test stays symmetric), on the
+    1,157 stance-sample replies with text. `reply-population --labels v2b`
+    weights it.
+  - `cat-v2`: the six categories of `event_study.STANCE_PROMPT`, word for
+    word, asked v2's way (the parent post as the cached prefix, the whole
+    reply, no author handle), on the same 1,157 replies. The Haiku
+    categories stay as history. Their population shares weight the first
+    random draws only (not the flipper cohort), as `reply-population` does.
+  - `v2-fresh`: the v2 prompt unchanged on a second random sample,
+    `reply-fresh-sample`: 1,000 replies with text per tracked post, split
+    across the valence buckets in proportion to the post's replies, drawn
+    within a bucket from those not already first draws, as the smallest
+    seeded hashes of their ids, and recorded in its own manifest before any
+    is sent. Same scorer as the v2 labels, so `reply-population` pools both
+    files as the v2 label set, in its direct and its model-assisted columns
+    (`REPLY_POPULATION_FRESH_DRAWS`; off reproduces the 1,071-draw figures,
+    and which estimand is published stays the user's call); within a post
+    and bucket the first and fresh draws together are one simple random
+    sample, so the bucket weighting is unchanged. A drawn reply that already
+    carries a v2 label keeps it. Sent one post per batch (`--post`,
+    enforced; `--limit` for a pilot), under `REPLY_FRESH_MAX_CALLS` (8,500)
+    and `REPLY_FRESH_MAX_USD` ($21.50), which bound the whole run: a submit
+    counts the calls its earlier batches sent and the spend they were
+    billed, and the draw refuses more than 1,000 a post or a manifest whose
+    run would pass either cap.
+- **Estimates:** calibrated on what the 2026-10-05 v2 batch was billed
+  (1,141 requests): each post's prefix tokens, 0.350 tokens per reply
+  character, 67.8 output tokens, a cache read on 89% of a post's requests
+  where its cached block reaches the model's minimum (512 on Opus 5),
+  another prompt's prefix moved by its extra instruction characters at 2.67
+  a token. The ceiling has no cache hits: every request on a post whose
+  block reaches the minimum writes it (1.25x), and only those requests
+  carry a cache breakpoint, so the others can't pay a write the estimate
+  leaves out. At Batch prices on claude-opus-5: v2b $2.11 (ceiling $2.66),
+  cat-v2 $2.32 ($4.30, output at twice its 83-token guess while
+  unmeasured), v2-fresh $14.90
+  ($20.21) for 7,995 calls (5 drawn replies were labelled already); per
+  post $1.32-2.29 (ceilings $2.02-3.40).
+- **Shared fixes:** a per-model price table (`settings.MODEL_PRICES`: input,
+  output, cache write and read multipliers, batch discount, cache minimum)
+  prices every estimate and spend tally; a model with no row is refused.
+  Column tags no longer collide (`claude-opus-5-5` was tagged `opus`, so a
+  `relabel merge` of it would have replaced score_opus): Opus 5.5 is
+  `opus55`, Fable 5.1 `fable51`, and `relabel merge` refuses a column
+  `sentiment_all_columns.json` records as another model's. A collect whose
+  results stream breaks downloads `results_url` itself, and a collect of a
+  batch that carried replies deletes it on the API (`--keep-batch` to keep
+  it), so private replies are not kept there for the 29 days results
+  otherwise stay.
+- **Why:** the June deal's anti-war reading rests on an instruction the
+  prompt states outright; the Haiku categories never saw the parent post and
+  named the author; the published reply intervals rest on 1,071 labelled
+  draws. Each paid run still gets its own estimate and the user's go.
+- **Review fixes (same day, before any spend):** the fresh caps were per
+  batch, so eight per-post submits could each pass them, and `--n` had no
+  bound: both now bound the run (above). The ceiling priced the cached
+  block at 1x, under the 1.25x a missed cache costs: corrected, which put
+  the run's ceiling over the first $20 cap, now $21.50 (the same ~6% slack
+  as the call cap). A model whose output length is unmeasured (Opus 5.5:
+  thinking may run longer) sends at most a 50-call pilot under a dollar cap
+  until its figure is in `REPLY_OUTPUT_TOKENS`. A failed, pending or kept
+  delete is retried by the next submit before it archives the state (it
+  refuses while the delete fails); a 404 counts as deleted. The results
+  download asks for `accept-encoding: identity` and never resumes an
+  encoded body, so a Range offset always counts the bytes held.
+  `reply-population` pools a post's fresh draws only once 98% of them are
+  labelled (before its batch, only reused flipper labels sit there), and
+  label sets are compared on the same draws: `--first-draws`, and the v2b
+  report's paired v2 - v2b population difference
+  (`inference.reply_population_paired`). The bootstrap gained the
+  finite-population correction (the fresh draws sample up to a third of a
+  bucket; the first draws sample 0.4-8% of theirs, so their intervals
+  narrow by at most ~4%, mostly under 1%). The fresh report
+  dropped its unweighted ALL row. cat-v2 keeps the six definitions word for
+  word; "opposes THIS action" can read as opposing the de-escalation on the
+  ceasefire posts, so its report counts, on those posts, the categories
+  filed anti-war that v2 scored pro, to read on a 50-call pilot first.
+- **Rejected:** writing the fresh labels into the v2 file (it would change
+  the 1,157-reply v2 report and couple two batch checks to one parquet);
+  excluding every labelled reply from the fresh frame (the flipper cohort
+  could then never be drawn, a small bias the clean design avoids);
+  `relabel --model` for a second rater (it has no cap and, before this,
+  merged into score_opus); a direct-API path for the new jobs (Batch only,
+  `--limit` for a pilot).
+
 ## 2026-11-01: X's own counts before any full-archive fill
 
 - **Decision:** before any archive fill is bought for the X holes, fetch
@@ -67,8 +343,8 @@ behind the stance-model entries are in README *Stance-model experiments* and
   slice kept only the newest ~0.9-1.6 days of each fortnight. The slices
   ended on the same weekday and hour, so those blocks were 72-78% Saturday
   and Sunday posts, and alternate weeks were empty. A 35-hour window
-  (35 = 11 mod 24, coprime with 24) moves its end 7 hours through the week
-  each time: every 24 windows (exactly 5 weeks) end once at every clock hour
+  (35 = 11 mod 24, coprime with 24) moves its end 11 hours later on the
+  clock, and a day and 11 hours later in the week, each time: every 24 windows (exactly 5 weeks) end once at every clock hour
   and 3-4 times on every weekday. Whole-day lengths lock the weekday and
   hour; 36 h only alternates two hours. A per-window cap fixes the density
   at about 48 per 14 days over a gap of two weeks or more (within ~5%):
