@@ -21,9 +21,10 @@ so the filled stretches follow the current design (docs/decisions.md
     `--scope empty` keeps only the windows that hold nothing.
   - Requests: from:<handle>, newest first, the collector's tweet fields, no
     expansions. The posts a window holds (and posts bought before but set
-    aside) cut it into gaps bounded by their ids (since_id / until_id), and
-    every request also carries start_time and end_time, so no held post is
-    bought again and no request falls back to search/all's 30-day default.
+    aside) cut it into gaps bounded by their ids (since_id / until_id), so
+    no held post is bought again. A time edge goes as the id it maps to
+    (id_at: X's ids carry their creation time in ms), because X answers 400
+    to any mix of ids and start_time / end_time.
     A gap is skipped only when every hour bucket it touches is held whole,
     by the posts held when the walk reaches it (a bucket several gaps share
     closes once one of them yields its missing post).
@@ -82,6 +83,9 @@ logger = logging.getLogger(__name__)
 
 HOUR = timedelta(hours=1)
 SECOND = timedelta(seconds=1)
+# X's ids are snowflakes: id >> 22 is the post's creation in ms since this
+# epoch (every cached post's id falls inside its created_at second).
+SNOWFLAKE_EPOCH_MS = 1288834974657
 EPS = 1e-9
 VIA = "search_all"
 SCOPES = ("below", "empty")
@@ -127,6 +131,14 @@ def manifest_path(run_start: datetime) -> Path:
 
 def _now() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None, microsecond=0)
+
+
+def id_at(t: datetime) -> int:
+    """The lowest id X can give a post created at naive-UTC `t` or later: a
+    since_id of id_at(t) - 1 bounds like start_time t (inclusive), an
+    until_id of id_at(t) like end_time t (exclusive)."""
+    ms = round(t.replace(tzinfo=UTC).timestamp() * 1000)
+    return (ms - SNOWFLAKE_EPOCH_MS) << 22
 
 
 def _floor_hour(t: datetime) -> datetime:
@@ -787,16 +799,15 @@ class FillRun:
         acct = wr["acct"]
         params = {
             "query": xcn.handle_query(acct.handle),
-            "start_time": xcn.z(lo.t),
-            "end_time": xcn.z(hi.t + SECOND if hi.id else hi.t),
             "max_results": max_results,
             "sort_order": "recency",
             "tweet_fields": xc._TWEET_FIELDS,
         }
-        if lo.id:
-            params["since_id"] = lo.id
-        if hi.id:
-            params["until_id"] = hi.id
+        # Ids only: X answers 400 to any mix of since_id / until_id with
+        # start_time / end_time (the 2026-11-03 pilot), so a time edge goes
+        # as the id it maps to (id_at), which bounds exactly as the time would.
+        params["since_id"] = lo.id or str(id_at(lo.t) - 1)
+        params["until_id"] = hi.id or str(id_at(hi.t))
         if token:
             params["next_token"] = token
         self.cap.before()
@@ -805,8 +816,8 @@ class FillRun:
             "req": uuid.uuid4().hex,
             "handle": acct.handle,
             "window_start": xcn.z(wr["s"]),
-            "start_time": params["start_time"],
-            "end_time": params["end_time"],
+            "lo_t": xcn.z(lo.t),
+            "hi_t": xcn.z(hi.t),
             "since_id": params.get("since_id"),
             "until_id": params.get("until_id"),
             "next_token": bool(token),

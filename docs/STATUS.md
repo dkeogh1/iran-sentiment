@@ -251,8 +251,9 @@ Since 2026-11-02, the user's calls (`docs/decisions.md`):
   look on the page: the reply-scatter labels and the audience bars'
   domains.
 - **Next:** the X archive fill is built (`x-archive fill`, 2026-11-02, with
-  the review's fixes of 2026-11-03; docs/decisions.md) and waits for the
-  user's approval of its estimate.
+  the review's fixes of 2026-11-03; docs/decisions.md). The pilot ran on
+  2026-11-03 ($0.19, every check passed) and the user approved the full
+  fill with `X_ARCHIVE_FILL_MAX_USD` at $32; it runs from 2026-11-03.
   `x-archive fill --estimate` (no call) plans search/all on collect's 35 h
   grid for @WhiteHouse, the horizon holes, the late starts and the short
   and empty windows: 1,162 windows (259 late starts, 709 empty, 194 short),

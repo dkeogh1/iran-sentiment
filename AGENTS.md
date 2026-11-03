@@ -520,8 +520,10 @@ k8s/, scripts/k8s/   GPU experiment Jobs
     Counts never end a walk: a window is done when it holds its target or
     every gap that may hold a post has been asked.
   - Requests: the posts a window holds cut it into gaps bounded by their
-    ids (`since_id` / `until_id`, with `start_time` / `end_time` on every
-    request), so no held post is bought again. A gap is skipped only when
+    ids (`since_id` / `until_id`), so no held post is bought again. A time
+    edge goes as the id it maps to (`id_at`: an id carries its creation
+    time in ms), because X answers 400 to any mix of ids with `start_time` /
+    `end_time`. A gap is skipped only when
     every hour bucket it touches is held whole, checked when the walk
     reaches it (a bucket several gaps share closes once one of them yields
     its post). A sampled walk goes newest first, narrowed with the hour

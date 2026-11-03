@@ -40,9 +40,11 @@ behind the stance-model entries are in README *Stance-model experiments* and
   request before it is sent (one answered but never logged counts at its
   `max_results`), and every request's `max_results` stays inside both
   limits. Held posts bound each request by
-  id, so none is bought again; every request also carries `start_time` and
-  `end_time`, because X uses `since_id` over `start_time` and, with no
-  `start_time`, search/all reads only the last 30 days. A gap is skipped
+  id, so none is bought again. Requests carry ids only: X answers 400 to
+  `start_time` with `since_id`, and to any mix of ids with `start_time` /
+  `end_time` (the pilot, 2026-11-03), so a time edge goes as the id it maps
+  to (an id carries its creation time in ms: every cached post's id falls
+  inside its `created_at` second). A gap is skipped
   when every hour bucket it touches is held whole, checked when the walk
   reaches it rather than once before the first request. A sampled window's walk
   narrows each request with the hour counts and reads the crossing hour in
@@ -79,6 +81,17 @@ behind the stance-model entries are in README *Stance-model experiments* and
   - an append after a line a kill cut was glued onto it, and both records
     were lost. `x_collector._append_jsonl` now ends the cut line first,
     which also covers collect.
+- **Pilot (2026-11-03, $0.19):** `--only WhiteHouse,PeteHegseth --since
+  2026-08-01 --until 2026-08-08`. The first two tries were refused with a
+  400 before any post was read (the bounds above); with ids only, 8
+  windows read 38 posts in 13 requests (36 expected), stored 36 and set 2
+  aside; no held post came back. Windows over 30 days old answer with ids
+  alone, search/all serves @WhiteHouse (whose timeline fails), and posts
+  over 280 characters come back whole (the longest 513). One sampled
+  window holding all X counts (4, under its cap of 5) ended "stopped:
+  window budget reached": counts never end a walk, so a rerun asks its
+  last gaps, free when they are empty. The user approved the full fill
+  with the cap at $32.
 - **relabel caps:** each submit and resubmit is checked against the
   estimate's ceiling, before any client is built: input from the llm_prompt
   usage fit, output at its p95 (113 tokens), batch prices, no cache.

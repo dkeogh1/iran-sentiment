@@ -43,8 +43,25 @@ ACCOUNTS = {"t": ["Aa", "Tt"]}
 
 
 def _pid(ts: datetime, k: int) -> int:
-    """An id in time order, as X's are; k keeps accounts apart."""
-    return 10**12 + int((ts - F).total_seconds()) * 10 + k
+    """A snowflake id, as X's are (created at ts, plus k ms to keep accounts
+    apart)."""
+    return xf.id_at(ts) + (k << 22)
+
+
+def _at(i: int) -> datetime:
+    """The time a snowflake id was made, to the ms (naive UTC)."""
+    ms = (i >> 22) + xf.SNOWFLAKE_EPOCH_MS
+    return datetime.fromtimestamp(ms / 1000, UTC).replace(tzinfo=None)
+
+
+def _lower(call: dict) -> str:
+    """A request's lower edge as a time (since_id is exclusive)."""
+    return xcn.z(_at(int(call["since_id"]) + 1))
+
+
+def _upper(call: dict) -> str:
+    """A request's upper edge as a time."""
+    return xcn.z(_at(int(call["until_id"])))
 
 
 def _posts(times: list[datetime], k: int, text="post") -> list[tuple[int, datetime, str]]:
@@ -118,9 +135,9 @@ def _tweet(post, extra: dict | None = None):
 
 class SearchStub:
     """
-    search/all over `posts` {handle: [(id, created_at, text)]}: start_time
-    inclusive and end_time exclusive; since_id wins over start_time (as X
-    documents) and until_id applies with end_time; newest first, up to
+    search/all over `posts` {handle: [(id, created_at, text)]} between
+    since_id and until_id (both exclusive; X answers 400 to any mix of ids
+    with start_time / end_time: the 2026-11-03 pilot); newest first, up to
     max_results, next_token an offset. It fails the test when a request's
     bounds hold a post the cache or the extras already hold. `fail` maps an
     attempt number to the error it raises; `limited` answers that many
@@ -152,22 +169,22 @@ class SearchStub:
         assert p["sort_order"] == "recency" and p["tweet_fields"] == xc._TWEET_FIELDS
         assert 10 <= p["max_results"] <= 100 and "expansions" not in p
         handle = query.split(":", 1)[1]
-        s, e = xcn.parse_ts(p["start_time"]), xcn.parse_ts(p["end_time"])
         lo, hi = p.get("since_id"), p.get("until_id")
+        if ("start_time" in p or "end_time" in p) and (lo or hi):
+            raise _http_error(
+                tweepy.errors.BadRequest,
+                400,
+                {"title": "Invalid use of 'since_id' or 'until_id' with 'start_time'"},
+            )
+        assert lo and hi, p
         if self.adversarial:
             n, out = p["max_results"], []
             for _ in range(n):
                 self._made += 1
-                pid = int(hi) - self._made if hi else 9 * 10**12 + self._made
-                out.append(_tweet((pid, s, "made up")))
+                pid = int(hi) - self._made
+                out.append(_tweet((pid, _at(pid).replace(microsecond=0), "made up")))
             return SimpleNamespace(data=out, meta={"next_token": "more"})
-        hits = [
-            post
-            for post in self.posts.get(handle, [])
-            if (post[0] > int(lo) if lo else post[1] >= s)
-            and post[1] < e
-            and (not hi or post[0] < int(hi))
-        ]
+        hits = [post for post in self.posts.get(handle, []) if int(lo) < post[0] < int(hi)]
         known = self._known(handle) & {str(h[0]) for h in hits}
         assert not known, f"the request's bounds hold known posts {known}: {p}"
         hits.sort(key=lambda h: -h[0])
@@ -440,12 +457,14 @@ def test_run_fills_the_windows_bounded_by_held_ids(env):
     assert set(_ids("Aa")) == {str(p[0]) for p in AA_X[7:12] + AA_X[15:]}
     # Tt's collect window: the gap above its held post by since_id, the one below by until_id
     held = str(TT_HELD[0][0])
-    tt1 = [c for c in stub.calls if c["query"] == "from:Tt" and c["end_time"] > xcn.z(M0)]
-    assert [(c.get("since_id"), c.get("until_id")) for c in tt1] == [(held, None), (None, held)]
-    assert (
-        tt1[1]["end_time"] == "2026-03-02T20:30:01Z"
-        and tt1[0]["start_time"] == "2026-03-02T20:30:00Z"
-    )
+    tt1 = [c for c in stub.calls if c["query"] == "from:Tt" and _upper(c) > xcn.z(M0)]
+    assert [_lower(tt1[0]), _upper(tt1[1])] == ["2026-03-02T20:30:00Z"] * 2
+    # ids only: the held post's, and the window's edges as the ids they map to
+    assert [(c["since_id"], c["until_id"]) for c in tt1] == [
+        (held, str(xf.id_at(M1))),
+        (str(xf.id_at(M0) - 1), held),
+    ]
+    assert not any("start_time" in c or "end_time" in c for c in stub.calls)
     # records: the collector's fields, the whole text, refs, via
     recs = {r["id"]: r for r in xc._load_jsonl(xc._account_cache_path("Aa"))}
     long = recs[str(AA_X[11][0])]
@@ -490,7 +509,7 @@ def test_narrowed_walk_reads_the_crossing_hour_in_slices_newest_first(env, monke
     _jsonl(settings.X_SAMPLING_DIR / "windows_2026-03-04.jsonl", [_mrow("Nn", M0, M1, 5, 0)])
     stub = SearchStub({"Nn": nn})
     res = xf.run_fill(stub, xf.plan_fill({"t": ["Nn"]}))
-    assert [(c["start_time"][11:16], c["end_time"][11:16]) for c in stub.calls] == [
+    assert [(_lower(c)[11:16], _upper(c)[11:16]) for c in stub.calls] == [
         ("11:00", "22:00"),  # the whole hours after the crossing hour
         ("10:45", "11:00"),  # then the crossing hour, newest slice first
         ("10:30", "10:45"),
@@ -512,9 +531,7 @@ def test_whole_hours_keep_the_newest_and_set_the_rest_aside_then_promote_them(en
     _jsonl(settings.X_SAMPLING_DIR / "windows_2026-03-04.jsonl", [_mrow("Nn", M0, M1, 5, 0)])
     stub = SearchStub({"Nn": nn})
     res = xf.run_fill(stub, xf.plan_fill({"t": ["Nn"]}))
-    assert [(c["start_time"][11:16], c["end_time"][11:16]) for c in stub.calls] == [
-        ("10:00", "22:00")
-    ]
+    assert [(_lower(c)[11:16], _upper(c)[11:16]) for c in stub.calls] == [("10:00", "22:00")]
     assert res["read"] == 7 and res["kept"] == 5 and res["extra"] == 2
     assert set(_ids("Nn")) == {str(p[0]) for p in nn[2:]}  # the window holds its cap
     extras = _read(xf.extras_path("Nn"))
@@ -757,9 +774,10 @@ def test_a_gap_whose_hours_another_gap_filled_is_not_read(env, handle, mode, cap
     assert not res["stopped"]
     (row,) = res["done"]
     assert (row["status"], row["got"], row["truncated"], row["requests"]) == ("done", 3, False, 2)
-    assert [(c["start_time"][11:16], c["end_time"][11:19]) for c in stub.calls] == [
-        ("14:40", "22:00:00"),  # newest gap first: nothing
-        ("14:05", "14:40:01"),  # the middle gap: 14:20
+    since, until = str(xs[0][0]), str(xs[2][0])
+    assert [(c["since_id"], c["until_id"]) for c in stub.calls] == [
+        (until, str(xf.id_at(M1))),  # newest gap first, above 14:40: nothing
+        (since, until),  # the middle gap, between the held posts: 14:20
     ]
     assert xf.plan_fill({"t": [handle]})["windows"] == []
 
@@ -808,7 +826,7 @@ def test_cli_confirm_lock_only_since_and_limit(env, monkeypatch):
     assert res.exit_code == 0, res.output
     assert "1 windows done" in res.output and len(stub.calls) == 2
     assert {c["query"] for c in stub.calls} == {"from:Tt"} and all(
-        c["end_time"] > xcn.z(M0) for c in stub.calls
+        _upper(c) > xcn.z(M0) for c in stub.calls
     )
     res = _cli(["x-archive", "fill", "--yes"])
     assert res.exit_code == 0 and "3 windows done" in res.output, res.output

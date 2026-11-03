@@ -337,11 +337,11 @@ X_ARCHIVE_PROBE_RECALL_LOW = 0.5
 # search/all ($0.005 a post returned, requests free) fills the cache's holes
 # on collect's 35 h grid, extended back to COLLECTION_START, with collect's
 # per-window rule (docs/decisions.md 2026-11-02). The whole fill (every run,
-# tallied from data/raw/x_archive/fill_requests.jsonl) stops at this. $1
-# covers the pilot (~$0.18 expected, $0.54 ceiling); the full fill is the
-# user's call (~$25.60 expected for --scope below, `x-archive fill
-# --estimate`): raise it deliberately, about 25% over the whole-hour figure.
-X_ARCHIVE_FILL_MAX_USD = 1.00
+# tallied from data/raw/x_archive/fill_requests.jsonl) stops at this. The
+# pilot ran under $1 (2026-11-03, $0.19); the user approved the full fill
+# (~$25.35 expected for --scope below, ~$30.56 if posts bunch inside hours)
+# with the cap at $32 on 2026-11-03. Raise it only on the user's say.
+X_ARCHIVE_FILL_MAX_USD = 32.00
 # A window never reads more than its need (X's count with edge buckets whole,
 # or the cap, less what it holds) plus this, so a window that still wants
 # posts can always send one more request of search/all's 10-post minimum.
