@@ -52,6 +52,13 @@ logger = logging.getLogger(__name__)
 # priced at the model's row of settings.MODEL_PRICES.
 EST_IN_TOKENS, EST_OUT_TOKENS = 225, 12
 MAX_TOKENS = 32
+# The cap check's ceiling reads each prompt at this many characters a token,
+# under English's ~4, so it errs high; output at MAX_TOKENS.
+CEILING_CHARS_PER_TOKEN = 2.5
+
+
+class OverCap(RuntimeError):
+    """A submit over TOPIC_LABEL_MAX_CALLS or TOPIC_LABEL_MAX_USD."""
 
 
 def topic_prompt(text: str, user: str = "") -> str:
@@ -87,6 +94,35 @@ def estimate_cost(n: int, model: str = settings.LLM_MODEL) -> float:
     return (
         n * (EST_IN_TOKENS * p["input"] + EST_OUT_TOKENS * p["output"]) / 1e6 * p["batch_discount"]
     )
+
+
+def ceiling_cost(posts: pd.DataFrame, model: str = settings.LLM_MODEL) -> float:
+    """Batch dollars no submit of `posts` can pass: each prompt at
+    CEILING_CHARS_PER_TOKEN characters a token, every answer at MAX_TOKENS."""
+    from src.analysis.pricing import model_price
+
+    p = model_price(model)
+    chars = sum(len(topic_prompt(r.text, r.user)) for r in posts.itertuples())
+    tokens_in = chars / CEILING_CHARS_PER_TOKEN
+    tokens_out = len(posts) * MAX_TOKENS
+    return (tokens_in * p["input"] + tokens_out * p["output"]) / 1e6 * p["batch_discount"]
+
+
+def cap_problem(posts: pd.DataFrame, model: str = settings.LLM_MODEL) -> str | None:
+    """Why a submit of `posts` is over the caps, or None."""
+    n, ceiling = len(posts), ceiling_cost(posts, model)
+    if n > settings.TOPIC_LABEL_MAX_CALLS:
+        return (
+            f"{n:,} posts is over TOPIC_LABEL_MAX_CALLS ({settings.TOPIC_LABEL_MAX_CALLS:,}): "
+            "raise it deliberately in config/settings.py after the user approves the estimate"
+        )
+    if ceiling > settings.TOPIC_LABEL_MAX_USD + 1e-9:
+        return (
+            f"the ceiling ${ceiling:.2f} is over TOPIC_LABEL_MAX_USD "
+            f"${settings.TOPIC_LABEL_MAX_USD:.2f}: raise it deliberately in config/settings.py "
+            "after the user approves the estimate"
+        )
+    return None
 
 
 def unjudgeable_path() -> Path:
@@ -249,6 +285,9 @@ def submit(model: str = settings.LLM_MODEL, retry_unjudgeable: bool = False) -> 
     if posts.empty:
         logger.info("topic: nothing to submit")
         return st
+    problem = cap_problem(posts, model)  # before any client is built
+    if problem:
+        raise OverCap(problem)
     reqs = [Request(custom_id=r.id, params=MessageCreateParamsNonStreaming(
                 model=model, max_tokens=MAX_TOKENS,
                 messages=[{"role": "user", "content": topic_prompt(r.text, r.user)}]))

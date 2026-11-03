@@ -278,8 +278,6 @@ Since 2026-11-02, the user's calls (`docs/decisions.md`):
   - Phase 5 lacks most of @WhiteHouse, and its sampled accounts use the
     35 h design, so its contrasts with phase 4 mix design and real change.
     The timeline route stays the forward pull.
-- `topic-label` has no call or dollar cap yet (AGENTS.md's rule for paid
-  calls). Its estimate is about $0.67 for the fill's posts.
 - 1 of Trump's 3,222 posts with text has no `score_opus`: its answer in
   the whole-feed batch was unparseable. It is one of his 368 `iran_war`
   posts, so his war-post table rests on 367 (export-web leaves it out with

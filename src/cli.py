@@ -2332,10 +2332,19 @@ def topic_label_cmd(action: str, yes: bool, results_file: str | None, retry_unju
         )
         return
     if action in ("estimate", "submit"):
-        n = len(tl.posts_to_label(retry_unjudgeable=retry_unjudgeable))
+        todo = tl.posts_to_label(retry_unjudgeable=retry_unjudgeable)
+        n = len(todo)
         click.echo(
-            f"{n} posts to label with {settings.LLM_MODEL}; batch cost ≈ ${tl.estimate_cost(n):.2f}"
+            f"{n} posts to label with {settings.LLM_MODEL}; batch cost ≈ ${tl.estimate_cost(n):.2f}, "
+            f"ceiling ${tl.ceiling_cost(todo):.2f} (caps {settings.TOPIC_LABEL_MAX_CALLS:,} calls, "
+            f"${settings.TOPIC_LABEL_MAX_USD:.2f}); no API call"
         )
+        problem = tl.cap_problem(todo) if n else None
+        if problem:
+            click.secho(f"{'Over the caps' if action == 'estimate' else 'Refusing'}: {problem}.",
+                        fg="red")
+            if action == "submit":
+                sys.exit(1)
         if not retry_unjudgeable:
             skipped = int(tl.skipped_unjudgeable(tl.posts_to_label(retry_unjudgeable=True)).sum())
             if skipped:

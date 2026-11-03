@@ -717,6 +717,12 @@ POST_PROMPT_TOKEN_FIT = {
 # or the caps are raised deliberately.
 RELABEL_MAX_CALLS = 6000
 RELABEL_MAX_USD = 12.0
+# topic-label (Haiku, Batch API): each submit refuses, before any client is
+# built, more posts than this or a ceiling over this (each prompt at 2.5
+# characters a token, every answer at its 32-token max_tokens). Sized
+# 2026-11-03 for the archive fill's ~4,800 new posts (~$0.67 expected).
+TOPIC_LABEL_MAX_CALLS = 6000
+TOPIC_LABEL_MAX_USD = 3.0
 # Output tokens a call guessed for a job until its pilot: stance-topic
 # answers a topic, a score and a reason (96-110 by the 2026-11-01 sizing);
 # another model than claude-opus-5 is guessed at twice the figure (Opus 5.5

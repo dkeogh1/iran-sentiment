@@ -262,3 +262,34 @@ def test_relabel_limit_sends_the_first_n_by_id_and_records_the_caps(tmp_path, mo
     with pytest.raises(rl.OverCap):
         rl.submit(df)  # all four: over the 2-call cap
     assert len(sent) == 1
+
+
+def test_topic_submit_refuses_over_its_caps_before_any_client(tmp_path, monkeypatch):
+    """topic-label's submit checks TOPIC_LABEL_MAX_CALLS and the ceiling
+    against TOPIC_LABEL_MAX_USD before it builds a client; the CLI's
+    estimate prints the ceiling and the caps and makes no call."""
+    import pytest
+    from click.testing import CliRunner
+
+    from src.analysis import topic_label as tl
+    from src.cli import main
+
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(settings, "SENTIMENT_OUTPUT", tmp_path / "sentiment_all.parquet")
+    monkeypatch.setattr(settings, "TRUMP_FEED_STANCE", tmp_path / "no_feed.parquet")
+    _df().to_parquet(settings.SENTIMENT_OUTPUT, index=False)
+    monkeypatch.setattr(tl, "_client", lambda: (_ for _ in ()).throw(AssertionError("a client")))
+    todo = tl.posts_to_label()
+    assert len(todo) == 3 and 0 < tl.estimate_cost(3) < tl.ceiling_cost(todo)
+    monkeypatch.setattr(settings, "TOPIC_LABEL_MAX_CALLS", 2)
+    with pytest.raises(tl.OverCap, match="TOPIC_LABEL_MAX_CALLS"):
+        tl.submit()
+    res = CliRunner().invoke(main, ["topic-label", "submit", "--yes"])
+    assert res.exit_code == 1 and "Refusing" in res.output, res.output
+    monkeypatch.setattr(settings, "TOPIC_LABEL_MAX_CALLS", 10)
+    monkeypatch.setattr(settings, "TOPIC_LABEL_MAX_USD", tl.ceiling_cost(todo) / 2)
+    with pytest.raises(tl.OverCap, match="TOPIC_LABEL_MAX_USD"):
+        tl.submit()
+    res = CliRunner().invoke(main, ["topic-label", "estimate"])
+    assert res.exit_code == 0 and "ceiling $" in res.output and "Over the caps" in res.output
+    assert not tl.state_path().exists()

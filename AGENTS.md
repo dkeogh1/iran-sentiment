@@ -40,8 +40,11 @@ Hand these to the user, with the estimate, instead of running them:
     labels with claude-opus-5 only; `RELABEL_MAX_CALLS` / `RELABEL_MAX_USD`
     bound each submit and resubmit, checked against the estimate's ceiling
     (input from the usage fit, output at its p95, batch prices); a larger
-    set goes in `--limit` parts. A second rater's model is `post-label --job
-    rater`.
+    set goes in `--limit` parts. `TOPIC_LABEL_MAX_CALLS` /
+    `TOPIC_LABEL_MAX_USD` bound each topic-label submit the same way, before
+    any client is built (ceiling: each prompt at 2.5 characters a token,
+    every answer at its max_tokens). A second rater's model is `post-label
+    --job rater`.
   - `analyze --llm`, `stance`, `teacher-check`, `reply-teacher-check` (direct
     Anthropic API): estimate from the post count (Haiku has run about
     $0.50-1.50 per 1,000 posts, README *Cost*; `teacher-check` ~$1 and
