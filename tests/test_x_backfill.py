@@ -628,3 +628,12 @@ def test_teacher_retest_pairs_the_direct_label_with_the_cut_text_label(data):
     ).to_parquet(rl.labels_path(model), index=False)
     _, s = inf.teacher_retest(model)
     assert s["n"] == 2 and s["identical"] == 1.0  # the full-text relabel is not compared
+
+
+def test_posts_the_archive_fill_stored_are_never_candidates(data):
+    """x-archive fill reads with note_tweet, so its posts are whole whatever
+    their dates; one that merely looks cut would be a read that buys nothing."""
+    raw = _cache(data)
+    recs = xc._load_jsonl(raw / "levin.jsonl")
+    _write(raw / "levin.jsonl", [*recs, _rec(11, "levin", _cut(279), via="search_all")])
+    assert [c["id"] for c in xb.candidates()] == ["1", "2", "3", "4", "5", "6"]

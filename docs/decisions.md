@@ -4,6 +4,107 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-02: The X holes are filled from search/all on collect's 35-hour grid; relabel gets caps
+
+- **Decision:** `x-archive fill` (src/collectors/x_archive_fill.py) fills
+  the X cache's holes from full-archive search: the late starts, the
+  timeline-horizon holes (@WhiteHouse nearly every month, @LauraLoomer's
+  February, March and June) and the collect windows that came back short
+  (the 57 `FETCH SHORTFALL` windows among them). It is built and tested
+  against a stub; the run is a paid run that waits for the user's approval
+  of its estimate. relabel gets `RELABEL_MAX_CALLS` / `RELABEL_MAX_USD`,
+  because the filled posts go through it.
+- **Why search/all:** the timeline reaches back only ~3,200 posts and fails
+  for @WhiteHouse, and the cursor has moved past the empty windows. The
+  2026-11-02 probe found that search/all works on this app, returns
+  retweets, and that counts/all counts them too. It bills $0.005 a post
+  returned and nothing a request, so many small requests cost wall time,
+  not money.
+- **Why collect's grid and rule:** the filled stretches then follow the
+  current design (2026-10-31): 35 h windows whose ends step through every
+  clock hour and weekday, the newest 5 a window for a sampled account, every
+  post for a take-all one. Each account's collect windows are reused as they
+  are, and the grid steps back from the first one in 35 h steps to Feb 1,
+  so every edge keeps its minute and second. A head under half a window
+  merges into the first backward window, mirroring collect's tail rule.
+  Nothing is added forward while the manifests end within half a window of
+  the end of `ANALYSIS_END` (48 minutes today). A later collect run owns
+  its whole span: an earlier run's windows inside it are dropped and the
+  ones across its edges cut there, so a `collect --force` with longer
+  windows replaces the incremental grid where it ran.
+- **How it spends:** a window is picked when X's hour count, with the edge
+  buckets counted whole, says it lacks a post. Its budget is that need plus
+  9, so a window that still wants posts can always send one more request
+  of search/all's 10-post minimum. Every fill run together stops at
+  `X_ARCHIVE_FILL_MAX_USD`, tallied from a request log that records each
+  request before it is sent (one answered but never logged counts at its
+  `max_results`), and every request's `max_results` stays inside both
+  limits. Held posts bound each request by
+  id, so none is bought again; every request also carries `start_time` and
+  `end_time`, because X uses `since_id` over `start_time` and, with no
+  `start_time`, search/all reads only the last 30 days. A gap is skipped
+  when every hour bucket it touches is held whole, checked when the walk
+  reaches it rather than once before the first request. A sampled window's walk
+  narrows each request with the hour counts and reads the crossing hour in
+  15-minute slices; counts never end a walk early.
+- **Estimate** (no call, 2026-11-02): 1,162 windows (259 late starts, 709
+  empty, 194 short), 4,812 new posts, 5,070 reads ≈ $25.35 expected,
+  6,111 ≈ $30.56 if posts bunch inside hours, ceiling $76.78;
+  `--scope empty`: 968 windows, ≈ $24.29. The designer's scratch model put
+  it at $25.60 / $24.33: it spread each edge bucket's count evenly, so it
+  expected reads in edge buckets whose posts the cache already holds in the
+  next window (about 46 reads, mostly the take-all accounts). The code
+  tests each gap bucket by bucket, and narrows on what the window wants
+  rather than on the expected count, which also needs fewer requests
+  (2,671 against 2,779). The pilot (`--only WhiteHouse,PeteHegseth --since
+  2026-08-01 --until 2026-08-08`: 8 windows, ≈ $0.18, ceiling $0.54) fits
+  the shipped $1 cap. It checks that search/all serves @WhiteHouse, that
+  the id bounds exclude held posts, and how billing counts.
+- **Review fixes (2026-11-03, before any run):**
+  - a request X answered but the run never logged (a kill, a power-off or
+    a connection dropped mid-answer) was billed but missing from the
+    tally, and the next run bought its range again. Each request now
+    writes a pending line first;
+  - with every gap's open flag fixed before the walk, a take-all window
+    that found its last post could still try a gap whose bucket that post
+    had closed, and stop on its budget. In a simulation of the full fill
+    17-19 of 1,162 complete windows ended that way, marked truncated and
+    planned again; none overspent;
+  - after a `collect --force` (67 h windows for @WhiteHouse and
+    @PeteHegseth, 77 h for @LauraLoomer), or an incremental run whose
+    cursor sits before the earlier run's trailing empty windows, the old
+    grid interleaved the two runs' windows into pieces as short as an hour,
+    each with the full cap of 5: about 7.5 caps per 35 h against collect's
+    5. Neither case is in today's manifest, so today's grid is unchanged;
+  - an append after a line a kill cut was glued onto it, and both records
+    were lost. `x_collector._append_jsonl` now ends the cut line first,
+    which also covers collect.
+- **relabel caps:** each submit and resubmit is checked against the
+  estimate's ceiling, before any client is built: input from the llm_prompt
+  usage fit, output at its p95 (113 tokens), batch prices, no cache.
+  6,000 calls and $12 cover the fill's ~4,700 posts with text (≈ $7.6
+  expected, ≈ $9.1 ceiling) with ~25% room. A larger set goes in `--limit`
+  parts, each one passing the caps.
+- **Rejected:**
+  - one request over the whole window: it re-buys held posts and reads
+    whole windows for 5 posts (≈ $49);
+  - storing a page's extra posts in the cache: a sampled window would hold
+    more than collect ever keeps. They go to a side file and are used
+    first if a later walk wants them;
+  - gating each run on the ceiling, which is 3x the expected spend: the
+    run maximum is min(ceiling, the cap left);
+  - the probe's 1.1 s pacing: search/all allows 300 requests per 15
+    minutes, so a request every 3.1 s;
+  - re-ranking windows that still hold posts from the old 14-day slices:
+    the fill only adds the newest posts a window lacks, and never thins a
+    window it paid for;
+  - a `--count-slack` option for undercounted windows, which waits for the
+    pilot.
+- **Open (the user's calls):** the filled posts sit inside Feb 1 - Nov 1,
+  so folding them into the published figures moves every one of them. And
+  after the fill a sampled account is dense where Feb-Apr was read take-all
+  and at 5 per window elsewhere: `phases` weights every post equally.
+
 ## 2026-11-02: Definitions of record after the Claude credit jobs
 
 - **Decision (the user's calls, 2026-11-02, after the findings check on the

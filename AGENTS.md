@@ -23,10 +23,25 @@ Hand these to the user, with the estimate, instead of running them:
     counts/all requests, at most $0.12; a finished probe is reused free):
     both have `--estimate` (no API call, no credentials). `x-counts --report`
     is free.
+  - `x-archive fill` (search/all, $0.005 a post returned, requests free):
+    `x-archive fill --estimate` (no API call, no credentials; `--scope
+    empty`, `--only`, `--since/--until`, `--limit` narrow it) prints the
+    expected reads, the ceiling and the run maximum. Each window reads at
+    most its need + `X_ARCHIVE_FILL_WINDOW_SLACK`; `X_ARCHIVE_FILL_MAX_USD`
+    bounds every fill run together (tallied from
+    `x_archive/fill_requests.jsonl`), and a run refuses past
+    `X_RUN_BUDGET_USD`. The cap ships at $1 for the pilot (`--only
+    WhiteHouse,PeteHegseth --since 2026-08-01 --until 2026-08-08`, ~$0.18);
+    the full fill (~$25 expected, 2026-11-02) is the user's call, then the
+    cap is raised deliberately. Ask for the X credit balance first; `backup`
+    after.
   - `relabel submit|resubmit` and `topic-label submit` (Anthropic Batch API):
     `relabel estimate` / `topic-label estimate` print the cost. relabel
-    labels with claude-opus-5 only (no cap, an estimate on its output
-    length): a second rater's model is `post-label --job rater`.
+    labels with claude-opus-5 only; `RELABEL_MAX_CALLS` / `RELABEL_MAX_USD`
+    bound each submit and resubmit, checked against the estimate's ceiling
+    (input from the usage fit, output at its p95, batch prices); a larger
+    set goes in `--limit` parts. A second rater's model is `post-label --job
+    rater`.
   - `analyze --llm`, `stance`, `teacher-check`, `reply-teacher-check` (direct
     Anthropic API): estimate from the post count (Haiku has run about
     $0.50-1.50 per 1,000 posts, README *Cost*; `teacher-check` ~$1 and
@@ -174,6 +189,8 @@ python -m src.cli x-backfill-text --estimate  # cached posts cut at 280 chars: r
 python -m src.cli x-counts --estimate  # X's own per-hour post counts per account (counts/all), cached
 python -m src.cli x-counts --report    # free: X's count vs what each collect window got, and by month
 python -m src.cli x-archive probe --estimate  # does full-archive search work here, retweets included?
+python -m src.cli x-archive fill --estimate   # the X holes on collect's grid from search/all: plan
+                                              #   and price (no call); [--scope empty] [--only ...]
 python -m src.cli ts-fill-text  # re-read by id the cached Truth Social posts with no words (free, anonymous;
                                 #   done 2026-10-06, new pulls store quote posts themselves)
 python -m src.cli analyze    # score all cached data (VADER + RoBERTa; add --llm for Haiku stance)
@@ -231,7 +248,8 @@ config/  settings.py (paths, caps, batch sizes, models, colours), accounts.py (t
 src/     cli.py (every command), backup.py
   collectors/     x_collector.py, x_backfill.py (posts cut at 280), truthsocial_collector.py,
                   ts_fill_text.py (Truth Social posts with no words), x_counts.py (counts/all
-                  and its report), x_archive.py (search/all probe)
+                  and its report), x_archive.py (search/all probe), x_archive_fill.py
+                  (search/all fill on collect's window grid)
   analysis/       sentiment.py (VADER, RoBERTa, LLM stance), event_study.py (replies),
                   relabel.py, topic_label.py (Batch API), inference.py (CIs, shift-share,
                   reply population, fresh draws), stance_local.py (GPU experiments, teacher
@@ -239,8 +257,9 @@ src/     cli.py (every command), backup.py
                   batch_io.py (results download, batch delete), pricing.py (model prices, tags),
                   post_labels.py (alternate post raters: stance-topic, second rater, no-handle)
   visualization/  plots.py, web_export.py
-data/    raw/x/<handle>.jsonl, raw/x_sampling/ (collect windows), raw/x_counts/,
-         raw/x_archive/, raw/truthsocial/, processed/sentiment_all.parquet,
+data/    raw/x/<handle>.jsonl, raw/x_sampling/ (collect and fill windows), raw/x_counts/,
+         raw/x_archive/ (probe, fill state, request log, set-aside posts), raw/truthsocial/,
+         processed/sentiment_all.parquet,
          processed/reply_sentiment.parquet, models/   (gitignored)
 k8s/, scripts/k8s/   GPU experiment Jobs
 ```
@@ -460,8 +479,10 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   the rest), never as zeros. A 403, a 401 (check the token) or a
   usage-capped 429 stops the run with no further request; any other 429
   waits per the rate-limit header, at most `X_429_MAX_RETRIES` times.
-  `x-counts --report` (free) prints, per
-  manifest window, cap, got, held (cached now) and X's count (`lo-hi` when
+  `x-counts --report` (free) prints, per manifest window, its source
+  (`collect`, or `archive` for an `x-archive fill` row; verdicts are
+  counted per account and source), cap, got, held (cached now) and X's
+  count (`lo-hi` when
   the window's edges cut hour buckets), with a verdict: `silent` (X counts
   0), `complete` (got everything X counts), `sampled ok` (got the cap, X
   counts more), `edge` (inside the edge-bucket range), `short` (under X's
@@ -482,6 +503,50 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   usage cap or a counts step that stops short leaves the probe unfinished,
   and a rerun resumes it. Result and posts in `data/raw/x_archive/`; a
   finished probe is reused unless `--force`.
+- `x-archive fill` (src/collectors/x_archive_fill.py) fills the holes
+  (late starts, horizon holes, short collect windows) from search/all on
+  collect's grid and with collect's rule, so the filled stretches follow
+  the current design ([docs/decisions.md](docs/decisions.md) 2026-11-02).
+  - Grid: each account's collect windows from the manifests, as they are,
+    extended back to `COLLECTION_START` in 35 h steps (a head under half a
+    window merges into the first, as collect merges a short tail); nothing
+    forward while the manifests end within half a window of the end of
+    `ANALYSIS_END`. A later collect run owns its whole span: an earlier
+    run's windows inside it are dropped and the ones across its edges cut
+    there, so a `collect --force` with longer windows replaces the
+    incremental runs' grid where it ran.
+  - Target: a sampled window up to its cap, a take-all window up to X's
+    hour count; windows are picked with the edge buckets counted whole.
+    Counts never end a walk: a window is done when it holds its target or
+    every gap that may hold a post has been asked.
+  - Requests: the posts a window holds cut it into gaps bounded by their
+    ids (`since_id` / `until_id`, with `start_time` / `end_time` on every
+    request), so no held post is bought again. A gap is skipped only when
+    every hour bucket it touches is held whole, checked when the walk
+    reaches it (a bucket several gaps share closes once one of them yields
+    its post). A sampled walk goes newest first, narrowed with the hour
+    counts, the crossing hour in `X_ARCHIVE_FILL_SLICE_MINUTES` slices.
+  - Keep rule: a sampled window keeps the newest cap - held. The rest of a
+    page (search/all returns at least 10) were billed and go to
+    `x_archive/fill_<handle>_extra.jsonl`, outside the cache's glob; a later
+    walk takes them before it buys anything. Filled posts carry `"via":
+    "search_all"`, and `x-backfill-text` skips them (read with note_tweet).
+  - Writes: per request a pending line in `x_archive/fill_requests.jsonl`
+    before it is sent, then the posts (fsync), then the answered line (the
+    spend tally). A pending line with no answered line (a kill, a power-off
+    or a dropped connection while X answered) counts at its max_results, so
+    the tally errs high; an X error status closes it at 0. An append after a
+    line a kill cut starts on a new line, so only the cut record is lost
+    (in `data/raw/x/<handle>.jsonl` the strict reader still refuses the file
+    until that one line is removed). Per window a row in
+    `x_sampling/windows_archive_<date>.jsonl` (`source: "archive"`, `got` =
+    what the window holds after), then its state in
+    `x_archive/fill_<handle>.json`. A rerun skips windows done and plans the
+    rest from the cache; `--force` plans done windows again (the old state
+    kept aside).
+  - collect's cursor is the newest cached post, and the fill writes nothing
+    past the last collect window, so it never moves the cursor. Errors as
+    in `x-counts`.
 - Requests ask for `note_tweet` (full text over 280 characters) and
   `referenced_tweets`, never expansions: X bills per resource returned
   ([docs/decisions.md](docs/decisions.md)). `collect --force` merges the
@@ -547,7 +612,7 @@ rate-capped, resumable process.
 `terraform/iran-sentiment-backups.tf`: no `--delete`, writer without
 `DeleteObject`, versioned bucket. It needs `IRAN_BACKUP_S3_BUCKET` and the AWS
 keys in `.env`. Run it after every paid `collect`, `x-backfill-text`,
-`x-counts`, `x-archive probe`, `relabel` or `topic-label`.
+`x-counts`, `x-archive probe`, `x-archive fill`, `relabel` or `topic-label`.
 The host's restic drive is often unplugged, so S3 is the copy to count on.
 
 ### Blog charts (dkweb)

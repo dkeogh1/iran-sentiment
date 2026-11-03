@@ -250,15 +250,35 @@ Since 2026-11-02, the user's calls (`docs/decisions.md`):
   Dated 2026-11-02, with no in-post update notes (it never launched). Still worth a
   look on the page: the reply-scatter labels and the audience bars'
   domains.
-- **Next:** the X archive fill is still unbuilt: `search/all` on the same
-  35 h window grid, sized from `x-counts --report`, for @WhiteHouse Feb 1
-  -> Nov 1, the horizon holes, the late starts and the empty windows; it
-  needs an `x-archive fill` command. Meanwhile the analysis stays frozen at
-  Nov 1 (`ANALYSIS_END`). Phase 5 lacks most of @WhiteHouse, and its
-  sampled accounts use the 35 h design, so its contrasts with phase 4 mix
-  design and real change. The timeline route stays the forward pull; the
-  horizon matters less now that the archive works. Filled posts need the
-  labels in *What a refresh needs*.
+- **Next:** the X archive fill is built (`x-archive fill`, 2026-11-02, with
+  the review's fixes of 2026-11-03; docs/decisions.md) and waits for the
+  user's approval of its estimate.
+  `x-archive fill --estimate` (no call) plans search/all on collect's 35 h
+  grid for @WhiteHouse, the horizon holes, the late starts and the short
+  and empty windows: 1,162 windows (259 late starts, 709 empty, 194 short),
+  4,812 new posts, ≈ $25.35 expected (≈ $30.56 if posts bunch inside
+  hours), ceiling $76.78, about 2,700 requests (≈ 2.3 h at 3.1 s); `--scope
+  empty` ≈ $24.29.
+  - `X_ARCHIVE_FILL_MAX_USD` ships at $1 for the pilot (`--only
+    WhiteHouse,PeteHegseth --since 2026-08-01 --until 2026-08-08`: 8
+    windows, ≈ $0.18, ceiling $0.54). The pilot checks that search/all
+    serves @WhiteHouse, that the id bounds exclude held posts, and that
+    billing is per post returned.
+  - The full fill needs the cap raised (about $32) and the X credit
+    balance checked first. Then `backup` and `analyze`; relabel (~$7.6,
+    under its new 6,000-call / $12 caps) and topic-label (~$0.67).
+    stance-topic (~1,080 calls) and the census (~3,590) need their call and
+    dollar caps raised first (*What a refresh needs*).
+  - Meanwhile the analysis stays frozen at Nov 1 (`ANALYSIS_END`). The
+    filled posts sit inside that window, so folding them into the published
+    figures is the user's call. So is the uneven density they leave:
+    Feb-Apr was read take-all for the sampled accounts, and `phases`
+    weights every post equally.
+  - Phase 5 lacks most of @WhiteHouse, and its sampled accounts use the
+    35 h design, so its contrasts with phase 4 mix design and real change.
+    The timeline route stays the forward pull.
+- `topic-label` has no call or dollar cap yet (AGENTS.md's rule for paid
+  calls). Its estimate is about $0.67 for the fill's posts.
 - 1 of Trump's 3,222 posts with text has no `score_opus`: its answer in
   the whole-feed batch was unparseable. It is one of his 368 `iran_war`
   posts, so his war-post table rests on 367 (export-web leaves it out with

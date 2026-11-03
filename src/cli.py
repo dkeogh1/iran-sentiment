@@ -6,6 +6,7 @@ Commands:
   collect         Collect tweets from all configured X accounts + searches
   x-counts        X's own post counts per query (counts/all); --report is free
   x-archive probe Does full-archive search work here, with retweets? (paid, tiny)
+  x-archive fill  Fill the X cache's holes from search/all on collect's grid (paid)
   collect-truth   Collect Truth Social posts from configured accounts
   collect-replies Collect Truth Social replies for tracked Trump posts
   analyze         Run sentiment scoring on cached raw data
@@ -471,8 +472,9 @@ def _x_counts(accounts, terms, raw_query, start, end, granularity, force, estima
 
 @main.group("x-archive")
 def x_archive():
-    """X full-archive search (GET /2/tweets/search/all). Only `probe` so far:
-    a fill waits for what the probe finds."""
+    """X full-archive search (GET /2/tweets/search/all): `probe` (does it
+    work here, retweets included?) and `fill` (the cache's holes on
+    collect's 35 h grid)."""
 
 
 @x_archive.command("probe")
@@ -563,6 +565,108 @@ def _x_archive_probe(estimate: bool, yes: bool, force: bool):
             "done are saved; rerun to resume (--estimate shows what is left).",
             fg="red",
         )
+        raise SystemExit(1)
+
+
+@x_archive.command("fill")
+@click.option(
+    "--estimate",
+    is_flag=True,
+    help="Print the plan, the expected cost, the ceiling and the run maximum, then exit "
+    "(no API call, no credentials)",
+)
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt")
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Plan windows marked done again (each planned account's fill state is first kept "
+    "aside, never deleted); held and set-aside posts are still never bought again",
+)
+@click.option(
+    "--only",
+    "accounts",
+    metavar="HANDLES",
+    callback=_only_accounts,
+    help="Comma-separated handles from config/accounts.py: plan and fill only these",
+)
+@click.option(
+    "--since",
+    type=click.DateTime(_UTC_FORMATS),
+    default=None,
+    help="UTC: only windows starting at or after this (default COLLECTION_START)",
+)
+@click.option(
+    "--until",
+    type=click.DateTime(_UTC_FORMATS),
+    default=None,
+    help="UTC: only windows starting before this (default the end of ANALYSIS_END)",
+)
+@click.option(
+    "--scope",
+    type=click.Choice(["below", "empty"]),
+    default="below",
+    show_default=True,
+    help="below: every window under its target; empty: only windows holding nothing",
+)
+@click.option(
+    "--limit",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Only the first N windows in plan order (window start, then handle)",
+)
+def x_archive_fill_cmd(estimate, yes, force, accounts, since, until, scope, limit):
+    """Fill the X cache's holes from search/all ($0.005 a post returned) on
+    collect's 35 h window grid, extended back to COLLECTION_START, with
+    collect's per-window rule: a sampled account's window up to its cap, a
+    take-all account's window up to X's count (the x-counts hour buckets).
+    Held posts bound every request by id, so none is bought again; a window
+    reads at most its need + X_ARCHIVE_FILL_WINDOW_SLACK and all fill runs
+    together at most X_ARCHIVE_FILL_MAX_USD. Resumable: windows done are
+    skipped on a rerun."""
+    if since and until and since >= until:
+        raise click.UsageError("--since must be before --until")
+    with _x_cache_lock(estimate):
+        _x_archive_fill(
+            X_ACCOUNTS if accounts is None else accounts,
+            since,
+            until,
+            scope,
+            limit,
+            estimate,
+            yes,
+            force,
+        )
+
+
+def _x_archive_fill(accounts, since, until, scope, limit, estimate, yes, force):
+    from src.collectors import x_archive_fill as xf
+    from src.collectors import x_counts as xcn
+
+    try:
+        plan = xf.plan_fill(
+            accounts, since=since, until=until, scope=scope, force=force, limit=limit
+        )
+    except xf.CountsMissing as e:
+        click.secho(f"Refusing: {e}.", fg="red")
+        raise SystemExit(1) from None
+    click.echo("")
+    for line in xf.estimate_lines(plan):
+        click.echo(line)
+    if estimate:
+        return
+    if plan["refusal"]:
+        click.secho(f"Refusing: {plan['refusal']}.", fg="red")
+        raise SystemExit(1)
+    if not plan["windows"]:
+        return
+    if not yes and not click.confirm("Proceed?", default=False):
+        click.echo("Aborted.")
+        return
+    res = xf.run_fill(xcn.get_client(), plan)
+    for line in xf.result_lines(res):
+        click.echo(line)
+    if res["error"]:
+        click.secho(f"Stopped: {res['error']}.", fg="red")
         raise SystemExit(1)
 
 
@@ -1736,11 +1840,19 @@ def score_replies_ctx_cmd(model_dir: str, col: str, batch_size: int):
 @click.option("--results-file", type=click.Path(exists=True), default=None,
               help="collect: read a downloaded results JSONL instead of the SDK stream "
                    "(curl the batch's results_url)")
-def relabel_cmd(action: str, model: str, yes: bool, results_file: str | None):
+@click.option("--limit", type=click.IntRange(min=1), default=None,
+              help="estimate/submit/resubmit: only the first N posts by id (a larger set goes "
+                   "in parts under RELABEL_MAX_CALLS / RELABEL_MAX_USD)")
+def relabel_cmd(action: str, model: str, yes: bool, results_file: str | None,
+                limit: int | None):
     """Relabel every labelled post with a stronger teacher through the Batch
     API (half price, ~1 h). Steps: estimate -> submit -> status -> collect
-    -> merge; `resubmit` retries the ids that failed in the last collect."""
+    -> merge; `resubmit` retries the ids that failed in the last collect.
+    Each submit and resubmit is capped (RELABEL_MAX_CALLS, RELABEL_MAX_USD
+    against the estimate's ceiling)."""
     from src.analysis import relabel as rl
+    if limit is not None and action not in ("estimate", "submit", "resubmit"):
+        raise click.UsageError("--limit goes with estimate, submit or resubmit")
     if action in ("estimate", "submit", "resubmit"):
         try:
             rl.refuse_model(model)  # another model is a second rater: post-label --job rater
@@ -1750,12 +1862,11 @@ def relabel_cmd(action: str, model: str, yes: bool, results_file: str | None):
     if action in ("estimate", "submit", "resubmit", "merge"):
         df = _load_scored_frame()
     if action == "estimate":
-        from src.analysis.pricing import model_price
-        n = len(rl.posts_to_label(df, model))
-        usd = rl.estimate_cost(n, model)
-        click.echo(f"{n} posts to label with {model}; batch cost ≈ ${usd:.2f} "
-                   f"(direct would be ≈ ${usd / model_price(model)['batch_discount']:.2f}; "
-                   f"columns score_{rl.tag_for(model)} / label_{rl.tag_for(model)})")
+        todo = rl.posts_to_label(df, model)
+        est = rl.estimate(rl.first_by_id(todo, limit), model)
+        part = f" (the first {est['calls']:,} of {len(todo):,} by id)" if limit else ""
+        click.echo(f"{rl.estimate_line(est)}{part}; columns score_{rl.tag_for(model)} / "
+                   f"label_{rl.tag_for(model)}; no API call")
         return
     if action in ("submit", "resubmit"):
         only = None
@@ -1770,14 +1881,18 @@ def relabel_cmd(action: str, model: str, yes: bool, results_file: str | None):
             if not only:
                 click.echo("nothing to resubmit")
                 return
-        n = len(rl.posts_to_label(df, model, only))
-        click.echo(f"{n} posts -> {model}, batch cost ≈ ${rl.estimate_cost(n, model):.2f}")
+        est = rl.estimate(rl.first_by_id(rl.posts_to_label(df, model, only), limit), model)
+        click.echo(rl.estimate_line(est))
+        if est["problem"]:
+            click.secho(f"Refusing: {est['problem']}.", fg="red")
+            sys.exit(1)
+        n = est["calls"]
         if n and not yes and not click.confirm("Submit?", default=False):
             click.echo("Aborted.")
             return
         try:
-            st = rl.submit(df, model=model, only_ids=only)
-        except RuntimeError as e:  # a batch still open, or a submit with no batch id
+            st = rl.submit(df, model=model, only_ids=only, limit=limit)
+        except (RuntimeError, rl.OverCap) as e:  # open batch, no batch id, or over a cap
             click.secho(str(e), fg="red")
             sys.exit(1)
         click.echo(f"batch {st.get('batch_id')} {st.get('status')}  ({st.get('n_submitted')} requests)")

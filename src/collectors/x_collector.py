@@ -108,9 +108,18 @@ def _save_jsonl(path: Path, records: list[dict]) -> None:
 
 def _append_jsonl(path: Path, records: list[dict]) -> None:
     """Append and fsync: a collect appends each window's paid reads as it goes,
-    so a run killed later keeps them."""
+    so a run killed later keeps them. A file whose last line a kill cut (no
+    final newline) gets the newline first, so the cut record is the only one
+    lost and the next record starts on its own line."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    lead = ""
+    if path.exists() and path.stat().st_size:
+        with open(path, "rb") as f:
+            f.seek(-1, os.SEEK_END)
+            if f.read(1) != b"\n":
+                lead = "\n"
     with open(path, "a") as f:
+        f.write(lead)
         f.writelines(json.dumps(r) + "\n" for r in records)
         f.flush()
         os.fsync(f.fileno())

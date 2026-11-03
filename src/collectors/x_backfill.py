@@ -103,7 +103,9 @@ def candidates() -> list[dict]:
     """Account posts (keyword-search rows are not) created before
     settings.X_CUT_TEXT_BEFORE whose cached text is likely_cut, plus every
     post already looked up (its text may now be whole), one per id, oldest
-    first."""
+    first. Posts `x-archive fill` stored ("via") were read with note_tweet,
+    so they are whole whatever their dates: a whole post looks cut about one
+    time in eighteen, and each would be a read that buys nothing."""
     checked = set(load_journal())
     out: dict[str, dict] = {}
     for path in sorted(settings.X_RAW_DIR.glob("*.jsonl")):
@@ -113,6 +115,8 @@ def candidates() -> list[dict]:
             pid = str(r.get("id"))
             ts = _created(r)
             if r.get("tier") == "search" or pid in out or ts is None:
+                continue
+            if r.get("via") and pid not in checked:
                 continue
             if pid not in checked and (
                 ts >= settings.X_CUT_TEXT_BEFORE or not likely_cut(r.get("text"))

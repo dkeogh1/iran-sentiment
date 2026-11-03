@@ -3,6 +3,7 @@ import json
 import types
 
 import pandas as pd
+import pytest
 
 from config import settings
 from src.analysis import relabel as rl
@@ -91,9 +92,9 @@ def test_collect_reads_a_downloaded_results_file(tmp_path, monkeypatch):
 
 
 def test_relabel_refuses_another_model(tmp_path, monkeypatch):
-    """relabel has no cap and prices output at Opus 5's length: a second
-    rater's model goes through `post-label --job rater`, before any call."""
-    import pytest
+    """relabel prices output, and checks its caps, at Opus 5's measured
+    length: a second rater's model goes through `post-label --job rater`,
+    before any call."""
     from click.testing import CliRunner
 
     from src.cli import main
@@ -183,3 +184,81 @@ def test_claim_column_and_unjudgeable_writes_are_atomic(tmp_path, monkeypatch):
         tl.record_unjudgeable(["2"], settings.LLM_MODEL, "msgbatch_b", "no verdict")
     monkeypatch.setattr(pd.DataFrame, "to_parquet", real_parquet)
     assert tl.load_unjudgeable()["id"].tolist() == ["1"]
+
+
+def test_relabel_estimate_is_the_usage_fit_with_its_ceiling(tmp_path, monkeypatch):
+    """The estimate prices llm_prompt on the usage fit (post_labels): input
+    0.3365 tokens a character + 51, output 84 a call, at its p95 (113) for
+    the ceiling the dollar cap is checked against; Opus 5 at batch prices."""
+    from src.analysis.post_labels import llm_prompt_cost
+    from src.analysis.sentiment import llm_prompt
+
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    posts = rl.posts_to_label(_df(), "claude-opus-5")
+    est = rl.estimate(posts)
+    chars = [len(llm_prompt(t, u)) for t, u in zip(posts["text"], posts["user"], strict=True)]
+    assert est["usd_batch_ceiling"] == llm_prompt_cost(chars, "x")["usd_batch_ceiling"]
+    tin = 0.3365 * sum(chars) + 51 * 3
+    assert est["calls"] == 3 and est["problem"] is None
+    assert est["usd_batch"] == pytest.approx((tin * 5 + 3 * 84 * 25) / 1e6 * 0.5)
+    assert est["usd_batch_ceiling"] == pytest.approx((tin * 5 + 3 * 113 * 25) / 1e6 * 0.5)
+
+
+def test_relabel_caps_refuse_submit_and_resubmit_before_any_client(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from src.cli import main
+
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(settings, "SENTIMENT_OUTPUT", tmp_path / "sentiment_all.parquet")
+    monkeypatch.setattr(rl, "_client", lambda: (_ for _ in ()).throw(AssertionError("a client")))
+    df = _df()  # 3 posts to label
+    df.to_parquet(settings.SENTIMENT_OUTPUT, index=False)
+    monkeypatch.setattr(settings, "RELABEL_MAX_CALLS", 2)
+    with pytest.raises(rl.OverCap, match="RELABEL_MAX_CALLS"):
+        rl.submit(df)
+    res = CliRunner().invoke(main, ["relabel", "estimate"])
+    assert res.exit_code == 0 and "OVER CAP" in res.output and "no API call" in res.output
+    assert "RELABEL_MAX_CALLS 2 / RELABEL_MAX_USD $12.00" in res.output
+    res = CliRunner().invoke(main, ["relabel", "estimate", "--limit", "2"])
+    assert "within the caps" in res.output and "the first 2 of 3 by id" in res.output
+    res = CliRunner().invoke(main, ["relabel", "submit"])  # refused before the prompt
+    assert res.exit_code == 1 and "Refusing" in res.output and "--limit" in res.output
+    monkeypatch.setattr(settings, "RELABEL_MAX_CALLS", 6000)
+    monkeypatch.setattr(settings, "RELABEL_MAX_USD", 0.0001)
+    with pytest.raises(rl.OverCap, match="RELABEL_MAX_USD"):
+        rl.submit(df)
+    failed = {"batch_id": "b", "status": "collected", "collected": {"failed_ids": ["1", "2"]}}
+    rl.state_path().write_text(json.dumps(failed))
+    res = CliRunner().invoke(main, ["relabel", "resubmit", "--yes"])
+    assert res.exit_code == 1 and "RELABEL_MAX_USD" in res.output
+    with pytest.raises(rl.OverCap):
+        rl.submit(df, only_ids={"1", "2"})
+    assert json.loads(rl.state_path().read_text()) == failed  # nothing was sent
+
+
+def test_relabel_limit_sends_the_first_n_by_id_and_records_the_caps(tmp_path, monkeypatch):
+    from src.analysis import batch_io
+
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)
+    monkeypatch.setattr(settings, "RELABEL_MAX_CALLS", 2)
+    monkeypatch.setattr(rl, "_client", lambda: object())
+    sent: list = []
+
+    def create(client, requests, path, pending):
+        sent.append([r["custom_id"] for r in requests])
+        return types.SimpleNamespace(id="msgbatch_1", processing_status="in_progress")
+
+    monkeypatch.setattr(batch_io, "guarded_create", create)
+    df = pd.DataFrame({"id": ["30", "4", "200", "1000"], "text": ["a post", "b post", "c post", "d post"],
+                       "user": "u", "tier": "admin"})
+    st = rl.submit(df, limit=2)
+    assert sent == [["4", "30"]] and st["ids"] == ["4", "30"] and st["limit"] == 2
+    est = rl.estimate(rl.first_by_id(rl.posts_to_label(df, "claude-opus-5"), 2))
+    assert st["usd_ceiling_batch"] == pytest.approx(est["usd_batch_ceiling"])
+    assert st["usd_expected_batch"] == pytest.approx(est["usd_batch"])
+    assert st["caps"] == {"calls": 2, "usd": settings.RELABEL_MAX_USD}
+    rl.state_path().write_text(json.dumps({**st, "status": "collected"}))
+    with pytest.raises(rl.OverCap):
+        rl.submit(df)  # all four: over the 2-call cap
+    assert len(sent) == 1

@@ -718,6 +718,7 @@ def window_rows(manifest_rows: list[dict], handles: set[str], granularity: str) 
         held, held_rt = _held(posts[h], s, e)
         row = {
             "handle": h,
+            "src": r.get("source") or "collect",
             "mode": r.get("mode"),
             "start": s,
             "end": e,
@@ -799,29 +800,38 @@ def report_lines(
     end: datetime | None = None,
     granularity: str | None = None,
 ) -> list[str]:
-    """The `x-counts --report` text: windows, verdicts by account, months."""
+    """The `x-counts --report` text: windows, verdicts by account, months.
+    A window's row says its source: `collect` (the timeline) or `archive`
+    (an `x-archive fill` row, whose got is what the window held after the
+    fill); verdicts are counted per account and source, so a window the
+    fill revisited is not counted twice in one line."""
     g = granularity or settings.X_COUNTS_GRANULARITY
     start = start or settings.COLLECTION_START
     end = end or settings.COLLECTION_END
     handles = [h for hs in accounts.values() for h in hs]
     rows = window_rows(load_manifests(manifest_paths), set(handles), g)
-    out = [f"X counts (from:<handle>, {g} buckets) against the collect windows"]
+    out = [f"X counts (from:<handle>, {g} buckets) against the collect and fill windows"]
     if not rows:
         out.append("  no manifest windows for these accounts")
     for h, group in itertools.groupby(rows, key=lambda r: r["handle"]):
         group = list(group)
-        out.append(f"\n@{h}  {group[0]['mode']}, {len(group)} windows")
+        by_src = Counter(r["src"] for r in group)
         out.append(
-            f"  {'window (UTC)':<31}{'cap':>5}{'got':>5}{'held':>6}{'X count':>9}  {'+':<2}verdict"
+            f"\n@{h}  {group[0]['mode']}, "
+            + ", ".join(f"{n} {src} windows" for src, n in sorted(by_src.items()))
+        )
+        out.append(
+            f"  {'window (UTC)':<31}{'src':<9}{'cap':>5}{'got':>5}{'held':>6}{'X count':>9}  "
+            f"{'+':<2}verdict"
         )
         for r in group:
             win = f"{r['start']:%Y-%m-%d %H:%M}..{r['end']:%m-%d %H:%M}"
             out.append(
-                f"  {win:<31}{r['cap']:>5}{r['got']:>5}{r['held']:>6}"
+                f"  {win:<31}{r['src']:<9}{r['cap']:>5}{r['got']:>5}{r['held']:>6}"
                 f"{_count_text(r['lo'], r['hi']):>9}  {'+' if r['over'] else '':<2}{r['verdict']}"
             )
     if rows:
-        out.append("\nVerdicts by account (+ = got more than X counts)")
+        out.append("\nVerdicts by account and source (+ = got more than X counts)")
         short = {
             "sampled ok": "sampled",
             "FETCH SHORTFALL": "SHORTFALL",
@@ -829,16 +839,19 @@ def report_lines(
         }
         names = [short.get(v, v) for v in VERDICTS]
         out.append(
-            f"  {'account':<16}{'windows':>8}" + "".join(f"{n:>11}" for n in names) + f"{'+':>5}"
+            f"  {'account':<24}{'windows':>8}" + "".join(f"{n:>11}" for n in names) + f"{'+':>5}"
         )
         for h, group in itertools.groupby(rows, key=lambda r: r["handle"]):
             group = list(group)
-            c = Counter(r["verdict"] for r in group)
-            out.append(
-                f"  {'@' + h:<16}{len(group):>8}"
-                + "".join(f"{c.get(v, 0):>11}" for v in VERDICTS)
-                + f"{sum(r['over'] for r in group):>5}"
-            )
+            for src in sorted({r["src"] for r in group}, key=lambda s: (s != "collect", s)):
+                part = [r for r in group if r["src"] == src]
+                c = Counter(r["verdict"] for r in part)
+                name = f"@{h}" if src == "collect" else f"@{h} {src}"
+                out.append(
+                    f"  {name:<24}{len(part):>8}"
+                    + "".join(f"{c.get(v, 0):>11}" for v in VERDICTS)
+                    + f"{sum(r['over'] for r in part):>5}"
+                )
     out.append(f"\nX count against the cache by month ({start:%Y-%m-%d}..{end:%Y-%m-%d})")
     for h in handles:
         cache = CountsCache(handle_query(h), g)

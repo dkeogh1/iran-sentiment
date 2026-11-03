@@ -333,6 +333,34 @@ X_ARCHIVE_SEARCH_DELAY_S = 1.1
 X_ARCHIVE_PROBE_RECALL_OK = 0.8
 X_ARCHIVE_PROBE_RECALL_LOW = 0.5
 
+# Full-archive fill (`x-archive fill`, src/collectors/x_archive_fill.py):
+# search/all ($0.005 a post returned, requests free) fills the cache's holes
+# on collect's 35 h grid, extended back to COLLECTION_START, with collect's
+# per-window rule (docs/decisions.md 2026-11-02). The whole fill (every run,
+# tallied from data/raw/x_archive/fill_requests.jsonl) stops at this. $1
+# covers the pilot (~$0.18 expected, $0.54 ceiling); the full fill is the
+# user's call (~$25.60 expected for --scope below, `x-archive fill
+# --estimate`): raise it deliberately, about 25% over the whole-hour figure.
+X_ARCHIVE_FILL_MAX_USD = 1.00
+# A window never reads more than its need (X's count with edge buckets whole,
+# or the cap, less what it holds) plus this, so a window that still wants
+# posts can always send one more request of search/all's 10-post minimum.
+X_ARCHIVE_FILL_WINDOW_SLACK = X_ARCHIVE_SEARCH_MAX_RESULTS - 1
+# The hour bucket where a sampled window's walk crosses what it wants is read
+# in slices of this many minutes, newest first (0: whole hours). 15 keeps most
+# of the saving: 5,120 reads expected against 6,165 by whole hours and 4,999
+# at 10 minutes, for about 2,800 requests (2026-11-02 model).
+X_ARCHIVE_FILL_SLICE_MINUTES = 15
+X_ARCHIVE_FILL_MAX_RESULTS = 100  # per request (search/all allows 10-500)
+# A window stops after this many requests (empty pages that keep a
+# next_token, or counts that point at posts search/all does not return).
+X_ARCHIVE_FILL_MAX_REQUESTS_PER_WINDOW = 40
+# A run refuses a plan of more requests than this, and stops at it.
+X_ARCHIVE_FILL_MAX_REQUESTS = 8000
+# search/all allows 1 request a second and 300 per 15 minutes per app: at
+# 1.1 s a run would make its 300 in ~5.5 minutes and sit in 429 waits.
+X_ARCHIVE_FILL_DELAY_S = 3.1
+
 
 # ── Stance-model experiments (GPU Jobs on dkbl2, see k8s/README.md) ─
 MODELS_DIR = DATA_DIR / "models"
@@ -680,6 +708,15 @@ POST_PROMPT_TOKEN_FIT = {
     },
     "instruction_chars_per_token": 2.67,
 }
+# relabel (claude-opus-5 on llm_prompt, Batch API): each submit and resubmit
+# refuses, before any client is built, more posts than this or a ceiling
+# over this. The ceiling is POST_PROMPT_TOKEN_FIT["x"]'s input, output at its
+# p95 (113 tokens), batch prices, no cache (relabel caches nothing). Sized
+# 2026-11-02 for the archive fill's ~4,700 new posts with text (expected
+# ~$7.6, ceiling ~$9.1) with ~25% room; a larger set goes in `--limit` parts
+# or the caps are raised deliberately.
+RELABEL_MAX_CALLS = 6000
+RELABEL_MAX_USD = 12.0
 # Output tokens a call guessed for a job until its pilot: stance-topic
 # answers a topic, a score and a reason (96-110 by the 2026-11-01 sizing);
 # another model than claude-opus-5 is guessed at twice the figure (Opus 5.5

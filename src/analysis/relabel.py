@@ -130,25 +130,98 @@ def build_requests(posts: pd.DataFrame, model: str, max_tokens: int, effort: str
 
 def refuse_model(model: str) -> None:
     """relabel writes the stance of record's own model only
-    (settings.TEACHER_CHECK_MODEL). It has no call or dollar cap and its
-    estimate rests on that model's measured output, so another model (a
-    second rater) goes through `post-label --job rater`, which has both caps
-    and a pilot (docs/decisions.md 2026-11-02, Rejected)."""
+    (settings.TEACHER_CHECK_MODEL). Its estimate and its caps' ceiling rest
+    on that model's measured output (settings.POST_PROMPT_TOKEN_FIT), so
+    another model (a second rater) goes through `post-label --job rater`,
+    which measures it with a pilot (docs/decisions.md 2026-11-02, Rejected)."""
     if undated(model) != undated(settings.TEACHER_CHECK_MODEL):
         raise ValueError(
-            f"relabel labels with {settings.TEACHER_CHECK_MODEL} only (no cap, and its estimate "
-            f"is that model's output length): label posts with {model} through `post-label "
-            f"estimate|pilot|submit --job rater --model {model}`"
+            f"relabel labels with {settings.TEACHER_CHECK_MODEL} only (its estimate and caps "
+            f"rest on that model's measured output length): label posts with {model} through "
+            f"`post-label estimate|pilot|submit --job rater --model {model}`"
         )
+
+
+class OverCap(ValueError):
+    """A relabel submit over RELABEL_MAX_CALLS or RELABEL_MAX_USD."""
+
+
+def first_by_id(posts: pd.DataFrame, limit: int | None) -> pd.DataFrame:
+    """The first `limit` posts by id (X ids are numeric, in time order), so
+    `--limit` parts of a larger set never overlap; all of them without one."""
+    if limit is None:
+        return posts
+    key = posts["id"].astype(str).str.zfill(32)
+    return posts.loc[key.sort_values(kind="stable").index[:limit]].reset_index(drop=True)
+
+
+def estimate(posts: pd.DataFrame, model: str = settings.TEACHER_CHECK_MODEL) -> dict:
+    """What a batch of these posts costs, no call: llm_prompt's usage fit
+    on X posts (post_labels.llm_prompt_cost) at `model`'s batch prices.
+    usd_batch at the fit's mean output a call (84 tokens), usd_batch_ceiling
+    at its p95 (113) with no cache (relabel caches nothing): the figure the
+    dollar cap is checked against. Also the caps and whether it is over
+    them (cap_problem)."""
+    from src.analysis.post_labels import llm_prompt_cost
+
+    chars = [len(llm_prompt(r.text, r.user)) for r in posts.itertuples()]
+    c = llm_prompt_cost(chars, "x", model)
+    est = {
+        "model": model,
+        "calls": int(c["calls"]),
+        "usd_batch": float(c["usd_batch"]),
+        "usd_batch_ceiling": float(c["usd_batch_ceiling"]),
+        "output_basis": c["output_basis"],
+        "max_calls": settings.RELABEL_MAX_CALLS,
+        "max_usd": settings.RELABEL_MAX_USD,
+    }
+    est["problem"] = cap_problem(est)
+    return est
+
+
+def cap_problem(est: dict) -> str | None:
+    """Why a submit of `est` must not go (over RELABEL_MAX_CALLS, or its
+    ceiling over RELABEL_MAX_USD), or None."""
+    over = []
+    if est["calls"] > settings.RELABEL_MAX_CALLS:
+        over.append(
+            f"{est['calls']:,} calls is over RELABEL_MAX_CALLS ({settings.RELABEL_MAX_CALLS:,})"
+        )
+    if est["usd_batch_ceiling"] > settings.RELABEL_MAX_USD:
+        over.append(
+            f"the ceiling ${est['usd_batch_ceiling']:.2f} is over RELABEL_MAX_USD "
+            f"(${settings.RELABEL_MAX_USD:.2f})"
+        )
+    if not over:
+        return None
+    return (
+        "; ".join(over) + ": send it in parts with --limit N, or raise the caps "
+        "deliberately in config/settings.py once the user approves the estimate"
+    )
+
+
+def estimate_line(est: dict) -> str:
+    """One line: calls, expected and ceiling dollars, the caps."""
+    verdict = f"OVER CAP: {est['problem']}" if est["problem"] else "within the caps"
+    return (
+        f"{est['calls']:,} posts -> {est['model']}: batch ≈ ${est['usd_batch']:.2f} expected, "
+        f"ceiling ${est['usd_batch_ceiling']:.2f} (output at its p95, no cache; "
+        f"{est['output_basis']}); caps RELABEL_MAX_CALLS {est['max_calls']:,} / "
+        f"RELABEL_MAX_USD ${est['max_usd']:.2f}: {verdict}"
+    )
 
 
 def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
            max_tokens: int = settings.TEACHER_MAX_TOKENS, effort: str = settings.TEACHER_EFFORT,
-           only_ids: set[str] | None = None) -> dict:
+           only_ids: set[str] | None = None, limit: int | None = None) -> dict:
     """Create the batch and record its id. Refuses a model other than
-    settings.TEACHER_CHECK_MODEL (refuse_model), a batch still open, and a
+    settings.TEACHER_CHECK_MODEL (refuse_model), a batch still open, a
     submit that stopped before it recorded a batch id (batch_io.guarded_create:
-    the create is sent once, behind a "submitting" record)."""
+    the create is sent once, behind a "submitting" record), and, before any
+    client is built, a set over RELABEL_MAX_CALLS or whose ceiling is over
+    RELABEL_MAX_USD (OverCap). `limit` sends the first N by id (first_by_id);
+    resubmit passes the failed ids as only_ids and goes through the same
+    caps."""
     from src.analysis.batch_io import guarded_create, pending_message
 
     refuse_model(model)
@@ -157,14 +230,20 @@ def submit(df: pd.DataFrame, *, model: str = settings.TEACHER_CHECK_MODEL,
         raise RuntimeError(f"relabel: {pending_message(state_path(), st)}")
     if st.get("batch_id") and st.get("status") not in (None, "ended", "collected"):
         raise RuntimeError(f"batch {st['batch_id']} is still {st['status']} -- collect it first")
-    posts = posts_to_label(df, model, only_ids)
+    posts = first_by_id(posts_to_label(df, model, only_ids), limit)
     if posts.empty:
         logger.info("relabel: nothing to submit (all posts already labelled by %s)", model)
         return st
+    est = estimate(posts, model)
+    if est["problem"]:
+        raise OverCap(f"relabel: {est['problem']}")
     client = _client()
     ids = posts["id"].astype(str).tolist()
     st = {"model": model, "effort": effort, "max_tokens": max_tokens,
-          "n_submitted": int(len(posts)), "ids": ids, "submitted_at": stamp()}
+          "n_submitted": int(len(posts)), "ids": ids, "submitted_at": stamp(),
+          "limit": limit, "usd_expected_batch": est["usd_batch"],
+          "usd_ceiling_batch": est["usd_batch_ceiling"],
+          "caps": {"calls": settings.RELABEL_MAX_CALLS, "usd": settings.RELABEL_MAX_USD}}
     batch = guarded_create(
         client, build_requests(posts, model, max_tokens, effort), state_path(), st
     )
