@@ -658,8 +658,10 @@ POST_PILOT_SAVE_EVERY = 10
 # dollar caps hold that run's ceiling at a pilot p95 of up to ~160 output
 # tokens for the stance-topic jobs (expected ~$13.8 and ~$4.2 at the 110
 # guess with 89% cache reads) and ~350 for the rater on Opus 5.5 (expected
-# ~$10.8 at twice Opus 5's 84).
-POST_STANCE_TOPIC_MAX_CALLS = 7000
+# ~$10.8 at twice Opus 5's 84). Raised 2026-11-03 for the X archive fill's
+# 1,024 new candidates (run 6,425 + 1,024 = 7,449; the user approved the
+# fill's label work, ~7,600 calls, on 2026-11-03).
+POST_STANCE_TOPIC_MAX_CALLS = 7600
 POST_STANCE_TOPIC_MAX_USD = 30.0
 POST_RATER_MAX_CALLS = 5400
 POST_RATER_MAX_USD = 20.0
@@ -682,8 +684,12 @@ POST_NOHANDLE_MAX_USD = 9.5
 # in --limit parts collected between them, each gated on billed spend so far
 # plus its own ceiling, so a run that bills high stops for the user's go
 # before it passes the approval. The call cap covers the 16,047 with ~6%.
-POST_CENSUS_MAX_CALLS = 17000
-POST_CENSUS_MAX_USD = 28.0
+# Raised 2026-11-03 for the X archive fill's 3,551 other new X posts (run
+# 16,047 billed $22.63; + 3,551 = 19,598 calls, ~$5.30 expected, ceiling
+# ~$12.5): the user approved ~21,000 calls and ~$33, sent in parts, on
+# 2026-11-03. At $33 the parts stay under ~2,900 calls each.
+POST_CENSUS_MAX_CALLS = 20000
+POST_CENSUS_MAX_USD = 33.0
 # Input tokens of an llm_prompt request on claude-opus-5, least squares on
 # billed usage against prompt characters, and its output tokens a call:
 # X posts from the 2026-10-05 relabel batch (2,575 posts), Trump's feed from
