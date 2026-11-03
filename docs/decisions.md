@@ -92,6 +92,28 @@ behind the stance-model entries are in README *Stance-model experiments* and
   window budget reached": counts never end a walk, so a rerun asks its
   last gaps, free when they are empty. The user approved the full fill
   with the cap at $32.
+- **Full fill (2026-11-03, $26.45):** every account, `--scope below`: 1,155
+  windows (259 late starts, 703 empty, 193 short), planned at 4,776 new
+  posts and ≈ $25.17 (≈ $30.36 if posts bunch inside hours). It read 5,290
+  posts in 2,890 requests, stored 4,708 and set 582 aside; none came back
+  already held. 1,046 windows ended done; 109 (55 take-all, 24 of @VP's)
+  stopped on their window budget though X's hour counts showed them whole,
+  and a rerun closed all 109 with no request ($0). With the pilot, 5,328
+  posts ≈ $26.64 of the $32 cap; all 1,162 windows are done and
+  `--estimate` plans none. Coverage (`x-counts --report`): the cache holds
+  36.5% of X's Feb-Oct count (29.4% before); every account starts Feb 1-4;
+  the take-all accounts hold 97-100% of X's count every month (a few a
+  little over), the sampled ones 5 a window where they were thin
+  (@WhiteHouse 10-44% a month, from 0-37%); no archive window is a `FETCH
+  SHORTFALL`, and each of collect's 57 has an archive row. The new posts' labels went under caps raised within
+  the user's approval of the fill: relabel 4,575 posts ($7.05, inside its
+  6,000 / $12), Haiku topic labels on 4,671 ($0.78, under the new
+  `TOPIC_LABEL_MAX_CALLS` / `_USD` 6,000 / $3), stance-topic on the 1,024
+  new candidates ($2.00; `POST_STANCE_TOPIC_MAX_CALLS` 7,000 -> 7,600) and
+  the census on the other 3,551 new X posts ($3.97 in two parts;
+  `POST_CENSUS_MAX_CALLS` 17,000 -> 20,000, `POST_CENSUS_MAX_USD` $28 ->
+  $33). Every output now includes them; the pre-fill posts alone still give
+  the old tier table cell for cell.
 - **relabel caps:** each submit and resubmit is checked against the
   estimate's ceiling, before any client is built: input from the llm_prompt
   usage fit, output at its p95 (113 tokens), batch prices, no cache.
@@ -113,10 +135,10 @@ behind the stance-model entries are in README *Stance-model experiments* and
     window it paid for;
   - a `--count-slack` option for undercounted windows, which waits for the
     pilot.
-- **Open (the user's calls):** the filled posts sit inside Feb 1 - Nov 1,
-  so folding them into the published figures moves every one of them. And
-  after the fill a sampled account is dense where Feb-Apr was read take-all
-  and at 5 per window elsewhere: `phases` weights every post equally.
+- **Open (the user's call):** after the fill a sampled account is dense
+  where Feb-Apr was read take-all and at 5 per window elsewhere: `phases`
+  weights every post equally (the filled posts were folded into every
+  output on 2026-11-03).
 
 ## 2026-11-02: Definitions of record after the Claude credit jobs
 

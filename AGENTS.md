@@ -30,11 +30,10 @@ Hand these to the user, with the estimate, instead of running them:
     most its need + `X_ARCHIVE_FILL_WINDOW_SLACK`; `X_ARCHIVE_FILL_MAX_USD`
     bounds every fill run together (tallied from
     `x_archive/fill_requests.jsonl`), and a run refuses past
-    `X_RUN_BUDGET_USD`. The cap ships at $1 for the pilot (`--only
-    WhiteHouse,PeteHegseth --since 2026-08-01 --until 2026-08-08`, ~$0.18);
-    the full fill (~$25 expected, 2026-11-02) is the user's call, then the
-    cap is raised deliberately. Ask for the X credit balance first; `backup`
-    after.
+    `X_RUN_BUDGET_USD`. The full fill ran on 2026-11-03 ($26.45, after a
+    $0.19 pilot) with the cap at $32, and every window is done
+    (`--estimate` plans none). Raise the cap only on the user's say. Ask for
+    the X credit balance first; `backup` after.
   - `relabel submit|resubmit` and `topic-label submit` (Anthropic Batch API):
     `relabel estimate` / `topic-label estimate` print the cost. relabel
     labels with claude-opus-5 only; `RELABEL_MAX_CALLS` / `RELABEL_MAX_USD`
@@ -82,7 +81,8 @@ Hand these to the user, with the estimate, instead of running them:
   - `teacher-check --source trump --all` (his whole feed on score_opus's
     model and prompt; `TRUMP_TEACHER_CHECK_MAX_CALLS` covers every post with
     text): `--all --estimate` adds a usage-fit figure from the check's own
-    batches (~$5.10 by Batch for the 2,822 left on 2026-11-02). Then
+    batches (all 3,222 posts with text are labelled since 2026-11-03; with
+    none left the estimate crashes, STATUS *Open*). Then
     `--merge` (free) writes score_opus / label_opus onto the feed parquet by
     id. score-posts keeps them on the rows it has, and the posts it adds
     have none until the next `--merge`. Never run `--merge` while
@@ -117,14 +117,15 @@ Hand these to the user, with the estimate, instead of running them:
   - `post-label submit --job stance-topic-census`: stance-topic's prompt,
     model, label file and columns on every other post with text (X
     accounts and Trump's feed), so the topic flag of record rests on an
-    Opus label everywhere (~16,000 calls; the user approved about $22 on
-    2026-11-02). `post-label estimate --job stance-topic-census` makes no
+    Opus label everywhere (19,598 calls: ~16,000 approved at about $22 on
+    2026-11-02, then the X archive fill's 3,551 new posts on 2026-11-03).
+    `post-label estimate --job stance-topic-census` makes no
     call and prints the calls by set, the expected cost and the ceiling
-    against `POST_CENSUS_MAX_CALLS` / `POST_CENSUS_MAX_USD`. The $28 cap
-    sits ~25% over the approval, below the no-cache-hit ceiling (~$57):
-    send the census in `--limit` parts (~3,000 calls, collected between
-    parts; each is gated on billed spend so far plus its own ceiling), and
-    a part the cap refuses goes back to the user. It
+    against `POST_CENSUS_MAX_CALLS` / `POST_CENSUS_MAX_USD`. The caps
+    (20,000 calls and $33 since 2026-11-03) sit at or under the approvals,
+    far below a no-cache-hit ceiling: send the census in `--limit` parts
+    (collected between parts; each is gated on billed spend so far plus its
+    own ceiling), and a part the caps refuse goes back to the user. It
     takes no pilot (stance-topic's pilot and collected batch measure its
     output); `--limit N` sends a first part. It and stance-topic refuse to send
     while the other's batch is open. `status|collect` are free; its report
@@ -559,7 +560,8 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   post whose text changed has its labels moved to `*_superseded` and is
   rescored.
 - X's user timeline returns only an account's latest ~3,200 tweets. Refresh
-  heavy accounts at least every ~2 months or the gap is lost for good.
+  heavy accounts at least every ~2 months, or the gap's windows come back
+  empty and wait for `x-archive fill` (search/all).
 - Keyword search (`/search/recent`) reaches back only ~7 days.
 - To add an account or search term, edit `config/accounts.py` and rerun.
 
@@ -622,11 +624,10 @@ The host's restic drive is often unplugged, so S3 is the copy to count on.
 
 ### Blog charts (dkweb)
 
-Rerun `export-web` after any rescoring, then `npm run build` in dkweb. Once
-the v2-fresh labels are in, `replies.json` pools them
-(`REPLY_POPULATION_FRESH_DRAWS`) and export-web warns: the README, STATUS
-and the dkweb post cite the 1,071-draw figures, so update that prose (or
-set the flag False) before publishing. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
+Rerun `export-web` after any rescoring, then `npm run build` in dkweb.
+`replies.json` pools the fresh draws (`REPLY_POPULATION_FRESH_DRAWS`, the
+published basis since 2026-11-02: 9,071 draws); export-web warns only
+when it exports without them. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
 `global.css`.
 
 ## Docs map
