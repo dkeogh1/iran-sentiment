@@ -81,3 +81,47 @@ def test_score_stance_media_only_follows_min_text_chars(tmp_path, monkeypatch):
     res = es.score_stance(sample).set_index("id")
     assert res.loc["1", "stance"] == "media_only" and len(sent) == 1   # 4 chars < 5: no API call
     assert res.loc["2", "stance"] == "neutral_other"
+
+
+def test_compare_events_keeps_the_analysis_window_and_flags_cut_windows():
+    """With start / end (the CLI's ANALYSIS_START / ANALYSIS_END), posts past
+    the end (a pull's partial last day) are left out, and an event whose
+    +-48 h window runs past either edge is flagged cut, not shown as full."""
+    from datetime import date
+
+    from config.timeline import Event
+
+    def post(t, s):
+        return {"created_at": pd.Timestamp(t, tz="UTC"), "score_opus": s}
+
+    df = pd.DataFrame(
+        [
+            post("2026-11-19 12:00", -0.3),
+            post("2026-11-20 10:00", 0.1),
+            post("2026-11-21 10:00", 0.2),
+            post("2026-11-22 01:00", 0.9),  # past ANALYSIS_END (Nov 21)
+        ]
+    )
+
+    def ev(d):
+        return Event(date=d, label=str(d), description="", category="c", impact="i")
+
+    events = [ev(date(2026, 11, 20)), ev(date(2026, 11, 21))]
+    res = es.compare_events(
+        df, events, score_col="score_opus", start=date(2026, 11, 2), end=date(2026, 11, 21)
+    ).set_index("event_date")
+    # Nov 20: post side [Nov 20, Nov 22) ends at the window's edge: full
+    assert not res.loc["2026-11-20", "cut"]
+    assert res.loc["2026-11-20", "n_post"] == 2 and res.loc["2026-11-20", "n_pre"] == 1
+    # Nov 21: post side runs to Nov 23, past the end; the Nov 22 post stays out
+    assert res.loc["2026-11-21", "cut"]
+    assert res.loc["2026-11-21", "n_post"] == 1
+    assert res.loc["2026-11-21", "mean_post"] == 0.2
+    # an event whose pre side starts before `start` is cut too
+    early = es.compare_events(
+        df, [ev(date(2026, 11, 20))], score_col="score_opus", start=date(2026, 11, 19)
+    )
+    assert early["cut"].tolist() == [True] and early["n_post"].tolist() == [2]
+    # without bounds nothing is clipped or flagged (the call as it was)
+    raw = es.compare_events(df, events, score_col="score_opus").set_index("event_date")
+    assert raw.loc["2026-11-21", "n_post"] == 2 and not raw["cut"].any()

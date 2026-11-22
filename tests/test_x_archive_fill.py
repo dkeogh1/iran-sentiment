@@ -300,15 +300,102 @@ def test_grid_steps_back_from_the_collect_windows_and_keeps_them():
     )
     assert (grid[0].s, grid[0].e, grid[0].cap) == (F, _t("2026-03-03T02:00"), 7)
     assert all(w.e - w.s == step for w in grid[1:-1])
-    # half a window or more left at the end: plan_windows from the last edge
-    far = _t("2026-03-10")
-    grid = xf.account_grid(xf.collect_rows("Aa", rows, far), 5, F, far)
-    fwd = [w for w in grid if w.origin == "forward"]
-    assert [(w.s, w.e) for w in fwd] == xc.plan_windows(a + step + 30 * H, far, 35)
-    # no manifest: plan_windows over the whole range; take-all has no caps
-    grid = xf.account_grid([], None, F, end)
-    assert [(w.s, w.e) for w in grid] == xc.plan_windows(F, end, 35)
-    assert all(w.cap is None for w in grid)
+    # no manifest: plan_windows up to collect's cursor (the newest cached post
+    # + 1 s), never past it or the end; nothing cached, nothing; take-all no caps
+    cursor = _t("2026-03-05T07:00:01")
+    grid = xf.account_grid([], None, F, end, cursor)
+    assert [(w.s, w.e) for w in grid] == xc.plan_windows(F, cursor, 35)
+    assert all(w.cap is None and w.origin == "no_manifest" for w in grid)
+    assert [(w.s, w.e) for w in xf.account_grid([], None, F, end, _t("2026-03-20"))] == (
+        xc.plan_windows(F, end, 35)
+    )
+    assert xf.account_grid([], 5, F, end) == []
+
+
+def test_grid_ends_at_the_last_collect_window_whatever_analysis_end():
+    # today's shape: the last collect window ends 48 minutes before the end of
+    # ANALYSIS_END, so the grid was backward + manifest windows before
+    # 2026-11-22; it stays exactly that, and moving the end weeks later adds
+    # nothing (collect's forward pull owns what lies past its last window)
+    step = timedelta(hours=35)
+    end = _t("2026-03-20")
+    last = end - 48 * timedelta(minutes=1)
+    a = last - 3 * step - 10 * H  # two full collect windows and a 45 h merged tail
+    rows = [_mrow("Aa", a + i * step, a + (i + 1) * step, 5, 5) for i in range(2)]
+    rows.append(_mrow("Aa", a + 2 * step, last, 6, 3))
+    back = []
+    s = a
+    while s - step >= F:
+        back.insert(0, (s - step, s))
+        s -= step
+    if s > F:  # the head: under half a window merges into the first backward window
+        back = [(F, back[0][1]), *back[1:]] if s - F < step / 2 else [(F, s), *back]
+    want = [(ws, we, xc._window_cap(5, ws, we, 35), "backward") for ws, we in back] + [
+        (a, a + step, 5, "manifest"),
+        (a + step, a + 2 * step, 5, "manifest"),
+        (a + 2 * step, last, 6, "manifest"),
+    ]
+    for e in (end, end + timedelta(weeks=3)):
+        grid = xf.account_grid(xf.collect_rows("Aa", rows, e), 5, F, e, last)
+        assert [(w.s, w.e, w.cap, w.origin) for w in grid] == want
+    take_all = [{**r, "mode": "take_all", "cap": 500} for r in rows]
+    for e in (end, end + timedelta(weeks=3)):
+        grid = xf.account_grid(xf.collect_rows("Aa", take_all, e), None, F, e, last)
+        assert [(w.s, w.e, w.cap) for w in grid] == [(s, e_, None) for s, e_, _, _ in want]
+
+
+def test_analysis_end_weeks_past_the_collect_windows_plans_and_buys_nothing_forward(
+    env, monkeypatch, caplog
+):
+    # X counts posts for both accounts up to Mar 24, weeks past collect's last
+    # window (M1); the fill plans what it planned with ANALYSIS_END Mar 3,
+    # logs what is left for collect, and a run stores nothing past M1
+    late = _t("2026-03-25")
+    aa_x = AA_X + _posts([M1 + 3 * H + 30 * i * H for i in range(15)], 1, "fwd")
+    tt_x = TT_X + _posts([M1 + 5 * H + 40 * i * H for i in range(11)], 2, "fwd")
+    stub = _base(aa_x=aa_x, tt_x=tt_x)
+    _counts("Aa", aa_x, end=late)
+    _counts("Tt", tt_x, end=late)
+    # today's shape (collect's last window ends 2 h before the end): nothing is
+    # left for collect, so nothing is logged
+    with caplog.at_level("WARNING", logger=xf.logger.name):
+        plan = xf.plan_fill(ACCOUNTS)
+    assert not [r for r in caplog.records if "left for collect" in r.getMessage()]
+    assert all(
+        xf.left_for_collect(a, xf.fill_start(), xf.fill_end()) is None
+        for a in plan["accts"].values()
+    )
+    before = [(w["handle"], w["s"], w["e"], w["target"]) for w in plan["windows"]]
+    monkeypatch.setattr(timeline, "ANALYSIS_END", date(2026, 3, 24))
+    caplog.clear()
+    with caplog.at_level("WARNING", logger=xf.logger.name):
+        plan = xf.plan_fill(ACCOUNTS)
+    assert [(w["handle"], w["s"], w["e"], w["target"]) for w in plan["windows"]] == before
+    assert all(w["e"] <= M1 for w in plan["windows"])
+    assert all(win.e <= M1 for acct in plan["accts"].values() for win in acct.grid)
+    left = sorted(r.getMessage() for r in caplog.records if r.name == xf.logger.name)
+    assert [m.split(" before")[0] for m in left] == [
+        f"@{h}: collect's last window ends {xcn.z(M1)}, 21.1 days" for h in ("Aa", "Tt")
+    ]
+    res = xf.run_fill(stub, plan)
+    assert not res["error"]
+    for h in ("Aa", "Tt"):
+        assert (
+            max(xcn.parse_ts(r["created_at"]) for r in xc._load_jsonl(xc._account_cache_path(h)))
+            < M1
+        )
+    assert all(_at(int(c["until_id"])) <= M1 for c in stub.calls)
+    # with no collect window, the fill stops at the cursor; with nothing cached, it plans nothing
+    rows = [r for r in xcn.load_manifests() if r["handle"] != "Tt"]
+    acct = xf.Account("Tt", "t", rows, xf.fill_start(), xf.fill_end())
+    assert acct.grid and acct.grid[-1].e == acct.cursor < M1
+    assert "its cursor (newest cached post + 1 s)" in xf.left_for_collect(
+        acct, xf.fill_start(), xf.fill_end()
+    )
+    xc._account_cache_path("Tt").unlink()
+    acct = xf.Account("Tt", "t", rows, xf.fill_start(), xf.fill_end())
+    assert acct.grid == [] and acct.cursor is None
+    assert "nothing cached" in xf.left_for_collect(acct, xf.fill_start(), xf.fill_end())
 
 
 def test_a_later_runs_window_cuts_the_earlier_one_where_its_cursor_began():

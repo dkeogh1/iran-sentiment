@@ -457,6 +457,53 @@ def test_trump_estimate_and_cap(files, monkeypatch):
     assert stub.calls == []
 
 
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--estimate"],
+        ["--yes"],
+        ["--batch", "submit", "--estimate"],
+        ["--batch", "submit", "--yes"],
+    ],
+    ids=["estimate", "direct", "batch-estimate", "batch-submit"],
+)
+def test_trump_check_with_nothing_left_to_label(files, monkeypatch, args):
+    """Every post of the feed labelled on its text now. pandas 3 made the
+    empty to-do frame's prompt column float64, and the estimate's
+    .str.len() on it raised (AttributeError) on every path. Each path says
+    there is nothing to label and makes no call."""
+    import anthropic
+
+    from src.cli import main
+
+    _feed().to_parquet(settings.TRUMP_FEED_STANCE, index=False)
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "keyword")
+    sl.trump_teacher_check(n=None, concurrency=1, scorer=Stub())
+    _, _, todo = sl.trump_check_todo(None)
+    assert todo.empty and todo["prompt"].str.len().empty
+
+    def boom(*a, **k):
+        raise AssertionError("an API call")
+
+    monkeypatch.setattr(sl, "_teacher_scorer", boom)
+    monkeypatch.setattr(sl, "_batch_client", boom)
+    monkeypatch.setattr(anthropic, "Anthropic", boom)
+    res = CliRunner().invoke(main, ["teacher-check", "--source", "trump", "--all", *args])
+    assert res.exit_code == 0, res.output
+    assert "58 posts with text (the whole feed), 58 cached" in res.output
+    assert "0 calls to claude-opus-5" in res.output and "nothing to label" in res.output
+    assert not list(settings.PROCESSED_DIR.glob("teacher_batch_*.json"))
+
+
+def test_reply_inputs_of_an_empty_sample_keep_a_string_prompt_column(files):
+    files()
+    smp = pd.DataFrame({"id": pd.Series([], dtype=str), "tracked_slug": pd.Series([], dtype=str)})
+    inputs = sl.reply_prompt_inputs(
+        smp, sl.reply_teacher_v2_prompt, sl.REPLY_TEACHER_V2_PROMPT_VERSION
+    )
+    assert inputs.empty and inputs["prompt"].str.len().empty
+
+
 def test_x_teacher_check_runs_unattended(tmp_path, monkeypatch):
     """The k8s teacher-check Job runs `teacher-check` with no stdin: it must
     not stop at a prompt, and --yes (a no-op there) is accepted."""

@@ -506,7 +506,7 @@ def job_todo(
             "input_chars": todo["text"].str.len().to_numpy(),
             "base_chars": [len(llm_prompt(t, u)) for t, u in zip(todo["text"], todo["user"])],
             "prompt_chars": [len(b[0]) for b in built],
-            "prompt": [b[0] for b in built],
+            "prompt": sl.str_column(b[0] for b in built),
             "cache_chars": [int(b[1]) for b in built],
             "prompt_version": j.prompt_version,
         }

@@ -9,6 +9,7 @@ network, no spend.
 
 import json
 import os
+from datetime import timedelta
 from types import SimpleNamespace
 
 import pandas as pd
@@ -16,7 +17,7 @@ import pytest
 import tweepy
 from click.testing import CliRunner
 
-from config import settings
+from config import settings, timeline
 from src import superseded as sup
 from src.analysis import inference as inf
 from src.analysis import relabel as rl
@@ -27,6 +28,10 @@ from src.collectors import x_backfill as xb
 from src.collectors import x_collector as xc
 
 LINK = "https://t.co/AbCdEfGhIj"  # 23 characters, as X sends every link
+# The day after the last phase, after settings.X_CUT_TEXT_BEFORE too. A fixed
+# Nov 5 fell inside phase 6 once it opened (2026-11-22), and its end rolls with
+# ANALYSIS_END, so the post that must sit outside the phases follows it.
+AFTER_PHASES = f"{timeline.PHASES[-1][2] + timedelta(days=1)}T00:00:00+00:00"
 
 
 def _cut(n: int, end: str = "word") -> str:
@@ -112,7 +117,7 @@ def _read(path):
 
 def _cache(data):
     """ids 1-6 are cut candidates, 7 is short, 8 a retweet, 9 posted after the
-    cut stopped, 10 a search row; 6 is also in a search file."""
+    cut stopped and after the phases, 10 a search row; 6 is also in a search file."""
     raw = data / "raw" / "x"
     _write(
         raw / "levin.jsonl",
@@ -122,7 +127,7 @@ def _cache(data):
             _rec(3, "levin", _cut(280, "end.")),
             _rec(7, "levin", "short post"),
             _rec(8, "levin", "RT @x: " + "y" * 273),
-            _rec(9, "levin", _cut(279), created="2026-11-05T00:00:00+00:00"),
+            _rec(9, "levin", _cut(279), created=AFTER_PHASES),
         ],
     )
     _write(raw / "Pontifex.jsonl", [_rec(4, "Pontifex", _cut(278), tier="religious_authority")])

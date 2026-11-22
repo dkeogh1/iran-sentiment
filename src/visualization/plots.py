@@ -301,11 +301,16 @@ def weekly_war_stance(d: pd.DataFrame, score_col: str,
     WEB_SMOOTH_WEEKS-week window, sum of scores over sum of posts, so a thin
     week cannot swing it. Each tier gets every week from its first war post
     to its last; `smooth` is NaN where the window holds fewer than
-    WEB_MIN_WINDOW_POSTS war posts, so a plot shows a gap, not a join."""
+    WEB_MIN_WINDOW_POSTS war posts, so a plot shows a gap, not a join.
+    A frame with window weights (inference.WEIGHT_COL) gets weighted means
+    (weighted_weekly_war_stance); n and n_window stay post counts, and the
+    threshold is on the window's Kish effective number of posts."""
     tiers = tiers or _war_tiers(d)
     w = d[d["on_topic"] & d["tier"].isin(tiers)].copy()
     w["week"] = (pd.to_datetime(w["created_at"], utc=True).dt.tz_localize(None)
                  .dt.to_period("W-SUN").dt.start_time)
+    if inf.frame_weights(w) is not None:
+        return weighted_weekly_war_stance(w, score_col)
     out = []
     for tier, g in w.groupby("tier"):
         wk = g.groupby("week")[score_col].agg(["sum", "count"])
@@ -321,6 +326,36 @@ def weekly_war_stance(d: pd.DataFrame, score_col: str,
     return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=cols)
 
 
+def weighted_weekly_war_stance(w: pd.DataFrame, score_col: str) -> pd.DataFrame:
+    """weekly_war_stance on war posts that carry window weights (with their
+    `week`): stance and smooth are sums of weight x score over sums of
+    weight (inference.weekly_sums), n and n_window post counts. `smooth` is
+    NaN where the window's Kish effective number of posts
+    (inference.kish_n) is under WEB_MIN_WINDOW_POSTS: a handful of heavy
+    posts must not carry a window of many (it equals n_window at unit
+    weights)."""
+    out = []
+    for tier, g in w.groupby("tier"):
+        wk = inf.weekly_sums(g, score_col)
+        wk = wk.reindex(pd.date_range(wk.index.min(), wk.index.max(), freq="7D"), fill_value=0)
+        roll = wk.rolling(settings.WEB_SMOOTH_WEEKS, center=True, min_periods=1).sum()
+        keep = inf.kish_n(roll["wsum"], roll["w2sum"]) >= settings.WEB_MIN_WINDOW_POSTS
+        out.append(
+            pd.DataFrame(
+                {
+                    "tier": tier,
+                    "week": wk.index,
+                    "n": wk["count"].astype(int).to_numpy(),
+                    "stance": (wk["sum"] / wk["wsum"].where(wk["count"] > 0)).to_numpy(),
+                    "n_window": roll["count"].astype(int).to_numpy(),
+                    "smooth": (roll["sum"] / roll["wsum"]).where(keep).to_numpy(),
+                }
+            )
+        )
+    cols = ["tier", "week", "n", "stance", "n_window", "smooth"]
+    return pd.concat(out, ignore_index=True) if out else pd.DataFrame(columns=cols)
+
+
 def _lone_points(y: np.ndarray) -> list[bool]:
     """Kept weeks with no kept week either side. A line through NaNs draws
     nothing for them (nor does fill_between), so they need a marker."""
@@ -328,6 +363,13 @@ def _lone_points(y: np.ndarray) -> list[bool]:
     prev = np.r_[False, kept[:-1]]
     nxt = np.r_[kept[1:], False]
     return (kept & ~prev & ~nxt).tolist()
+
+
+def _phase_lines(label: str) -> str:
+    """A phase label on two lines, broken after its comma, else at its first
+    space: a short phase beside another (the midterm hold, then phase 6 while
+    it is weeks long) would run into its neighbour on one line."""
+    return label.replace(", ", ",\n") if ", " in label else label.replace(" ", "\n", 1)
 
 
 def _stance_yaxis(ax: plt.Axes) -> None:
@@ -352,8 +394,11 @@ def plot_tier_war_weekly(
     """Weekly war-post stance by tier, one panel per X tier with the other
     tiers in grey behind it. Panels, not one axis: admin and pro-war MAGA,
     and anti-war MAGA and the Vatican, sit close enough to tangle. The area
-    between the line and zero takes the blog's pro / anti colour."""
+    between the line and zero takes the blog's pro / anti colour. A frame
+    with window weights (window_weights.attach) draws weighted lines, says
+    so under the title and saves under a name suffixed by its weighting."""
     d = inf.prepare(df, score_col)
+    weighting = df.attrs.get("window_weights", "window") if inf.WEIGHT_COL in d else None
     tiers = _war_tiers(d)
     wk = weekly_war_stance(d, score_col, tiers)
     wk["x"] = wk["week"] + pd.Timedelta(days=3.5)  # mid-week, so phase lines fall true
@@ -377,7 +422,7 @@ def plot_tier_war_weekly(
         if i < ncols:
             for label, p_start, p_end in PHASES:
                 mid = pd.Timestamp(p_start) + (pd.Timestamp(p_end) - pd.Timestamp(p_start)) / 2
-                ax.text(mid, 1.0, label.replace(", ", ",\n"), transform=ax.get_xaxis_transform(),
+                ax.text(mid, 1.0, _phase_lines(label), transform=ax.get_xaxis_transform(),
                         ha="center", va="top", fontsize=7, color=_MUTED, linespacing=1.1)
         for other, g in wk.groupby("tier"):
             if other != tier:
@@ -413,10 +458,13 @@ def plot_tier_war_weekly(
              f"Centred {settings.WEB_SMOOTH_WEEKS}-week window weighted by posts; weeks whose "
              f"window holds fewer than {settings.WEB_MIN_WINDOW_POSTS} war posts are left out; "
              f"a dot is a kept week with neither neighbour kept. Grey: the other tiers. "
-             f"Light rules: phase boundaries. " + _method_note(score_col),
+             f"Light rules: phase boundaries. " + _method_note(score_col)
+             + (f" Posts {weighting}-weighted by collect window (raw is the record)."
+                if weighting else ""),
              fontsize=8.5, color=_MUTED, va="top", wrap=True)
     if save:
-        fig.savefig(path or _fig_path(f"tier_war_weekly_{score_col}.png"),
+        suffix = f"_{weighting}-weighted" if weighting else ""
+        fig.savefig(path or _fig_path(f"tier_war_weekly_{score_col}{suffix}.png"),
                     dpi=150, bbox_inches="tight", facecolor="white")
     return fig
 
@@ -454,12 +502,15 @@ def plot_account_war_heatmap(
     mean = mean.loc[mean[whole].sort_values(ascending=False, na_position="last").index]
     tier = t.drop_duplicates("group").set_index("group")["tier"]
     rows = [f"@{u}  ({settings.WEB_TIER_LABELS.get(tier[u], tier[u])})" for u in mean.index]
-    # One line per word pair: five phase columns plus the whole war overlap otherwise.
-    ticks = [f"{label.replace(', ', ',\n')}\n{s:%b %-d}–{e:%b %-d}" for label, s, e in PHASES]
+    # One line per word pair: the phase columns plus the whole war overlap otherwise.
+    ticks = [f"{_phase_lines(label)}\n{s:%b %-d}–{e:%b %-d}" for label, s, e in PHASES]
     ticks.append(f"{whole}\n{inf.WHOLE_WAR[0][1]:%b %-d}–{inf.WHOLE_WAR[0][2]:%b %-d}")
 
     cmap, norm = stance_cmap(), Normalize(-1, 1)
-    fig, ax = plt.subplots(figsize=(10, 0.42 * len(mean) + 2.2))
+    # A column (a phase or the whole war) gets 1.1 in beside 3.4 in of account
+    # labels and colour bar: 10 in at five phases, wider as phases are added.
+    width = 3.4 + 1.1 * len(cols)
+    fig, ax = plt.subplots(figsize=(width, 0.42 * len(mean) + 2.2))
     sns.heatmap(
         mean.set_axis(rows, axis=0).set_axis(ticks, axis=1), mask=mean.isna().to_numpy(),
         cmap=cmap, vmin=-1, vmax=1, linewidths=2, linecolor="white", ax=ax,

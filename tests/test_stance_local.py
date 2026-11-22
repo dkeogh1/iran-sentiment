@@ -22,6 +22,14 @@ def _frame(n=120, seed=0):
     })
 
 
+def _fake_model(model_dir, weights=b"w"):
+    """A stand-in fit (config.json and weights) for tests that stub the scoring."""
+    model_dir.mkdir(parents=True, exist_ok=True)
+    (model_dir / "config.json").write_text("{}")
+    (model_dir / "model.safetensors").write_bytes(weights)
+    return model_dir
+
+
 def test_training_frame_drops_off_topic_and_empty():
     df = _frame()
     df.loc[0, "text"] = "   "
@@ -172,6 +180,7 @@ def test_score_post_file_incremental(tmp_path, monkeypatch):
                                    "created_at": "2026-05-01T00:00:00Z", "text": f"post {i}"}) + "\n" for i in range(5)))
     calls = []
     monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)          # no recipe.txt -> DISTILL_MAX_LEN
+    _fake_model(sl.distilled_scorer_dir())
     monkeypatch.setattr(sl, "score_with_distilled",
                         lambda texts, md, bs, ml: (calls.append((len(texts), ml)) or np.full(len(texts), ml / 1000)))
     out = tmp_path / "scored.parquet"
@@ -299,6 +308,8 @@ def test_score_post_file_and_replies_never_resend_textless(tmp_path, monkeypatch
     f.write_text("".join(_j.dumps({"id": i, "user": "t", "text": t}) + "\n" for i, t in recs))
     calls = []
     monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)
+    _fake_model(sl.distilled_scorer_dir())
+    _fake_model(tmp_path)
     def fake_score(texts, md, bs=64, max_len=None):
         calls.append(list(texts))
         return np.full(len(texts), 0.5)
@@ -335,6 +346,7 @@ def test_score_post_file_rescores_rows_that_gain_text(tmp_path, monkeypatch):
     f.write_text("".join(_j.dumps({"id": i, "user": "t", "text": t}) + "\n" for i, t in recs))
     calls = []
     monkeypatch.setattr(settings, "MODELS_DIR", tmp_path)
+    _fake_model(sl.distilled_scorer_dir())
     def fake_score(texts, md, bs=64, max_len=None):
         calls.append(list(texts))
         return np.full(len(texts), -0.5)
@@ -347,3 +359,180 @@ def test_score_post_file_rescores_rows_that_gain_text(tmp_path, monkeypatch):
     assert df.loc["3", "score_opus_distilled"] == 0.111       # untouched: still no text
     sl.score_post_file([f], out, max_len=8)
     assert len(calls) == 1
+
+
+# ── score-distilled / score-posts: the scorer of record, one model a column ──
+
+
+def test_scoring_defaults_to_the_scorer_of_record_and_one_model_per_column(tmp_path, monkeypatch):
+    import json as _j
+    from pathlib import Path
+
+    from click.testing import CliRunner
+
+    from src.cli import main
+
+    models = tmp_path / "models"
+    feed = tmp_path / "truthsocial_trump_stance.parquet"
+    replies = tmp_path / "reply_sentiment.parquet"
+    monkeypatch.setattr(settings, "MODELS_DIR", models)
+    monkeypatch.setattr(settings, "TRUMP_FEED_STANCE", feed)
+    monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", replies)
+    record, reply_record = sl.trump_columns_path(), sl.reply_columns_path()
+    assert sl.columns_path_for(feed) == record and sl.columns_path_for(replies) == reply_record
+    used = []
+
+    def fake_score(texts, md, bs=64, max_len=None):
+        used.append(Path(md))
+        return np.full(len(texts), -0.5)
+
+    monkeypatch.setattr(sl, "score_with_distilled", fake_score)
+    of_record = _fake_model(models / settings.DISTILLED_SCORER_DIR)
+    old = _fake_model(models / "stance_distilled", b"haiku-taught fit")
+
+    # The feed as it stands: the Job's score_opus_distilled, which no record
+    # names, and the merge's score_opus / label_opus, whose claim it records.
+    # Post 1 had no text (and a label of an older text); a re-collect gives it some.
+    pd.DataFrame(
+        {
+            "id": ["1", "2"],
+            "user": "t",
+            "text": ["", "strikes on Iran"],
+            "score_opus_distilled": [0.111, 0.7],
+            "score_opus": [0.2, 0.5],
+            "label_opus": ["neutral", "positive"],
+        }
+    ).to_parquet(feed, index=False)
+    record.write_text(_j.dumps({"score_opus": "claude-opus-5"}))
+    f = tmp_path / "feed.jsonl"
+    recs = (("1", "RT @x: no war with Iran"), ("2", "strikes on Iran"), ("3", "A new post"))
+    f.write_text("".join(_j.dumps({"id": i, "user": "t", "text": t}) + "\n" for i, t in recs))
+    res = CliRunner().invoke(main, ["score-posts", str(f), "--out", str(feed)])
+    assert res.exit_code == 0, res.output
+    assert used == [of_record]
+    df = pd.read_parquet(feed).set_index("id")
+    assert df["score_opus_distilled"].tolist() == [-0.5, 0.7, -0.5]
+    assert df.loc["2", "score_opus"] == 0.5 and df.loc["2", "label_opus"] == "positive"  # kept
+    assert df.loc[["1", "3"], ["score_opus", "label_opus"]].isna().all().all()
+    reg = _j.loads(record.read_text())
+    sha = sl.model_weights_sha256(of_record)
+    assert reg == {
+        "score_opus": "claude-opus-5",
+        "score_opus_distilled": {
+            "source": "distill",
+            "model_dir": settings.DISTILLED_SCORER_DIR,
+            "weights_sha256": sha,
+        },
+    }
+    before, held = pd.read_parquet(feed), record.read_text()
+    # Another model into the column of record, distilled scores into an LLM's
+    # label column, or a dir with no model (a typo): refused, nothing recorded.
+    res = CliRunner().invoke(
+        main, ["score-posts", str(f), "--out", str(feed), "--model-dir", str(old)]
+    )
+    assert res.exit_code == 1 and "another fit" in res.output, res.output
+    assert "Traceback" not in res.output
+    for col in ("score_opus", "score_haiku", "label_opus55"):
+        with pytest.raises(sl.ScoringRefused, match="labels"):
+            sl.score_post_file([f], feed, col=col)
+    typo = models / "stance_distiled_final_x"
+    res = CliRunner().invoke(
+        main,
+        ["score-posts", str(f), "--out", str(feed), "--model-dir", str(typo), "--col", "score_x"],
+    )
+    assert res.exit_code == 1 and "no model at" in res.output, res.output
+    pd.testing.assert_frame_equal(pd.read_parquet(feed), before)
+    assert record.read_text() == held
+    assert len(used) == 1 and not sl.scoring_marker(feed).exists()
+    # A new column takes one model, recorded at its first run.
+    sl.score_post_file([f], feed, old, col="score_haiku_distilled")
+    assert _j.loads(record.read_text())["score_haiku_distilled"]["model_dir"] == "stance_distilled"
+    with pytest.raises(sl.ScoringRefused, match="another fit"):
+        sl.score_post_file([f], feed, col="score_haiku_distilled")
+    # The same dir refit in place (as every stance-distill run rewrites
+    # stance_distilled) is another model too.
+    (old / "model.safetensors").write_bytes(b"a later fit in the same dir")
+    with pytest.raises(sl.ScoringRefused, match="weights_sha256 differs"):
+        sl.score_post_file([f], feed, old, col="score_haiku_distilled")
+    (old / "model.safetensors").write_bytes(b"haiku-taught fit")
+
+    # Replies: score_opus_distilled (scorer of record), score_distilled (the
+    # Haiku-taught model, the score-distilled Job's), the v0 scores of an
+    # overwritten fit; none recorded yet.
+    pd.DataFrame(
+        {
+            "id": ["a", "b"],
+            "tracked_slug": "p",
+            "text": ["I support this", "No war"],
+            "score_opus_distilled": [0.4, np.nan],
+            "score_distilled": [0.1, np.nan],
+            "score_opus_distilled_v0": [0.3, 0.2],
+        }
+    ).to_parquet(replies, index=False)
+    used.clear()
+    res = CliRunner().invoke(main, ["score-distilled"])
+    assert res.exit_code == 0, res.output
+    assert used == [of_record]
+    assert pd.read_parquet(replies)["score_opus_distilled"].tolist() == [0.4, -0.5]
+    res = CliRunner().invoke(main, ["score-distilled", "--model-dir", str(old)])
+    assert res.exit_code == 1 and "another fit" in res.output, res.output
+    sl.score_replies(old, col="score_distilled")  # the Job's own pair still runs
+    assert used == [of_record, old]
+    with pytest.raises(sl.ScoringRefused, match="does not record"):
+        sl.score_replies(col="score_opus_distilled_v0")
+    assert {
+        k: (v["model_dir"], v["weights_sha256"])
+        for k, v in _j.loads(reply_record.read_text()).items()
+    } == {
+        "score_opus_distilled": (settings.DISTILLED_SCORER_DIR, sha),
+        "score_distilled": ("stance_distilled", sl.model_weights_sha256(old)),
+    }
+    # Any other error keeps its traceback: only the guards' refusals are one line.
+    def broken(*a, **k):
+        raise ValueError("Unrecognized model")
+
+    monkeypatch.setattr(sl, "score_with_distilled", broken)
+    pd.read_parquet(replies).assign(score_opus_distilled=np.nan).to_parquet(replies, index=False)
+    res = CliRunner().invoke(main, ["score-distilled"])
+    assert res.exit_code == 1 and isinstance(res.exception, ValueError)
+    assert not isinstance(res.exception, sl.ScoringRefused)
+
+
+def test_score_jobs_write_each_column_from_its_model(monkeypatch):
+    """What the GPU Jobs run: each names the model its column is recorded for,
+    so the scorer-of-record defaults change none of them."""
+    import ast
+    import re
+    from pathlib import Path
+
+    from src.cli import main
+
+    default_col = {
+        c: next(p.default for p in main.commands[c].params if p.name == "col")
+        for c in ("score-distilled", "score-posts")
+    }
+    runs = {}
+    # The image runs with IRAN_DATA_DIR=/data: the record names a model dir
+    # as _model_ref does there, relative to /data/models.
+    monkeypatch.setattr(settings, "MODELS_DIR", Path("/data/models"))
+    for job in sorted((settings.PROJECT_ROOT / "k8s" / "jobs").glob("*/job.yaml")):
+        line = re.search(r"^\s*args:\s*(\[.*\])\s*$", job.read_text(), re.MULTILINE)
+        assert line, f"{job}: no one-line args: [...] to read"
+        args = ast.literal_eval(line.group(1))
+        if args[0] not in default_col:
+            continue
+        opts = {a: args[i + 1] for i, a in enumerate(args[:-1]) if a.startswith("--")}
+        model = Path(opts.get("--model-dir", settings.MODELS_DIR / settings.DISTILLED_SCORER_DIR))
+        runs[job.parent.name] = (sl._model_ref(model), opts.get("--col", default_col[args[0]]))
+    assert runs == {
+        "score-distilled": ("stance_distilled", "score_distilled"),
+        "score-distilled-deb": ("stance_distilled_final", "score_deb_distilled"),
+        "score-distilled-mixed": (
+            "stance_distilled_final_score_opus_mixed",
+            "score_mixed_distilled",
+        ),
+        "score-distilled-opus": (settings.DISTILLED_SCORER_DIR, settings.DISTILLED_SCORER_COL),
+        "score-trump-feed": (settings.DISTILLED_SCORER_DIR, settings.DISTILLED_SCORER_COL),
+    }
+    for model, col in runs.values():
+        assert settings.DISTILLED_COLUMN_MODELS[col] == model

@@ -191,6 +191,29 @@ def test_account_war_heatmap_blanks_thin_cells(tmp_path):
     assert "war-post" in title.lower() and "score_opus" in title
 
 
+def test_war_figures_size_to_the_phases():
+    """Six phases since 2026-11-22, the last rolling with ANALYSIS_END: the
+    heatmap takes a column per phase plus the whole war, 1.1 in each (10 in
+    at five phases), and the weekly panels label every phase and run to the
+    last one's end."""
+    from config.timeline import PHASES
+
+    assert len(PHASES) == 6 and PHASES[-1][0] == "midterms, standoff"
+    heat = plots.plot_account_war_heatmap(_posts(), save=False)
+    ticks = [t.get_text() for t in heat.axes[0].get_xticklabels()]
+    assert len(ticks) == len(PHASES) + 1
+    assert ticks[-2].startswith("midterms,\nstandoff\nNov 2–")
+    assert heat.get_figwidth() == pytest.approx(3.4 + 1.1 * (len(PHASES) + 1))
+
+    weekly = plots.plot_tier_war_weekly(_posts(), save=False)
+    top = weekly.axes[0]
+    labels = {t.get_text() for t in top.texts}
+    assert labels >= {"midterm\nhold", "midterms,\nstandoff", "strikes,\nceasefire"}
+    assert len(labels & {plots._phase_lines(p[0]) for p in PHASES}) == len(PHASES)
+    end = pd.Timestamp(PHASES[-1][2]) + pd.Timedelta(days=1)
+    assert top.get_xlim()[1] == pytest.approx(mdates.date2num(end))
+
+
 def test_generate_all_writes_war_figures():
     written = {p.name for p in plots.generate_all(_posts(), score_cols=["score_opus"])}
     assert {"tier_war_weekly_score_opus.png", "account_war_phases_score_opus.png"} <= written

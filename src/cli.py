@@ -891,8 +891,12 @@ def probe_auth_cmd(post_id: str):
               help="Force the paced public API for incremental refresh (no login)")
 def collect_truth_cmd(force: bool, since_s: str | None, until_s: str | None,
                       handle: str | None, anonymous: bool):
-    """Collect Truth Social posts for the configured accounts."""
+    """Collect Truth Social posts for the configured accounts. Where a --force
+    re-read changes a cached post's text, its labels move to *_superseded
+    and its feed row loses its score first, as in ts-fill-text (refused
+    while score-posts writes the feed)."""
     from datetime import date as _date
+    from src.analysis.stance_local import ScoringInProgress
     from src.collectors.truthsocial_collector import collect_all, collect_user
 
     start = _date.fromisoformat(since_s) if since_s else settings.COLLECTION_START
@@ -909,15 +913,23 @@ def collect_truth_cmd(force: bool, since_s: str | None, until_s: str | None,
             (t for t, hs in TRUTH_SOCIAL_ACCOUNTS.items() if handle in hs),
             "admin",
         )
-        posts = collect_user(handle, tier, start=start, end=end, force=force,
-                             use_auth=False if anonymous else None)
+        try:
+            posts = collect_user(handle, tier, start=start, end=end, force=force,
+                                 use_auth=False if anonymous else None)
+        except ScoringInProgress as e:  # score-posts is writing the feed
+            click.secho(str(e), fg="red")
+            raise SystemExit(1) from None
         click.echo(f"@{handle} [{tier}]: {len(posts)} posts")
         return
 
     if anonymous:
         from config import settings as _s
         _s.TS_PREFER_AUTH = False
-    summary = collect_all(TRUTH_SOCIAL_ACCOUNTS, start=start, end=end, force=force)
+    try:
+        summary = collect_all(TRUTH_SOCIAL_ACCOUNTS, start=start, end=end, force=force)
+    except ScoringInProgress as e:  # score-posts is writing the feed: the run stops there
+        click.secho(str(e), fg="red")
+        raise SystemExit(1) from None
     total = sum(summary.values())
     click.echo(f"\nCollected {total} total posts across {len(summary)} accounts:")
     for h, count in sorted(summary.items(), key=lambda x: -x[1]):
@@ -975,7 +987,13 @@ def ts_fill_text_cmd(handle: str, estimate: bool, limit: int | None):
         click.echo(f"\nRead {r['requests']}: {kinds(r['kinds'])}")
         if stopped:
             click.secho(f"Stopped early: {stopped}. Rerun to resume from the journal.", fg="red")
-    a = tf.apply(handle)
+    from src.analysis.stance_local import ScoringInProgress
+
+    try:
+        a = tf.apply(handle)
+    except ScoringInProgress as e:  # score-posts is writing the feed; the journal is kept
+        click.secho(f"{e}; the journal is kept, rerun to apply it.", fg="red")
+        raise SystemExit(1) from None
     click.echo(f"\nJournal for @{handle}: {kinds(a['kinds'])}")
     click.echo(f"Applied: {a['changed']} records rewritten, {a['text_gained']} of them gained "
                f"text and {a['text_dropped']} lost a bare quote fallback "
@@ -993,12 +1011,7 @@ def ts_fill_text_cmd(handle: str, estimate: bool, limit: int | None):
         click.secho(f"{len(a['drifted'])} cached posts changed since they were read; left alone.",
                     fg="yellow")
     if a["text_gained"] or a["text_dropped"]:
-        moved_check = any(k.startswith("teacher_check_trump") for k in a["labels_moved"])
-        click.echo("Next: score-posts on the feed (the score-trump-feed Job; it rescores the "
-                   "cleared rows with text), topic-label estimate|submit|status|collect, "
-                   + ("teacher-check --source trump (paid: estimate and ask; refills the "
-                      "sample), " if moved_check else "")
-                   + "phases --source trump, export-web, backup.")
+        click.echo(tf.next_steps(a["labels_moved"]))
     if stopped:
         raise SystemExit(1)
 
@@ -1224,15 +1237,27 @@ def event_study_cmd(slug: str | None, window_hours: int, score: str | None,
             )
             return
 
+        from config.timeline import ANALYSIS_END, ANALYSIS_START, EVENTS
         from src.analysis.sentiment import load_scored
-        from config.timeline import EVENTS
 
         df_bcast = load_scored()
+        day = pd.to_datetime(df_bcast["created_at"], utc=True).dt.date
+        n_in = int(((day >= ANALYSIS_START) & (day <= ANALYSIS_END)).sum())
         click.echo(f"\n{'='*70}")
-        click.echo(f"BROADCASTER EVENT WINDOWS (±{window_hours}h on {len(df_bcast)} posts)")
+        click.echo(
+            f"BROADCASTER EVENT WINDOWS (±{window_hours}h on {n_in} posts, "
+            f"{ANALYSIS_START} to {ANALYSIS_END} UTC)"
+        )
         click.echo(f"{'='*70}")
 
-        results = compare_events(df_bcast, EVENTS, window_hours=window_hours, score_col=score)
+        results = compare_events(
+            df_bcast,
+            EVENTS,
+            window_hours=window_hours,
+            score_col=score,
+            start=ANALYSIS_START,
+            end=ANALYSIS_END,
+        )
         if results.empty:
             click.secho("(no events had any data in window)", fg="yellow")
             return
@@ -1246,10 +1271,16 @@ def event_study_cmd(slug: str | None, window_hours: int, score: str | None,
             ci = f"[{row['diff_ci_low']:+.2f}, {row['diff_ci_high']:+.2f}]"
             diff_ci = f"{row['diff']:+.3f} {ci}"
             label = (row["event_label"][:34] + "..") if len(row["event_label"]) > 36 else row["event_label"]
+            mark = " *" if row["cut"] else ""
             click.echo(
                 f"{row['event_date']:10s}  {label:36s}  "
                 f"{int(row['n_pre']):>5d} {int(row['n_post']):>6d}  "
-                f"{row['mean_pre']:+7.3f} {row['mean_post']:+7.3f}  {diff_ci:>22s}"
+                f"{row['mean_pre']:+7.3f} {row['mean_post']:+7.3f}  {diff_ci:>22s}{mark}"
+            )
+        if results["cut"].any():
+            click.echo(
+                f"\n* window runs past {ANALYSIS_START} to {ANALYSIS_END} (ANALYSIS_START / "
+                "ANALYSIS_END): its pre or post side is short, not a full window"
             )
         click.echo(f"\nscore col: {results.iloc[0]['score_col']}")
 
@@ -1657,6 +1688,8 @@ def _trump_check(n: int | None, model: str, estimate: bool, yes: bool, batch: st
             _refuse_open_batch("trump", "a new batch" if batch else "a direct run")
     _refuse_over_cap(est["todo"], est["cap"],
                      "raise TRUMP_TEACHER_CHECK_MAX_CALLS deliberately or lower --n")
+    if not est["todo"]:
+        click.echo("nothing to label: each of these posts has a label made from its text now")
     if estimate and est["todo"] and n is None:
         click.echo("then: teacher-check --source trump --merge (score_opus on the feed)")
     if estimate or not _confirm_paid(est["todo"], yes):
@@ -1743,15 +1776,33 @@ def stance_local_llm_cmd(model: str, n: int, thinking: bool, max_new_tokens: int
 
 
 @main.command("score-distilled")
-@click.option("--model-dir", default=None, help="Model directory (default MODELS_DIR/stance_distilled)")
-@click.option("--col", default="score_distilled", show_default=True, help="Output column")
-@click.option("--max-len", type=int, default=None,
-              help="Token cap at inference (default: the model's training length, recipe.txt)")
+@click.option(
+    "--model-dir",
+    default=None,
+    help=f"Model directory (default MODELS_DIR/{settings.DISTILLED_SCORER_DIR}, "
+    "the scorer of record)",
+)
+@click.option(
+    "--col", default=settings.DISTILLED_SCORER_COL, show_default=True, help="Output column"
+)
+@click.option(
+    "--max-len",
+    type=int,
+    default=None,
+    help="Token cap at inference (default: the model's training length, recipe.txt)",
+)
 def score_distilled_cmd(model_dir: str | None, col: str, max_len: int | None):
-    """Score every cached reply with a distilled model (population-level stance)."""
+    """Score every cached reply with a distilled model (population-level stance).
+    A column recorded (reply_sentiment_columns.json) or known
+    (settings.DISTILLED_COLUMN_MODELS) as another model's is refused."""
     from pathlib import Path as _P
-    from src.analysis.stance_local import score_replies
-    df = score_replies(_P(model_dir) if model_dir else None, col=col, max_len=max_len)
+    from src.analysis.stance_local import ScoringRefused, score_replies
+
+    try:
+        df = score_replies(_P(model_dir) if model_dir else None, col=col, max_len=max_len)
+    except ScoringRefused as e:  # another model's column, a reply model, no model there
+        click.secho(str(e), fg="red")
+        sys.exit(1)
     click.echo(df.groupby("tracked_slug")[col].agg(["mean", "count"]).round(3).to_string())
 
 
@@ -2001,15 +2052,43 @@ def _score_coverage(df, score: str) -> tuple[int, int]:
     "(the pattern, loose), or either (Haiku OR the pattern)",
 )
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
-def phases(source: str, group: str, score: str | None, topic_source: str, n_boot: int):
+@click.option(
+    "--weights",
+    type=click.Choice(["none", "design", "volume"]),
+    default=lambda: settings.PHASE_WEIGHTS,
+    show_default="settings.PHASE_WEIGHTS, none (the record)",
+    help="Window weights for sampled X accounts (src/analysis/window_weights.py): none (every "
+    "post weighs 1, the record), volume (X's count over the posts held in each 35 h window: "
+    "accounts count by their real output) or design (each window weighs as its cap: dense "
+    "stretches count like 5-a-window ones). Weighted runs write CSVs suffixed by the weighting",
+)
+def phases(
+    source: str, group: str, score: str | None, topic_source: str, n_boot: int, weights: str
+):
     """Stance by phase with account-day block-bootstrap 95% CIs, split into
     war posts and the rest, and each phase's change from the first split into
-    topic-share and on-war stance effects. Writes CSVs to data/processed/."""
+    topic-share and on-war stance effects. Writes CSVs to data/processed/
+    (suffixed _<weighting>-weighted under --weights design|volume, so the raw
+    files of record are never overwritten)."""
     from src.analysis import inference as inf
     from src.analysis.post_labels import column_owner
 
     df, score, default_group = _phase_frame(source, score)
     group = default_group or group
+    weighted = weights != "none"
+    if weighted:
+        from src.analysis import window_weights as ww
+
+        df, wtable = ww.attach(df, weights)
+        if source == "trump":
+            click.secho(
+                "Trump's feed is read whole (no window grid): every post weighs 1, so these "
+                "figures are the raw ones",
+                fg="yellow",
+            )
+        else:
+            for line in ww.summary(wtable, weights):
+                click.echo(line)
     # A post-label column holds only the posts its job labels: every all-post
     # and share figure would be a figure over those under the same name.
     owner = column_owner(score)
@@ -2046,12 +2125,44 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
     except FileNotFoundError as e:  # --topic opus before any stance-topic label
         click.secho(str(e), fg="red")
         sys.exit(1)
+    if weighted:
+        try:
+            ww.require(d)
+        except ww.WeightsUnavailable as e:
+            click.secho(str(e), fg="red")
+            sys.exit(1)
     boot = inf.bootstrap_cells(d, score, n_boot=n_boot)
     stats, contrasts = inf.phase_stats(boot), inf.phase_contrasts(boot)
     gaps = inf.phase_gaps(boot, settings.PHASE_GAPS) if group == "tier" else pd.DataFrame()
     if war_only:
         stats, contrasts, gaps = (inf.war_posts_only(t) for t in (stats, contrasts, gaps))
     tag = f"{source}_{group}_{score}_{topic_source}"
+    if weighted:
+        tag += f"_{weights}-weighted"
+        war_col = (
+            "war is the war posts' count"
+            if war_only
+            else "war is the weighted war share (as the means)"
+        )
+        click.echo(
+            f"\n{weights}-weighted (raw is the record): means and shares are weighted; n is "
+            f"the post count, {war_col}, eff the war posts' effective number (Kish)"
+        )
+        if group == "tier" and source == "x":
+            click.echo("Largest account share of each tier's war posts, raw -> weighted:")
+            sh = ww.account_shares(d)
+            for (g, p), t in sh.groupby(["group", "phase"], observed=True, sort=True):
+                top = t.loc[t["share"].idxmax()]
+                top_w = t.loc[t["share_w"].idxmax()]
+                also = (
+                    f" (largest weighted: @{top_w['user']} {top_w['share_w']:.0%})"
+                    if top_w["user"] != top["user"]
+                    else ""
+                )
+                click.echo(
+                    f"  {g:22s}{p!s:22s}@{top['user']:16s}{top['share']:>5.0%} -> "
+                    f"{top['share_w']:.0%}{also}"
+                )
     stats.to_csv(settings.PROCESSED_DIR / f"phases_{tag}.csv", index=False)
     contrasts.to_csv(settings.PROCESSED_DIR / f"phase_contrasts_{tag}.csv", index=False)
     if not gaps.empty:
@@ -2078,10 +2189,14 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
                 f"{topic_source} phases",
                 fg="yellow",
             )
-        click.echo(f"\n{'group':22s}{'phase':22s}{'n':>6s}{'war':>6s}  {'war posts only':24s}")
+        eff = f"{'eff':>7s}" if weighted else ""
+        click.echo(
+            f"\n{'group':22s}{'phase':22s}{'n':>6s}{'war':>6s}{eff}  {'war posts only':24s}"
+        )
         for _, r in stats.iterrows():
+            e = f"{r['neff_on']:>7.0f}" if weighted else ""
             click.echo(
-                f"{r['group']:22s}{r['phase']!s:22s}{r['n']:>6d}{r['n_on']:>6d}  "
+                f"{r['group']:22s}{r['phase']!s:22s}{r['n']:>6d}{r['n_on']:>6d}{e}  "
                 f"{_fmt_ci(r, 'mean_on'):24s}"
             )
         click.echo("\nWar-post stance change from the first phase:")
@@ -2095,9 +2210,11 @@ def phases(source: str, group: str, score: str | None, topic_source: str, n_boot
     click.echo(f"\n{len(d)} posts, {score}, topic={topic_source}: {chk['on_topic_share']:.0%} about the war; "
                f"mean |stance| {chk['mean_abs_on']:.2f} on vs {chk['mean_abs_off']:.2f} off; "
                f"{chk['strong_captured']:.0%} of |stance|>=0.3 posts are flagged on-war")
-    click.echo(f"\n{'group':22s}{'phase':22s}{'n':>6s}{'war':>6s}  {'all posts':24s}  {'war posts only':24s}")
+    eff = f"{'eff':>7s}" if weighted else ""
+    click.echo(f"\n{'group':22s}{'phase':22s}{'n':>6s}{'war':>6s}{eff}  {'all posts':24s}  {'war posts only':24s}")
     for _, r in stats.iterrows():
-        click.echo(f"{r['group']:22s}{str(r['phase']):22s}{r['n']:>6d}{r['share']:>6.0%}  "
+        e = f"{r['neff_on']:>7.0f}" if weighted else ""
+        click.echo(f"{r['group']:22s}{str(r['phase']):22s}{r['n']:>6d}{r['share']:>6.0%}{e}  "
                    f"{_fmt_ci(r, 'mean_all'):24s}  {_fmt_ci(r, 'mean_on'):24s}")
     click.echo(f"\nChange from the first phase (all = share + on-war + off-war effects):")
     click.echo(f"{'group':22s}{'phase':22s}{'all':24s}{'share effect':24s}{'war-post stance change':24s}")
@@ -2378,16 +2495,37 @@ def topic_label_cmd(action: str, yes: bool, results_file: str | None, retry_unju
 @main.command("score-posts")
 @click.argument("inputs", nargs=-1, required=True, type=click.Path(exists=True))
 @click.option("--out", required=True, type=click.Path(), help="Output parquet")
-@click.option("--model-dir", default=None, help="Distilled model dir (default MODELS_DIR/stance_distilled)")
-@click.option("--col", default="score_opus_distilled", show_default=True)
-@click.option("--max-len", type=int, default=None,
-              help="Token cap at inference (default: the model's training length, recipe.txt)")
+@click.option(
+    "--model-dir",
+    default=None,
+    help=f"Distilled model dir (default MODELS_DIR/{settings.DISTILLED_SCORER_DIR}, "
+    "the scorer of record)",
+)
+@click.option("--col", default=settings.DISTILLED_SCORER_COL, show_default=True)
+@click.option(
+    "--max-len",
+    type=int,
+    default=None,
+    help="Token cap at inference (default: the model's training length, recipe.txt)",
+)
 def score_posts_cmd(inputs, out: str, model_dir: str | None, col: str, max_len: int | None):
-    """Score raw JSONL post files (e.g. Trump's Truth Social feed) with a distilled model (GPU)."""
+    """Score raw JSONL post files (e.g. Trump's Truth Social feed) with a distilled model (GPU).
+    A column recorded (the _columns.json beside --out) or known
+    (settings.DISTILLED_COLUMN_MODELS) as another model's is refused."""
     from pathlib import Path as _P
-    from src.analysis.stance_local import score_post_file
-    df = score_post_file([_P(i) for i in inputs], _P(out), _P(model_dir) if model_dir else None,
-                         col=col, max_len=max_len)
+    from src.analysis.stance_local import ScoringRefused, score_post_file
+
+    try:
+        df = score_post_file(
+            [_P(i) for i in inputs],
+            _P(out),
+            _P(model_dir) if model_dir else None,
+            col=col,
+            max_len=max_len,
+        )
+    except ScoringRefused as e:  # another model's column, no model there
+        click.secho(str(e), fg="red")
+        sys.exit(1)
     click.echo(f"{len(df)} posts -> {out}; mean {col} = {df[col].mean():+.3f}")
 
 

@@ -160,3 +160,66 @@ def test_replies_says_when_fresh_draws_are_pooled(tmp_path, monkeypatch, caplog)
             assert "rests on the 130 first draws only" in caplog.text
             assert "WARNING" in caplog.text
             assert ("is False" in caplog.text) is (not flag)
+
+
+def _tier_posts() -> pd.DataFrame:
+    """The administration on one war post and one off-topic post a day: war
+    posts at +0.4 in the strike phase, +0.2 in the midterm hold and -0.5 in
+    phase 6, off-topic posts at 0."""
+    rows = []
+    for phase, days, war in (
+        ("strikes, ceasefire", pd.date_range("2026-03-02", periods=6), 0.4),
+        ("midterm hold", pd.date_range("2026-10-05", periods=6), 0.2),
+        ("midterms, standoff", pd.date_range("2026-11-09", periods=6), -0.5),
+    ):
+        for day in days:
+            for text, score in (("Strikes on Iran tonight", war), ("Great golf", 0.0)):
+                rows.append(
+                    {
+                        "id": str(len(rows)),
+                        "user": "aide",
+                        "tier": "admin",
+                        "created_at": pd.Timestamp(day, tz="UTC") + pd.Timedelta(hours=12),
+                        "text": text,
+                        "score_opus": score,
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+def test_decomposition_keeps_its_phase_as_phases_are_added(tmp_path, monkeypatch):
+    """Phase 6 is the last phase and grows with ANALYSIS_END: decomposition.json
+    stays the post's contrast, strikes -> settings.WEB_DECOMPOSITION_PHASE
+    ("midterm hold"), until the setting is switched, and a label that is no
+    phase is refused before export-web writes a file."""
+    monkeypatch.setattr(settings, "PROCESSED_DIR", tmp_path)  # no topic labels: keyword flag
+    monkeypatch.setattr(settings, "TOPIC_SOURCE", "either")
+    assert settings.WEB_DECOMPOSITION_PHASE == "midterm hold"
+    assert we.inf.PHASE_ORDER[-1] == "midterms, standoff"
+    d = we.inf.prepare(_tier_posts(), "score_opus")
+
+    def total() -> float:
+        rows = we.decomposition(d, "score_opus")
+        assert {r["tier"] for r in rows} == {"Administration"} and len(rows) == 3
+        return rows[0]["total"]
+
+    assert total() == pytest.approx(0.1 - 0.2)  # all-post means: 0.2 -> 0.1
+    monkeypatch.setattr(settings, "WEB_DECOMPOSITION_PHASE", "midterms, standoff")
+    assert total() == pytest.approx(-0.25 - 0.2)  # the owner's switch takes effect
+
+    monkeypatch.setattr(settings, "WEB_DECOMPOSITION_PHASE", "midterm holds")
+    with pytest.raises(ValueError, match="'midterm holds' is not a phase"):
+        we.decomposition(d, "score_opus")
+    # the first phase is every contrast's base: phase_contrasts has no row for
+    # it, so it would export an empty chart
+    monkeypatch.setattr(settings, "WEB_DECOMPOSITION_PHASE", we.inf.PHASE_ORDER[0])
+    with pytest.raises(ValueError, match="is the first phase"):
+        we.decomposition(d, "score_opus")
+    with pytest.raises(ValueError, match="WEB_DECOMPOSITION_PHASE"):
+        we.export(tmp_path / "web_base")
+    assert not (tmp_path / "web_base").exists()
+    monkeypatch.setattr(settings, "WEB_DECOMPOSITION_PHASE", "midterm holds")
+    out = tmp_path / "web"
+    with pytest.raises(ValueError, match="WEB_DECOMPOSITION_PHASE"):
+        we.export(out)
+    assert not out.exists()  # refused before any file

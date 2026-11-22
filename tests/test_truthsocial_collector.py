@@ -23,6 +23,12 @@ def _post(i, when):
 def cache(tmp_path, monkeypatch):
     monkeypatch.setattr(ts, "RAW_DIR", tmp_path)
     monkeypatch.setattr(ts, "_account_cache_path", lambda h: tmp_path / f"{h}.jsonl")
+    # a forced merge moves labels and clears feed rows: never the real data/
+    proc = tmp_path / "processed"
+    proc.mkdir()
+    monkeypatch.setattr(ts.settings, "PROCESSED_DIR", proc)
+    monkeypatch.setattr(ts.settings, "TRUMP_FEED_STANCE", proc / "truthsocial_trump_stance.parquet")
+    monkeypatch.setattr(ts.settings, "SENTIMENT_OUTPUT", proc / "sentiment_all.parquet")
     return tmp_path / "t.jsonl"
 
 
@@ -136,6 +142,188 @@ def test_force_walk_cut_by_429_merges(cache, monkeypatch):
     fetched = {p["id"]: p for p in got if p["text"].startswith("s")}  # server's versions
     assert len(fetched) == 80 and min(fetched, key=int) == "1120"
     assert all(p["tier"] == "admin" for p in fetched.values())
+
+
+# ── a forced walk that changes a cached post's text moves its labels ──
+
+
+def _labelled(cache):
+    """Posts 1-3 cached, labelled in every cache that holds Truth Social ids
+    and scored on the feed; returns the label cache paths."""
+    import pandas as pd
+
+    from src.analysis import topic_label as tl
+
+    t0 = datetime(2026, 4, 1, tzinfo=UTC)
+    old = [_post(i, t0 + timedelta(days=i)) for i in (1, 2, 3)]
+    cache.write_text("".join(json.dumps(p) + "\n" for p in old))
+    proc = ts.settings.PROCESSED_DIR
+    paths = {
+        "topic": tl.labels_path(),
+        "check": proc / "teacher_check_trump_claude-opus-5.parquet",
+        "rater": proc / "post_labels_stance-topic_claude-opus-5.parquet",
+    }
+    ids = ["1", "2", "3"]
+    pd.DataFrame({"id": ids, "about_war": [True] * 3}).to_parquet(paths["topic"])
+    pd.DataFrame({"id": ids, "score_teacher": [0.5] * 3}).to_parquet(paths["check"])
+    pd.DataFrame({"id": ids, "topic_opus": ["iran_war"] * 3}).to_parquet(paths["rater"])
+    feed = pd.DataFrame(old)[["id", "user", "created_at", "text"]]
+    feed = feed.assign(score_opus_distilled=0.3, score_opus=0.6, label_opus="pro")
+    feed.to_parquet(ts.settings.TRUMP_FEED_STANCE, index=False)
+    return t0, paths
+
+
+def test_force_moves_labels_only_of_posts_whose_text_changed(cache, monkeypatch, caplog):
+    import numpy as np
+    import pandas as pd
+
+    from src.superseded import superseded_path
+
+    t0, paths = _labelled(cache)
+    # 1 read again unchanged, 2 with new text, 4 new; 3 not returned (kept)
+    walk = [
+        _post(4, t0 + timedelta(days=4)),
+        {**_post(2, t0 + timedelta(days=2)), "text": "RT @SecWar: Iran must never get the bomb"},
+        _post(1, t0 + timedelta(days=1)),
+    ]
+    monkeypatch.setattr(ts, "collect_via_public_api", _fake_walk(walk, True))
+    with caplog.at_level("WARNING", logger=ts.logger.name):
+        ts.collect_user("t", "admin", start=date(2026, 2, 1), end=date(2026, 9, 14), force=True)
+    # the hint names what redoes each moved file: Trump's stance of record and
+    # the topic flag of record, not only score-posts and the Haiku topic labels
+    hint = next(r.getMessage() for r in caplog.records if "re-read posts have new text" in r.msg)
+    assert "Next: score-posts on the feed" in hint
+    assert "teacher-check --source trump --all (paid: estimate and ask), then --merge" in hint
+    assert "--job stance-topic-census (paid: estimate and ask)" in hint
+
+    on_disk = {json.loads(x)["id"]: json.loads(x) for x in cache.read_text().splitlines()}
+    assert on_disk["2"]["text"] == walk[1]["text"] and on_disk["3"]["text"] == "p3"
+    for path in paths.values():
+        assert sorted(pd.read_parquet(path)["id"]) == ["1", "3"]
+        arch = pd.read_parquet(superseded_path(path))
+        assert list(arch["id"]) == ["2"]
+        assert set(arch["superseded_reason"]) == {ts.FORCED_SUPERSEDED_REASON}
+    f = pd.read_parquet(ts.settings.TRUMP_FEED_STANCE).set_index("id")
+    assert f.loc["2", "text"] == walk[1]["text"]
+    assert f.loc["2", ["score_opus_distilled", "score_opus", "label_opus"]].isna().all()
+    assert (f.loc[["1", "3"], "score_opus"] == 0.6).all()  # unchanged text: untouched
+    old = pd.read_parquet(superseded_path(ts.settings.TRUMP_FEED_STANCE))
+    assert list(old["id"]) == ["2"] and old["text"].iloc[0] == "p2"
+    assert np.isclose(old["score_opus"].iloc[0], 0.6)
+
+    # the same walk again changes nothing and archives nothing twice
+    ts.collect_user("t", "admin", start=date(2026, 2, 1), end=date(2026, 9, 14), force=True)
+    for path in paths.values():
+        assert len(pd.read_parquet(superseded_path(path))) == 1
+    assert len(pd.read_parquet(superseded_path(ts.settings.TRUMP_FEED_STANCE))) == 1
+
+
+def test_a_forced_run_killed_before_its_cache_write_moves_nothing_twice(cache, monkeypatch):
+    # killed after the labels moved and the feed row was cleared, before the
+    # cache took the new text: the rerun finds the same change and moves
+    # nothing again (labels already gone, the cleared row has no score)
+    import pandas as pd
+
+    from src.superseded import superseded_path
+
+    t0, paths = _labelled(cache)
+    new = "RT @SecWar: Iran must never get the bomb"
+    walk = [{**_post(2, t0 + timedelta(days=2)), "text": new}]
+    monkeypatch.setattr(ts, "collect_via_public_api", _fake_walk(walk, True))
+    real = ts._save_jsonl
+
+    class Killed(Exception):
+        pass
+
+    def killed(path, records):
+        raise Killed
+
+    monkeypatch.setattr(ts, "_save_jsonl", killed)
+    with pytest.raises(Killed):
+        ts.collect_user("t", "admin", start=date(2026, 2, 1), end=date(2026, 9, 14), force=True)
+    cached = {json.loads(x)["id"]: json.loads(x) for x in cache.read_text().splitlines()}
+    assert cached["2"]["text"] == "p2"  # the old text is still cached
+    for path in paths.values():
+        assert sorted(pd.read_parquet(path)["id"]) == ["1", "3"]
+    assert pd.read_parquet(ts.settings.TRUMP_FEED_STANCE).set_index("id").loc["2", "text"] == new
+
+    monkeypatch.setattr(ts, "_save_jsonl", real)
+    ts.collect_user("t", "admin", start=date(2026, 2, 1), end=date(2026, 9, 14), force=True)
+    cached = {json.loads(x)["id"]: json.loads(x) for x in cache.read_text().splitlines()}
+    assert cached["2"]["text"] == new and cached["3"]["text"] == "p3"
+    for path in [*paths.values(), ts.settings.TRUMP_FEED_STANCE]:
+        assert list(pd.read_parquet(superseded_path(path))["id"]) == ["2"]
+    old = pd.read_parquet(superseded_path(ts.settings.TRUMP_FEED_STANCE))
+    assert old["text"].tolist() == ["p2"]  # the row as scored, not the cleared one
+    feed = pd.read_parquet(ts.settings.TRUMP_FEED_STANCE).set_index("id")
+    assert feed.loc["2", "text"] == new and pd.isna(feed.loc["2", "score_opus"])
+
+
+def _scoring(pid):
+    from src.analysis import stance_local as sl
+
+    marker = sl.scoring_marker(ts.settings.TRUMP_FEED_STANCE)
+    marker.write_text(json.dumps({"pid": pid, "started_at": "2026-11-22T00:00:00+00:00"}))
+    return marker
+
+
+def test_force_refused_while_score_posts_writes_the_feed(cache, monkeypatch):
+    import os
+
+    import pandas as pd
+
+    t0, paths = _labelled(cache)
+    before = cache.read_text()
+    changed = [{**_post(2, t0 + timedelta(days=2)), "text": "new words"}]
+
+    # running when the forced run starts: refused before the walk
+    marker = _scoring(os.getpid())
+    monkeypatch.setattr(
+        ts, "collect_via_public_api", lambda *a, **k: pytest.fail("walked while scoring")
+    )
+    with pytest.raises(RuntimeError, match="score-posts"):
+        ts.collect_user("t", "admin", force=True)
+
+    # started during the walk: refused at the merge, before anything moves
+    marker.unlink()
+
+    def walk(*a, **k):
+        _scoring(os.getpid())
+        return [dict(p) for p in changed]
+
+    walk.last_complete = True
+    monkeypatch.setattr(ts, "collect_via_public_api", walk)
+    with pytest.raises(RuntimeError, match="score-posts"):
+        ts.collect_user("t", "admin", force=True)
+    assert cache.read_text() == before
+    for path in paths.values():
+        assert sorted(pd.read_parquet(path)["id"]) == ["1", "2", "3"]
+    assert pd.read_parquet(ts.settings.TRUMP_FEED_STANCE)["score_opus"].notna().all()
+
+    # the CLI says so and exits 1
+    from click.testing import CliRunner
+
+    from src.cli import main
+
+    res = CliRunner().invoke(main, ["collect-truth", "--handle", "t", "--force"])
+    assert res.exit_code == 1 and "is writing truthsocial_trump_stance.parquet" in res.output
+    # every account at once: the refusal stops the run and exits 1, never a
+    # "0 posts" summary of caches it did not touch
+    from config.accounts import TRUTH_SOCIAL_ACCOUNTS
+
+    handles = [h for hs in TRUTH_SOCIAL_ACCOUNTS.values() for h in hs]
+    for h in handles:
+        (cache.parent / f"{h}.jsonl").write_text(before)
+    res = CliRunner().invoke(main, ["collect-truth", "--force"])
+    assert res.exit_code == 1 and "is writing truthsocial_trump_stance.parquet" in res.output
+    assert "Collected" not in res.output
+    assert all((cache.parent / f"{h}.jsonl").read_text() == before for h in handles)
+
+    # an incremental run only appends: not refused
+    monkeypatch.setattr(ts, "_has_truthbrush_creds", lambda: False)
+    monkeypatch.setattr(ts, "collect_via_public_api", _fake_walk([], True))
+    got = ts.collect_user("t", "admin", start=date(2026, 2, 1), end=date(2026, 9, 14))
+    assert len(got) == 3
 
 
 # ── page walker against a stubbed HTTP layer ───────────────────────

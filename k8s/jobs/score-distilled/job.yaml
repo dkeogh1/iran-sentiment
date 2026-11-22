@@ -29,7 +29,7 @@ spec:
         - name: score-distilled
           image: iran-sentiment
           imagePullPolicy: IfNotPresent
-          args: ['score-distilled']
+          args: ['score-distilled', '--model-dir', '/data/models/stance_distilled', '--col', 'score_distilled']
           envFrom:
             - secretRef:
                 name: iran-sentiment-env

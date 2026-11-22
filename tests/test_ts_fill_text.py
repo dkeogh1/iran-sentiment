@@ -17,6 +17,15 @@ from src.collectors import ts_fill_text as tf
 H = "realDonaldTrump"
 
 
+def _stand_in_model():
+    """The scorer of record's dir with a stand-in fit: score-posts checks it
+    is there and records its weights; the scoring itself is stubbed."""
+    model = sl.distilled_scorer_dir()
+    model.mkdir(parents=True, exist_ok=True)
+    (model / "config.json").write_text("{}")
+    (model / "model.safetensors").write_bytes(b"w")
+
+
 @pytest.fixture
 def data(tmp_path, monkeypatch):
     raw, proc = tmp_path / "raw", tmp_path / "processed"
@@ -336,6 +345,7 @@ def test_score_posts_rescores_only_filled_posts_and_topic_label_sees_them(data, 
         return np.full(len(texts), -0.6)
 
     monkeypatch.setattr(sl, "score_with_distilled", fake_score)
+    _stand_in_model()
     out = sl.score_post_file([tf.cache_path(H)], settings.TRUMP_FEED_STANCE, max_len=256)
     assert sent == [[QUOTE_TEXT, RT_TEXT]]
     s = out.set_index("id")["score_opus_distilled"]
@@ -426,7 +436,7 @@ def test_bare_fallback_quotes_take_the_quoted_text_or_leave(data, monkeypatch):
         res.output
     )
     assert "(1 of them with text, which counts twice)" in res.output
-    assert "teacher-check --source trump (paid" in res.output
+    assert "teacher-check --source trump --all (paid: estimate and ask), then --merge" in res.output
 
     c = _cache()
     assert c["108"] == {
@@ -466,6 +476,7 @@ def test_bare_fallback_quotes_take_the_quoted_text_or_leave(data, monkeypatch):
         return np.full(len(texts), -0.6)
 
     monkeypatch.setattr(sl, "score_with_distilled", fake_score)
+    _stand_in_model()
     out = sl.score_post_file([tf.cache_path(H)], settings.TRUMP_FEED_STANCE, max_len=256)
     assert sorted(sent[0]) == sorted([QUOTE_TEXT, RT_TEXT, c["108"]["text"]])
     s = out.set_index("id")["score_opus_distilled"]
@@ -506,6 +517,54 @@ def test_apply_killed_before_the_cache_write_finishes_on_rerun(data, monkeypatch
         settings.PROCESSED_DIR / "truthsocial_trump_stance_superseded.parquet"
     )
     assert sorted(feed_arch["id"]) == ["102", "103", "108", "109"]  # each archived once
+
+
+def test_next_steps_name_what_redoes_each_moved_file():
+    base = tf.next_steps({})
+    assert base.startswith("Next: score-posts on the feed") and "topic-label" in base
+    assert "teacher-check" not in base and "post-label" not in base
+    hint = tf.next_steps(
+        {
+            "topic_labels.parquet": 2,
+            "teacher_check_trump_claude-opus-5.parquet": 1,
+            "post_labels_stance-topic_claude-opus-5.parquet": 2,
+            "post_labels_rater_claude-opus-5-5.parquet": 1,
+        }
+    )
+    assert "teacher-check --source trump --all (paid: estimate and ask), then --merge" in hint
+    assert "--job rater (paid" in hint and "--job stance-topic-census (paid" in hint
+    assert "--job stance-topic (paid" not in hint  # the census relabels every post
+    assert hint.endswith("phases --source trump, export-web, backup.")
+
+
+def test_apply_refused_while_score_posts_writes_the_feed(data, monkeypatch):
+    import os
+
+    recs = CACHED + FALLBACK
+    _write_cache(recs)
+    before = tf.cache_path(H).read_text()
+    feed = pd.DataFrame(recs)[["id", "user", "tier", "platform", "created_at", "text"]]
+    feed.assign(score_opus_distilled=0.2).to_parquet(settings.TRUMP_FEED_STANCE, index=False)
+    _labels(["108"], about_war=False).to_parquet(tl.labels_path())
+    marker = sl.scoring_marker(settings.TRUMP_FEED_STANCE)
+    marker.write_text(json.dumps({"pid": os.getpid(), "started_at": "2026-11-22T00:00:00+00:00"}))
+
+    with pytest.raises(RuntimeError, match="score-posts"):  # the guard on the writer itself
+        tf.clear_feed_scores({"108": "new"})
+    monkeypatch.setattr(ts, "_ts_get", FallbackServer())
+    res = _run()
+    assert res.exit_code == 1 and "the journal is kept, rerun to apply it" in res.output
+    # refused before anything moved: labels, feed and cache as they were
+    assert list(pd.read_parquet(tl.labels_path())["id"]) == ["108"]
+    assert pd.read_parquet(settings.TRUMP_FEED_STANCE)["score_opus_distilled"].notna().all()
+    assert tf.cache_path(H).read_text() == before
+
+    marker.unlink()  # score-posts ended: the rerun applies the journal, no read again
+    monkeypatch.setattr(ts, "_ts_get", _forbidden)
+    res = _run()
+    assert res.exit_code == 0, res.output
+    assert "4 feed rows cleared (4 archived)" in res.output
+    assert tl.labels_path().exists() and pd.read_parquet(tl.labels_path()).empty
 
 
 def test_failed_reads_that_never_clear_do_not_stall_the_rest(data, monkeypatch):

@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Move data between dkbl1's data/ (source of truth) and the PVC on dkbl2.
 #   sync-data.sh push    # sentiment_all (+ _superseded) / reply_sentiment (+ its _columns.json) / stance_sample /
-#                        # teacher_labels_replies_* / teacher_check_* / truthsocial_trump_stance parquet,
+#                        # teacher_labels_replies_* / teacher_check_* / truthsocial_trump_stance parquet (+ its
+#                        # _columns.json),
 #                        # raw/truthsocial/*.jsonl, models/stance_distilled_final* -> PVC
 #   sync-data.sh pull    # models/ (final dirs whole, other dirs their result files), teacher_check_*, local_llm_*,
-#                        # truthsocial_trump_stance.parquet, reply_sentiment.parquet (+ _columns.json) <- PVC; then verify
+#                        # truthsocial_trump_stance.parquet and reply_sentiment.parquet (each + _columns.json) <- PVC;
+#                        # then verify
 #   sync-data.sh verify  # checksum dry-run of the pull set; lists anything on dkbl1 that differs from the PVC
 #
 # Goes over SSH straight into the PVC's local-path directory on dkbl2, not
@@ -48,7 +50,8 @@ RSYNC=(rsync -acW --partial --bwlimit="$BWLIMIT" --human-readable --info=progres
 # result files (the trainer and CV dirs are large and reproducible).
 MODEL_FILTER=(--include='/stance_distilled_final*/***' --include='/*/' --include='/*/*.json' --include='/*/*.parquet' --exclude='*')
 PROCESSED_FILTER=(--include='teacher_check_*' --include='local_llm_*' --include='truthsocial_trump_stance.parquet' --include='reply_sentiment.parquet'
-                  --include='reply_sentiment_columns.json' --exclude='*')
+                  --include='reply_sentiment_columns.json' --include='truthsocial_trump_stance_columns.json'
+                  --exclude='*')
 
 verify() {
     # Itemised checksum dry-run; only file lines count (directory mtimes may differ).
@@ -70,8 +73,9 @@ case "$MODE" in
     # sentiment_all_superseded holds the Haiku scores of the posts
     # x-backfill-text changed; without it the teacher-check Job resamples
     # (stance_local.training_frame) and pays for ~400 new calls.
-    # reply_sentiment_columns.json records which model wrote each reply-domain
-    # column (stance_local.reply_columns_path); it travels with the parquet.
+    # reply_sentiment_columns.json and truthsocial_trump_stance_columns.json
+    # record which model wrote each score column (stance_local.columns_path_for);
+    # each travels with its parquet.
     # teacher_check_* go up for the same reason as the feed: pull brings them
     # back, and a stale PVC copy (say, from before a host-side
     # `teacher-check --source trump --all` collect) would overwrite the paid
@@ -79,7 +83,8 @@ case "$MODE" in
     for f in data/processed/reply_sentiment.parquet data/processed/reply_sentiment_columns.json \
              data/processed/stance_sample.parquet data/processed/teacher_labels_replies_*.parquet \
              data/processed/teacher_check_* \
-             data/processed/truthsocial_trump_stance.parquet data/processed/sentiment_all_superseded.parquet; do
+             data/processed/truthsocial_trump_stance.parquet data/processed/truthsocial_trump_stance_columns.json \
+             data/processed/sentiment_all_superseded.parquet; do
         [ -f "$f" ] && files+=("$f"); done
     "${RSYNC[@]}" "${files[@]}" "$SYNC_HOST:$PVC_DIR/processed/"
     "${RSYNC[@]}" data/raw/truthsocial/*.jsonl "$SYNC_HOST:$PVC_DIR/raw/truthsocial/"

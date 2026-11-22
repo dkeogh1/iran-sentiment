@@ -505,6 +505,18 @@ def sweep(df: pd.DataFrame, *, recipes: list[dict] | None = None, folds: int = s
     return summary
 
 
+class ScoringRefused(ValueError):
+    """A scoring command's guard said no before anything was written (a
+    column that is another model's, a reply model, no model at the dir).
+    The CLI prints it as one line; every other error keeps its traceback."""
+
+
+def distilled_scorer_dir() -> Path:
+    """The distilled scorer of record (settings.DISTILLED_SCORER_DIR), the
+    default model of score-distilled and score-posts."""
+    return settings.MODELS_DIR / settings.DISTILLED_SCORER_DIR
+
+
 def score_with_distilled(texts: list[str], model_dir: Path | None = None,
                          batch_size: int = 64, max_len: int | None = None,
                          parents: list[str] | None = None) -> np.ndarray:
@@ -513,8 +525,9 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
     every image-only post a constant +0.111, i.e. pro-war). max_len defaults
     to the model's training length. A "ctx" reply model (reply_distill.json)
     takes `parents`, the post each text answers, and is fed the pairs as it
-    was trained (reply_inputs); any other model refuses them."""
-    model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    was trained (reply_inputs); any other model refuses them. model_dir
+    defaults to the scorer of record (distilled_scorer_dir)."""
+    model_dir = model_dir or distilled_scorer_dir()
     variant = reply_model_meta(model_dir).get("variant", "text")
     if (variant == "ctx") != (parents is not None):
         raise ValueError(f"{model_dir.name} was trained on {variant} inputs: "
@@ -561,17 +574,19 @@ def _to_score(df: pd.DataFrame, col: str) -> pd.Series:
     return df[col].isna() & df["text"].map(has_text)
 
 
-def score_replies(model_dir: Path | None = None, col: str = "score_distilled",
+def score_replies(model_dir: Path | None = None, col: str = settings.DISTILLED_SCORER_COL,
                   max_len: int | None = None) -> pd.DataFrame:
-    """Add `col` (scores from the model at model_dir) to reply_sentiment.parquet.
-    A reply-domain model goes through score_replies_with instead, which
-    records its column."""
-    model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    """Add `col` (scores from the model at model_dir, by default the scorer
+    of record) to reply_sentiment.parquet. `col` is recorded as this model's
+    (claim_distilled_column) and refused if it holds another's. A
+    reply-domain model goes through score_replies_with instead."""
+    model_dir = model_dir or distilled_scorer_dir()
     if reply_model_meta(model_dir):
-        raise ValueError(f"{model_dir.name} is a reply model: score it with score-replies-ctx")
+        raise ScoringRefused(f"{model_dir.name} is a reply model: score it with score-replies-ctx")
     max_len = max_len or model_max_len(model_dir)
     out = settings.REPLY_SENTIMENT_OUTPUT
     df = pd.read_parquet(out)
+    claim_distilled_column(df, col, model_dir, reply_columns_path())
     todo = _to_score(df, col)
     if todo.any():
         logger.info("scoring %d replies with %s -> %s (max_len %d)", int(todo.sum()),
@@ -662,11 +677,15 @@ def scoring_marker(out: Path) -> Path:
     return out.with_name(out.name + ".scoring")
 
 
+class ScoringInProgress(RuntimeError):
+    """refuse_while_scoring's refusal: a score-posts run is writing the file."""
+
+
 def refuse_while_scoring(out: Path, doing: str) -> None:
-    """Raises while a score-posts run (score_post_file) is writing `out`: it
-    read the file when it started and writes it back whole when it ends, so
-    anything written to `out` meanwhile would be lost. A marker whose
-    process is gone (a killed run) is ignored with a warning."""
+    """Raises ScoringInProgress while a score-posts run (score_post_file) is
+    writing `out`: it read the file when it started and writes it back whole
+    when it ends, so anything written to `out` meanwhile would be lost. A
+    marker whose process is gone (a killed run) is ignored with a warning."""
     marker = scoring_marker(out)
     if not marker.exists():
         return
@@ -685,7 +704,7 @@ def refuse_while_scoring(out: Path, doing: str) -> None:
         except PermissionError:
             alive = True
     if alive:
-        raise RuntimeError(
+        raise ScoringInProgress(
             f"score-posts (pid {pid}, since {info.get('started_at')}) is writing {out.name}: "
             f"it will write the file back as it read it, without {doing}. Run it after "
             "score-posts ends"
@@ -694,16 +713,20 @@ def refuse_while_scoring(out: Path, doing: str) -> None:
 
 
 def score_post_file(inputs: list[Path], out: Path, model_dir: Path | None = None,
-                    col: str = "score_opus_distilled", batch_size: int = 64,
+                    col: str = settings.DISTILLED_SCORER_COL, batch_size: int = 64,
                     max_len: int | None = None) -> pd.DataFrame:
-    """Score every record in the given JSONL files with a distilled model and
-    write id / user / tier / platform / created_at / text / <col> to `out`.
+    """Score every record in the given JSONL files with a distilled model (by
+    default the scorer of record) and write id / user / tier / platform /
+    created_at / text / <col> to `out`. `col` is recorded as this model's in
+    <out stem>_columns.json (claim_distilled_column; for Trump's feed the
+    record trump_merge keeps) and refused if it holds another's.
     Incremental: new ids are appended, and only rows without a `col` score
     are scored, so a new column scores every row and existing scores stay;
-    every other column (score_opus from `teacher-check --source trump
-    --merge`) is kept on the rows it is on. A stored row without text whose
-    record now has some (a ReTruth, once the feed is re-collected with the
-    reblogged text) takes it and is rescored. max_len defaults to the
+    every other column (score_opus / label_opus from `teacher-check --source
+    trump --merge`) is kept on the rows it is on. A stored row without text
+    whose record now has some (a ReTruth, once the feed is re-collected with
+    the reblogged text) takes it, loses every score_* and label_* (as
+    ts-fill-text clears them) and is rescored. max_len defaults to the
     model's training length. While it runs, <out>.scoring holds its pid
     (refuse_while_scoring), and `out` is written atomically at the end."""
     marker = scoring_marker(out)
@@ -724,7 +747,11 @@ def _score_post_file(
     batch_size: int,
     max_len: int | None,
 ) -> pd.DataFrame:
-    model_dir = model_dir or (settings.MODELS_DIR / "stance_distilled")
+    from src.superseded import score_columns
+
+    model_dir = model_dir or distilled_scorer_dir()
+    have = pd.read_parquet(out) if out.exists() else pd.DataFrame()
+    claim_distilled_column(have, col, model_dir, columns_path_for(out))
     max_len = max_len or model_max_len(model_dir)
     rows = []
     for path in inputs:
@@ -736,16 +763,16 @@ def _score_post_file(
                     continue
                 rows.append({k: r.get(k) for k in ("id", "user", "tier", "platform", "created_at", "text")})
     df = pd.DataFrame(rows).drop_duplicates("id")
-    have = pd.read_parquet(out) if out.exists() else pd.DataFrame()
     if not have.empty:
         fresh = df.set_index(df["id"].astype(str))["text"]
         fresh = fresh[~fresh.index.duplicated()]
         now = have["id"].astype(str).map(fresh)
         gained = ~have["text"].map(has_text) & now.map(has_text)
         if gained.any():
-            # Its old scores were of no text (the "." stand-in): drop them all.
+            # Its old scores and labels were of no text (the "." stand-in):
+            # drop them all.
             have.loc[gained, "text"] = now[gained]
-            have.loc[gained, [c for c in have if c.startswith("score_")]] = np.nan
+            have.loc[gained, score_columns(have)] = None
             logger.info("%d stored posts without text now have some: rescoring them",
                         int(gained.sum()))
     new = df[~df["id"].astype(str).isin(set(have["id"].astype(str)))] if not have.empty else df
@@ -1015,6 +1042,14 @@ def prompt_content(prompt: str, cache_chars: int = 0):
         return prompt
     return [{"type": "text", "text": prompt[:cache_chars], "cache_control": {"type": "ephemeral"}},
             {"type": "text", "text": prompt[cache_chars:]}]
+
+
+def str_column(values, index=None) -> pd.Series:
+    """values (prompts, None where none was built) as a string column, empty
+    or not. Under pandas 3 a column made from an empty list is float64 and
+    .str on it raises: a to-do frame with nothing left to label crashed its
+    estimate so (2026-11-22)."""
+    return pd.Series(list(values), index=index, dtype="str")
 
 
 def read_label_cache(path: Path, prompt_version: str | None = None) -> pd.DataFrame:
@@ -1340,7 +1375,7 @@ def reply_prompt_inputs(
         build(p, r) if ok else (None, 0)
         for p, r, ok in zip(j["parent_text"], j["text"], j["has_text"])
     ]
-    j["prompt"] = [b[0] for b in built]
+    j["prompt"] = str_column((b[0] for b in built), j.index)
     j["cache_chars"] = [b[1] for b in built]
     j["input_chars"] = j["text"].fillna("").str.len()
     j["prompt_version"] = prompt_version
@@ -1481,8 +1516,9 @@ def trump_check_todo(
     cached = read_label_cache(trump_labels_path(model), TRUMP_PROMPT_VERSION)
     done = current_label_ids(cached, sample.set_index("id")["text"].str.len())
     todo = sample[~sample["id"].isin(done)]
+    prompts = (llm_prompt(t, u) for t, u in zip(todo["text"], todo["user"]))
     todo = pd.DataFrame({"id": todo["id"],
-                         "prompt": [llm_prompt(t, u) for t, u in zip(todo["text"], todo["user"])],
+                         "prompt": str_column(prompts, todo.index),
                          "input_chars": todo["text"].str.len(),
                          "prompt_version": TRUMP_PROMPT_VERSION})
     return sample, cached, todo
@@ -2680,22 +2716,109 @@ def reply_column_entry(col: str) -> dict | None:
     return json.loads(path.read_text()).get(col) if path.exists() else None
 
 
-def _claim_column(df: pd.DataFrame, col: str, entry: dict) -> None:
-    """Record `col` as `entry`'s before any score is written. Refuses a column
-    that holds scores from a model the record lacks, or records as another:
-    never two scorers in one series (AGENTS.md)."""
-    path = reply_columns_path()
+def _claim_column(
+    df: pd.DataFrame,
+    col: str,
+    entry: dict,
+    path: Path | None = None,
+    known: dict | str | None = None,
+    adopt: tuple[str, ...] = (),
+) -> None:
+    """Record `col` as `entry`'s in `path` (default reply_columns_path) before
+    any score is written. `known` stands in for a column the record does not
+    name yet; an entry that lacks a key in `adopt` takes this claim's.
+    Refuses (ScoringRefused) a column that holds scores from a model the
+    record lacks, or records as another (a string: an LLM's labels, which
+    relabel.claim_column records): never two scorers in one series
+    (AGENTS.md)."""
+    path = path or reply_columns_path()
     reg = json.loads(path.read_text()) if path.exists() else {}
     entry = json.loads(json.dumps(entry))
-    held = reg.get(col)
+    held = reg.get(col) or known
+    llm = held if isinstance(held, str) else None  # relabel.claim_column's record
+    if llm:
+        raise ScoringRefused(f"{col} holds labels from {llm}: give these scores a new column")
     if held is None and col in df and df[col].notna().any():
-        raise ValueError(f"{col} already holds scores from a model {path.name} does not record: "
-                         "give these scores a new column")
-    if held is not None and {k: held.get(k) for k in entry} != entry:
-        who = f"{held.get('model_dir') or 'cross-fit'}, {held.get('recipe') or held.get('variant')}"
-        raise ValueError(f"{col} holds scores from another fit ({who}): give these a new column")
+        raise ScoringRefused(
+            f"{col} already holds scores from a model {path.name} does not record: "
+            "give these scores a new column"
+        )
+    if held is not None:
+        keys = [k for k in entry if not (k in adopt and held.get(k) is None)]
+        differ = [k for k in keys if held.get(k) != entry[k]]
+        if differ:
+            parts = (
+                held.get("model_dir") or "cross-fit",
+                held.get("recipe") or held.get("variant"),
+            )
+            who = ", ".join(str(v) for v in parts if v)
+            raise ScoringRefused(
+                f"{col} holds scores from another fit ({who}; its {', '.join(differ)} "
+                "differs): give these a new column"
+            )
     reg[col] = {**(held or {}), **entry}
     _write_json(path, reg)
+
+
+def columns_path_for(parquet: Path) -> Path:
+    """<stem>_columns.json beside a scored parquet: the record of the model
+    behind each score column (reply_columns_path and trump_columns_path are
+    this for the replies and Trump's feed)."""
+    return parquet.with_name(parquet.stem + "_columns.json")
+
+
+def model_weights_sha256(model_dir: Path) -> str:
+    """Which fit a saved model dir holds: sha256 over its config.json and
+    weights files (*.safetensors, pytorch_model*.bin at its top level), the
+    same on dkbl1 and in a Job. A dir a fit rewrites in place (stance_distilled,
+    every `stance-distill` run) changes it. Raises ScoringRefused for a dir
+    with no model (a mistyped --model-dir), before anything is recorded."""
+    model_dir = Path(model_dir)
+    weights = sorted([*model_dir.glob("*.safetensors"), *model_dir.glob("pytorch_model*.bin")])
+    if not (model_dir / "config.json").is_file() or not weights:
+        raise ScoringRefused(
+            f"no model at {model_dir} (it needs config.json and a weights file): check --model-dir"
+        )
+    h = hashlib.sha256()
+    for p in [model_dir / "config.json", *weights]:
+        with open(p, "rb") as f:
+            h.update(f"{p.name}\0{hashlib.file_digest(f, 'sha256').hexdigest()}\0".encode())
+    return h.hexdigest()
+
+
+def llm_label_columns() -> dict[str, str]:
+    """{column: model} for every score_<tag> / label_<tag> an LLM's labels
+    take (relabel merge, teacher-check --merge; settings.MODEL_TAGS and every
+    priced model's tag)."""
+    models = sorted(set(settings.MODEL_PRICES) | set(settings.MODEL_TAGS))
+    return {f"{kind}_{model_tag(m)}": m for m in models for kind in ("score", "label")}
+
+
+def claim_distilled_column(df: pd.DataFrame, col: str, model_dir: Path, path: Path) -> None:
+    """Record `col` in `path` as the posts model at model_dir's (score-distilled,
+    score-posts): its dir and weights (model_weights_sha256), or refuse
+    (ScoringRefused): no model at the dir, an LLM's label column
+    (llm_label_columns), a column recorded as another model's or as the
+    same dir refit since, one settings.DISTILLED_COLUMN_MODELS names for
+    another model dir, or one holding scores no record names
+    (score_opus_distilled_v0). A column first recorded takes the dir's
+    weights as they are then."""
+    llm = llm_label_columns().get(col)
+    if llm:
+        raise ScoringRefused(
+            f"{col} is the column of {llm}'s labels (score_<tag> / label_<tag>): "
+            "give these scores a new column"
+        )
+    entry = {
+        "source": "distill",
+        "model_dir": _model_ref(model_dir),
+        "weights_sha256": model_weights_sha256(model_dir),
+    }
+    held = settings.DISTILLED_COLUMN_MODELS.get(col)
+    known = (
+        {"source": "distill", "model_dir": held} if held else settings.SCORE_COLUMN_MODELS.get(col)
+    )
+    _claim_column(df, col, entry, path, known, adopt=("weights_sha256",))
 
 
 def _parents_for(df: pd.DataFrame, mask: pd.Series) -> list[str]:

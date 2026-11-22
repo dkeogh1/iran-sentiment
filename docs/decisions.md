@@ -4,6 +4,156 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-22: Optional window weights for the X series (raw stays the record)
+
+- **Decision (the owner's call, 2026-11-22):** `phases --weights
+  design|volume` (src/analysis/window_weights.py, `settings.PHASE_WEIGHTS`,
+  "none" by default); raw, every post weighing 1, stays the definition of
+  record, and the weighted CSVs and figures carry a `_<scheme>-weighted`
+  suffix, so a weighted run never overwrites a file of record. On the
+  x-archive fill's grid a sampled account's post in window w weighs
+  N_w / h_w (volume) or min(cap_w, N_w) / h_w (design); take-all accounts,
+  search rows and Trump's feed weigh 1. `visualize` and `export-web` take
+  no weights.
+- **Why:** a sampled account holds 5 posts a 35 h window on most of its
+  grid but every post where an earlier pull read it whole, so raw counts
+  its dense stretches many times over and a dense account over the rest
+  of its tier (STATUS *Uneven density*: @marklevinshow 86% of pro-war
+  MAGA's strike-phase war posts, @RealAlexJones 65% of anti-war MAGA's).
+- **Choices the owner should know:**
+  - h_w counts every post held in the window, with text or not (X's count
+    counts them all). N_w is X's hour count: a bucket wholly inside counts
+    whole; an edge bucket counts its posts held inside the window, plus
+    its posts held nowhere in that hour (X's count less the held) pro-rated
+    by overlap, so a held post at an edge counts only in the window that
+    holds it. (Pro-rating whole edge buckets counted those posts in both
+    windows: a lone read-whole @VP post weighed 2.09; fixed the same day.)
+    N_w is never under h_w: X counts the posts there now, and one deleted
+    since a pull read it is held but not counted (the 2026-11-02 probe found
+    that counts/all takes in retweets and matches the cache).
+  - A window with no cached count is weighted only where the weight needs
+    none (a collect window whose manifest says `truncated: false`: N_w =
+    h_w; under design, a window at its cap: cap_w / h_w). Any other post
+    there has no weight and a weighted run that uses one is refused, naming
+    the accounts and the `x-counts --estimate` to price: no weight 1, and
+    no design weight under volume, which in a truncated window would be 1
+    again, the undercount volume undoes. Until `x-counts` covers Nov 2 on,
+    the six-phase `phases --weights` refuses: on the 2026-11-22 data, 492
+    of the posts it uses under volume and 23 under design, all in phase 6.
+  - The bootstrap keeps the account-day blocks and multiplies each day's
+    resampling count into its weighted sums; the weights are held fixed,
+    so the intervals carry no error in X's counts.
+  - The weighted weekly lines keep a 3-week window only when its Kish
+    effective number of war posts (sum w)^2 / sum w^2 reaches
+    `WEB_MIN_WINDOW_POSTS` (15), not its post count: under volume one post
+    can weigh 25-38, and 17 of the 115 five-phase tier-weeks with 15 posts
+    are worth fewer (5 under design).
+- **Rejected:** weighting take-all accounts too (read whole, their windows
+  hold what X counts); normalising each account to equal weight (a
+  different estimand: the tier as a panel of accounts); falling back to
+  design weights under volume where the counts are missing (above).
+
+## 2026-11-22: Phase 6, "midterms, standoff", from Nov 2 with a rolling end
+
+- **Decision (the owner's call, 2026-11-22):** the analysis is no longer
+  frozen at Nov 1. `config/timeline.py` gets a sixth phase, "midterms,
+  standoff", from 2026-11-02 to `ANALYSIS_END`, and `ANALYSIS_END` rolls:
+  at each pull it is the pull's last whole UTC day (2026-11-21 for the
+  2026-11-22 pull). Phase 6 closes at the next regime change (major
+  US/Israeli strikes resume or a deal is signed) or on 2027-01-02, before
+  the new Congress sits, whichever comes first, the owner's call; its last
+  day is then written into `PHASES`, and `ANALYSIS_END` stops rolling and
+  stays at that day until the owner opens the next phase, which then rolls
+  the same way (the last phase ends at `ANALYSIS_END`, tests/test_timeline.py;
+  a pull in between adds no post to any phase). That last clause is a
+  reading of the closing rule, not yet confirmed by the owner. Phases 1-5
+  keep their dates (Feb 1 to Nov 1). The timeline gets the 33 curated events of Nov 1-21 (`selected` in
+  docs/timeline_candidates_2026-11-01_to_2026-11-22.json: three on Nov 1,
+  inside phase 5, and 30 from Nov 2), 171 events in all.
+- **Why:** after the midterms there were neither major strikes nor a deal:
+  limited "defensive" US strikes on Qeshm (Nov 2, Nov 17), Iranian drone
+  and missile attacks on Bahrain, Iron Gate tightening the blockade, and on
+  Nov 19 Trump deferring a strike decision to the new year. That is a
+  stretch of its own, not the pre-election hold. A rolling end lets each
+  refresh add to it without a new definition, and the rule that closes it
+  is fixed now, before its data are read.
+- **What changes:**
+  - Phase 5's cells move slightly although its dates do not: the refresh
+    adds posts inside it. Trump's feed ended Oct 31 19:28 UTC and now holds
+    the rest of Oct 31 and Nov 1 (103 new posts, with text or not); X's
+    previous pull ended Nov 1 23:12 UTC, and the 2026-11-22 collect adds
+    its last 48 minutes (one post) along with phase 6. The point estimates
+    of phases 1-4 stay put unless a post in them is rescored, but every
+    interval moves a little: the block bootstrap resamples each account's
+    days over all phases from one seeded stream, so phase-6 days change
+    every replicate.
+  - The whole war (`inference.WHOLE_WAR`: the heatmap's last column,
+    `accounts.json`) runs Feb 1 to `ANALYSIS_END` and grows with it.
+    `maga_weekly.json` and `trump_phases.json` (a sixth bar) run to it too;
+    `events.json` gets "Midterms" (Nov 3, `settings.WEB_EVENTS`). The
+    heatmap sizes to `len(PHASES)`.
+  - `decomposition.json` stays strikes -> "midterm hold"
+    (`settings.WEB_DECOMPOSITION_PHASE`) until the owner switches it. It
+    took the last phase, which would have turned the post's contrast into
+    one with a three-week phase without a word; export-web now refuses a
+    setting that names no phase, or the first (the contrasts' base, which
+    would export an empty chart).
+  - `settings.LOYALTY_REFERENCE_DATE` stays 2026-11-01 (the first freeze's
+    `ANALYSIS_END`), so the published loyalty tiers do not move. An account
+    created after it counts as age 0, never a negative age, with a logged
+    count. None behind the 98,668 collected replies was: the newest was
+    created on Sep 25, so the published tiers are unchanged.
+  - `event-study`'s broadcaster half takes every timeline event, so it
+    gains the November events. It now reads only the posts from
+    `ANALYSIS_START` to `ANALYSIS_END` (UTC dates), as `phases` does, so a
+    pull's partial last day stays out, and marks `*` an event whose window
+    runs past them (for the Nov 22 pull, the Nov 21 events: their post side
+    is one day, not two).
+  - The phase-6 reply posts, fixed before any reply is collected or read:
+    "the two most-replied Trump posts dated in phase 6 (2026-11-02 to
+    ANALYSIS_END) whose current stance-topic (Opus) label is iran_war,
+    reply counts as of the 2026-11-22 feed pull". Read with the bound
+    pinned at that pull, so it does not move with later pulls: dated
+    2026-11-02 to 2026-11-21 by UTC date (`inference.assign_phase`;
+    `ANALYSIS_END` at the 2026-11-22 pull), so the 12 feed posts dated
+    Nov 22 are out. This reading is not yet confirmed by the owner.
+- **Rejected:** staying frozen (the post-election stretch is the part of
+  the war the midterms bear on); a closed Nov 2-22 phase (an end picked
+  from the calendar, which the next pull would outgrow); a Nov 4 start
+  that stretches phase 5 (it changes a closed phase's dates and so the
+  published midterm-hold cells, and Nov 2 already holds the Qeshm strikes
+  and Iran's two-day Hormuz offer); splitting at Nov 13 (two phases of
+  about ten days, thin in war posts, cut where the news turned rather
+  than at a regime change by the closing rule).
+
+## 2026-11-22: The distilled scoring commands default to the scorer of record
+
+- **Decision:** `score-distilled` and `score-posts` default to
+  `stance_distilled_final_score_opus` into `score_opus_distilled`
+  (`settings.DISTILLED_SCORER_DIR` / `DISTILLED_SCORER_COL`), and record
+  the model dir and the sha256 of its config and weights behind each
+  column they write in `<parquet>_columns.json` (the replies' record, and
+  the one `teacher-check --source trump --merge` keeps beside the feed,
+  which now travels with it in `sync-data.sh`). A column recorded as
+  another model's or as a dir since refit in place, named for another in
+  `settings.DISTILLED_COLUMN_MODELS` (the columns already in the data, by
+  the dir their Job scores from), an LLM's (`score_<tag>` / `label_<tag>`)
+  or holding scores no record names is refused, as is a dir with no model
+  (checked before anything is recorded). The `score-distilled` Job names
+  its old model and column, so it runs as before.
+- **Why:** both defaulted to `stance_distilled`, the Haiku-taught holdout
+  fit. A rerun with defaults after a refresh would have put its scores in
+  the wrong column, or with only `--col`, added them to
+  `score_opus_distilled`'s new rows: two models in one series. A dir name
+  alone would not catch `stance_distilled`, which every `stance-distill`
+  run rewrites in place (the 2026-09-30 hazard): hence the weights' hash.
+  A column's first record takes the dir as it is then, so it cannot show
+  that the history columns' scores came from today's `stance_distilled`.
+- **Also:** a feed row that gains text now loses its labels with its
+  scores (`label_opus` stayed while `score_opus` was cleared), as
+  ts-fill-text clears them. The notes that said score-posts drops
+  score_opus were wrong: it keeps it on every other row.
+
 ## 2026-11-02: The X holes are filled from search/all on collect's 35-hour grid; relabel gets caps
 
 - **Decision:** `x-archive fill` (src/collectors/x_archive_fill.py) fills
@@ -32,6 +182,16 @@ behind the stance-model entries are in README *Stance-model experiments* and
   its whole span: an earlier run's windows inside it are dropped and the
   ones across its edges cut there, so a `collect --force` with longer
   windows replaces the incremental grid where it ran.
+- **No forward windows (2026-11-22):** the grid used to add windows from
+  the last collect window to the end of `ANALYSIS_END` once half a window
+  or more was left there. With `ANALYSIS_END` moved past the last collect
+  run, the fill would then buy posts newer than collect's cursor (the
+  newest cached post) and move it, so the next collect would start past
+  windows the fill had left short or not reached. The grid now ends at
+  each account's last collect window (with none, at its newest cached post;
+  nothing cached, no windows), and the plan logs per account what is left
+  for collect: the forward pull stays collect's. Today's grid is
+  unchanged (the manifests end 48 minutes before the end).
 - **How it spends:** a window is picked when X's hour count, with the edge
   buckets counted whole, says it lacks a post. Its budget is that need plus
   9, so a window that still wants posts can always send one more request

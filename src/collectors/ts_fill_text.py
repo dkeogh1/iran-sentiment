@@ -34,8 +34,9 @@ a post with no text either is stored with no text, fallback dropped.
           their *_superseded archives (src/superseded.py), then the post's
           row in the Trump-feed stance parquet is archived and takes the new
           text with no score, so `score-posts` rescores exactly those posts
-          and `topic-label` relabels them. Each write is atomic; a rerun
-          redoes only what is left
+          and `topic-label` relabels them (supersede_changed, shared with a
+          forced collect-truth; refused while score-posts writes the feed).
+          Each write is atomic; a rerun redoes only what is left
 
 Never uses the user's account or token: Truth Social serves /statuses/:id
 anonymously, and AGENTS.md lets anonymous collection run without asking.
@@ -288,7 +289,7 @@ def label_files() -> list[Path]:
     return [labels_path(), *(p for p in [*checks, *raters] if not p.stem.endswith("_superseded"))]
 
 
-def supersede_labels(ids: set[str]) -> dict[str, int]:
+def supersede_labels(ids: set[str], reason: str = SUPERSEDED_REASON) -> dict[str, int]:
     """Move the rows for `ids` out of every label cache (label_files) into
     its *_superseded.parquet archive, archive first, so `topic-label` and
     the Trump check see those posts as unlabelled. Returns {file: rows
@@ -302,23 +303,30 @@ def supersede_labels(ids: set[str]) -> dict[str, int]:
         lab = pd.read_parquet(path)
         hit = lab["id"].astype(str).isin(ids)
         if hit.any():
-            archive(lab[hit], path, SUPERSEDED_REASON)
+            archive(lab[hit], path, reason)
             write_parquet_atomic(lab[~hit].reset_index(drop=True), path)
             moved[path.name] = int(hit.sum())
     return moved
 
 
-def clear_feed_scores(changes: dict[str, str]) -> tuple[int, int]:
+_CLEARING = "the cleared rows of the posts whose text changed"
+
+
+def clear_feed_scores(changes: dict[str, str], reason: str = SUPERSEDED_REASON) -> tuple[int, int]:
     """Give the Trump-feed stance rows (settings.TRUMP_FEED_STANCE) of the
     changed posts their new text and no score, so `score-posts` rescores
     exactly those with text, `phases` skips them until it has, and a
     `topic-label` run before it sends the new text. The rows as scored go
-    to its *_superseded.parquet first. Returns (rows cleared, rows
-    archived)."""
-    from src.analysis.stance_local import write_parquet_atomic
+    to its *_superseded.parquet first. Refused while score-posts writes the
+    feed (stance_local.refuse_while_scoring): it would write the rows back
+    as it read them. Returns (rows cleared, rows archived)."""
+    from src.analysis.stance_local import refuse_while_scoring, write_parquet_atomic
 
     path = settings.TRUMP_FEED_STANCE
-    if not changes or not path.exists():
+    if not changes:
+        return 0, 0
+    refuse_while_scoring(path, _CLEARING)
+    if not path.exists():
         return 0, 0
     df = pd.read_parquet(path)
     hit = df["id"].astype(str).isin(changes)
@@ -327,12 +335,57 @@ def clear_feed_scores(changes: dict[str, str]) -> tuple[int, int]:
     cols = score_columns(df)
     old = df.loc[hit, ["id", "text", *cols]]
     scored = old[cols].notna().any(axis=1) if cols else pd.Series(False, index=old.index)
-    archived = archive(old[scored], path, SUPERSEDED_REASON)  # a rerun has none
+    archived = archive(old[scored], path, reason)  # a rerun has none
     df.loc[hit, "text"] = df.loc[hit, "id"].astype(str).map(changes)
     for col in cols:
         df.loc[hit, col] = None
     write_parquet_atomic(df, path)
     return int(hit.sum()), archived
+
+
+def supersede_changed(changes: dict[str, str], reason: str = SUPERSEDED_REASON) -> dict:
+    """What was made from the old text of the Truth Social posts in
+    `changes` ({id: new text}) goes, before the raw cache takes the new
+    text: their labels to the *_superseded archives (supersede_labels), then
+    their feed rows archived and cleared (clear_feed_scores). The shared
+    step of ts-fill-text's apply and a forced collect-truth. Refused before
+    anything moves while score-posts writes the feed. Returns
+    {labels_moved, feed_rows_cleared, feed_rows_archived}."""
+    from src.analysis.stance_local import refuse_while_scoring
+
+    if not changes:
+        return {"labels_moved": {}, "feed_rows_cleared": 0, "feed_rows_archived": 0}
+    refuse_while_scoring(settings.TRUMP_FEED_STANCE, _CLEARING)
+    moved = supersede_labels(set(changes), reason)
+    cleared, archived = clear_feed_scores(changes, reason)
+    return {"labels_moved": moved, "feed_rows_cleared": cleared, "feed_rows_archived": archived}
+
+
+def next_steps(labels_moved: dict[str, int]) -> str:
+    """What redoes the work supersede_changed moved ({label file: rows}), in
+    the refresh order: the feed scores and Haiku topic labels always; Trump's
+    stance of record (score_opus) when a Trump-check file moved; each
+    post-label job whose file moved (stance-topic's labels come back through
+    the census, which takes every post: the topic flag of record)."""
+    steps = [
+        (
+            "score-posts on the feed (the score-trump-feed Job; it rescores the cleared rows "
+            "with text)"
+        ),
+        "topic-label estimate|submit|status|collect",
+    ]
+    if any(k.startswith("teacher_check_trump") for k in labels_moved):
+        steps.append("teacher-check --source trump --all (paid: estimate and ask), then --merge")
+    jobs = {
+        k.removeprefix("post_labels_").split("_")[0]
+        for k in labels_moved
+        if k.startswith("post_labels_")
+    }
+    for job in sorted({"stance-topic-census" if j == "stance-topic" else j for j in jobs}):
+        steps.append(
+            f"post-label estimate|submit|status|collect --job {job} (paid: estimate and ask)"
+        )
+    return "Next: " + ", ".join([*steps, "phases --source trump", "export-web", "backup"]) + "."
 
 
 def apply(handle: str) -> dict:
@@ -342,10 +395,11 @@ def apply(handle: str) -> dict:
     the text that was checked; one that already matches is counted as
     applied, and one whose text changed since (e.g. a forced collect-truth)
     is left alone and reported as drifted. Where the text changes, first the
-    labels move to their archives (supersede_labels) and the feed rows are
-    archived and cleared (clear_feed_scores); then one atomic rewrite of the
-    cache, record order and every other field kept. A run killed between
-    steps finishes on the next, which redoes only what is left.
+    labels move to their archives and the feed rows are archived and
+    cleared (supersede_changed, refused while score-posts writes the feed);
+    then one atomic rewrite of the cache, record order and every other field
+    kept. A run killed between steps finishes on the next, which redoes only
+    what is left.
 
     Also counts the quote posts read that quote a post in this same cache:
     their words count twice, once as the original and once as "RT @...",
@@ -374,8 +428,7 @@ def apply(handle: str) -> dict:
                 dropped += not has_text(t["text"])  # a bare fallback, now no text
         else:
             drifted.append(str(r.get("id")))
-    moved = supersede_labels(set(texts)) if texts else {}
-    cleared, archived = clear_feed_scores(texts)
+    sup = supersede_changed(texts)
     if targets:
         for k, t in targets.items():
             recs[k] = t
@@ -396,9 +449,7 @@ def apply(handle: str) -> dict:
         "text_dropped": dropped,
         "already_applied": already,
         "drifted": drifted,
-        "labels_moved": moved,
-        "feed_rows_cleared": cleared,
-        "feed_rows_archived": archived,
+        **sup,
         "quotes": len(quotes),
         "quotes_with_text": sum(has_text(e.get("text")) for e in quotes),
         "quotes_of_own": len(own),

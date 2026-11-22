@@ -751,6 +751,35 @@ def test_trump_whole_feed_batch_reuses_cached_labels(posts, monkeypatch):
     assert st["status"] == "collected" and rep["n"] == 6
 
 
+@pytest.mark.parametrize("job", list(pl.JOBS))
+def test_post_label_with_nothing_left_to_label(posts, monkeypatch, job):
+    """Every post of the job labelled on its text now (the census is close):
+    the empty to-do frame keeps a string prompt column (pandas 3 makes an
+    empty list float64), and estimate and submit say so with no call."""
+    from src.cli import main
+
+    posts()
+    _no_api(monkeypatch)
+    j = pl.JOBS[job]
+    model = j.default_model()
+    todo_posts, _, todo, _ = pl.job_todo(j, model, {"seed": 1}, preview=True)
+    assert len(todo) == len(todo_posts) > 0
+    pd.DataFrame(
+        {
+            "id": todo_posts["id"],
+            "input_chars": todo_posts["text"].str.len(),
+            "prompt_version": j.prompt_version,
+        }
+    ).to_parquet(pl.labels_path(j.label_name, model), index=False)
+    _, _, todo, _ = pl.job_todo(j, model, {"seed": 1}, preview=True)
+    assert todo.empty and todo["prompt"].str.len().empty
+    res = CliRunner().invoke(main, ["post-label", "estimate", "--job", job])
+    assert res.exit_code == 0 and "0 calls" in res.output, res.output
+    res = CliRunner().invoke(main, ["post-label", "submit", "--job", job, "--yes"])
+    assert res.exit_code == 0 and "nothing submitted" in res.output, res.output
+    assert not list(settings.PROCESSED_DIR.glob("teacher_batch_*.json"))
+
+
 def test_batch_collect_records_stop_reasons(posts, monkeypatch):
     posts()
     client = _stub_client(lambda cid, text: '{"score": 0.1, "label": "positive"}')
@@ -1276,6 +1305,10 @@ def test_merge_waits_for_score_posts_which_keeps_score_opus(posts, monkeypatch):
 
     monkeypatch.setattr(sl, "score_with_distilled", score)
     monkeypatch.setattr(settings, "MODELS_DIR", settings.PROCESSED_DIR)
+    model = sl.distilled_scorer_dir()  # a stand-in fit: the scoring is stubbed
+    model.mkdir()
+    (model / "config.json").write_text("{}")
+    (model / "model.safetensors").write_bytes(b"w")
     out = sl.score_post_file([raw], settings.TRUMP_FEED_STANCE).set_index("id")
     assert seen == [True] and not marker.exists()  # the marker lives while it scores
     assert out.loc["t_0", "score_opus"] == 0.4 and np.isnan(out.loc["t_new", "score_opus"])

@@ -122,7 +122,9 @@ Two layers at different depths. Nothing runs on a schedule.
   reused, 2,821 by batch on 2026-11-02, the one unparseable answer resent
   direct on 2026-11-03) and `--merge` wrote them onto
   `truthsocial_trump_stance.parquet`.
-  `score-posts` rewrites that parquet without them: merge again after it.
+  `score-posts` keeps them on the rows it has (a row that gains text
+  loses its scores and labels and is rescored); the posts it adds have
+  none: merge again after it.
   `score_opus_distilled` (the 672 new posts with text on dkbl1's CPU,
   2026-11-02, thread-capped) stays for comparison: against Opus on the
   3,222, 0.778 Pearson and 1.2% sign flips; on his 368 war posts (topic
@@ -177,16 +179,21 @@ Two layers at different depths. Nothing runs on a schedule.
   posts with text, his war share rises 0.8-2.1 points a phase
   (33.1/13.8/12.2/12.9% -> 35.2/15.2/13.0/14.0%). X tables and reply
   estimates are unchanged.
-- **Timeline**: 138 events through 2026-10-31 in `config/timeline.py`.
-  The analysis is frozen at the Nov 1 pull (2026-11-02, the user's call):
-  `ANALYSIS_END` = 2026-11-01 and a fifth phase, "midterm hold"
-  (Sep 19 -> Nov 1), ending before the Nov 3 midterms. `phases`,
-  `visualize` and `export-web` reran on five phases, again on 2026-11-02
-  under the new definitions (below), and on 2026-11-03 after the archive
-  fill: the `data/processed/` CSVs and figures, the README's two embedded
-  figures and the dkweb JSONs (accounts, decomposition, maga_weekly and
-  trump_phases changed; replies and events did not; *Open*). Sources: `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`
-  and `docs/timeline_candidates_2026-09-16_to_2026-10-31.json`.
+- **Timeline**: 171 events through 2026-11-21 in `config/timeline.py`.
+  Six phases since 2026-11-22 (the user's call, `docs/decisions.md`):
+  phases 1-5 (Feb 1 -> Nov 1, the fifth "midterm hold", Sep 19 -> Nov 1)
+  are closed, and phase 6, "midterms, standoff", runs from Nov 2 to
+  `ANALYSIS_END`, which rolls to each pull's last whole UTC day
+  (2026-11-21 for the Nov 22 pull). From 2026-11-02 to 2026-11-22 the
+  analysis was frozen at the Nov 1 pull (`ANALYSIS_END` = 2026-11-01, five
+  phases): `phases`, `visualize` and `export-web` reran on five phases,
+  again on 2026-11-02 under the new definitions (below), and on 2026-11-03
+  after the archive fill. The published `data/processed/` CSVs and figures,
+  the README's two embedded figures and the dkweb JSONs (accounts,
+  decomposition, maga_weekly and trump_phases changed; replies and events
+  did not; *Open*) are those five-phase runs. Sources: `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`,
+  `docs/timeline_candidates_2026-09-16_to_2026-10-31.json` and
+  `docs/timeline_candidates_2026-11-01_to_2026-11-22.json`.
 - **Spend, 2026-10-04/05** (approved runs): X ≈ $14.90 for the backfill
   reads (2,980 returned at $0.005). Anthropic, measured from the batch
   results' usage: `relabel` $5.04 (2,575 posts; the 3-post resubmit under a
@@ -301,18 +308,17 @@ fill changed none of them, only added posts:
     MAGA's posts (86% of its war posts) and @RealAlexJones 51% of anti-war
     MAGA's (65%). The anti-war MAGA weekly line's April rise is
     @RealAlexJones going from 20-25 posts a week (Feb-Mar, 5 a window) to
-    175-396 (Mar 30-Apr 13, 77-100% of X's count). Weighting by the window
-    manifests (`data/raw/x_sampling/`, which nothing reads yet) would even
-    it out.
-  - Extending past Nov 1 (`ANALYSIS_END`, the midterms). The timeline
-    (`collect`) stays the forward pull; `x-counts` for the new range and
-    `x-archive fill` (its grid ends at `ANALYSIS_END`) cover the windows it
-    leaves short.
-- `teacher-check --source trump --all --estimate` crashes (AttributeError)
-  when no post is left to label: `stance_local.trump_check_estimate` calls
-  `.str.len()` on the empty to-do frame's prompt column. Harmless while the
-  feed is fully labelled (3,222 of 3,222); fix it before the next feed
-  refresh needs an estimate.
+    175-396 (Mar 30-Apr 13, 77-100% of X's count). `phases --weights
+    design|volume` (2026-11-22, `docs/decisions.md`) weighs by the window
+    manifests (`data/raw/x_sampling/`) and X's hour counts, as an option
+    beside raw, which stays the record; on six phases it is refused until
+    `x-counts` covers Nov 2 on.
+  - X's counts for phase 6. `x-counts` for Nov 2 on (paid, *Ask first*) is
+    what `x-archive fill --estimate` (CountsMissing for all 17 accounts
+    since the 2026-11-22 collect) and `phases --weights` wait for. The
+    timeline (`collect`) stays the forward pull; `x-archive fill` (its grid
+    ends at each account's last collect window, never past it, since
+    2026-11-22) covers the windows it leaves short, so run `collect` first.
 - The X teacher check needs no new labels after the backfill (0 of its 497
   to do), but 63 of its posts were backfilled: their direct Opus labels saw
   the cut text, while `sentiment_all` now holds full-text Haiku scores, so
@@ -322,11 +328,9 @@ fill changed none of them, only added posts:
 - `analyze` restores a prior score only onto the same text (2026-10-04),
   and archives a prior row with a paid score (Haiku's) before rescoring it,
   but the paid labels are keyed by id. `x-backfill-text`, X `collect
-  --force` (which merges into the cache by id since 2026-10-06) and
-  `ts-fill-text` move the labels of the posts whose text they change; a
-  forced `collect-truth` merges by id but doesn't, so a Trump post whose
-  text it changes keeps its topic label and feed score (`score-posts`
-  rescores only rows that gain text).
+  --force` (which merges into the cache by id since 2026-10-06),
+  `ts-fill-text` and a forced `collect-truth` move the labels of the posts
+  whose text they change. Fixed 2026-11-22: a forced `collect-truth` used to keep them.
 - Reply scorers against the v2 labels, settled 2026-10-07: a scorer that
   reads each reply with its Trump post beats the scorer of record
   leave-one-post-out (pooled 0.64 vs 0.58; June deal 0.62 vs 0.14) but
@@ -350,9 +354,10 @@ fill changed none of them, only added posts:
 
 ## What a refresh needs
 
-The order is in AGENTS.md *Running things*. Posts after Nov 1 enter no
-series while `ANALYSIS_END` stays there (the user's call); posts filled
-inside the window do (the 2026-11-03 fill). Beyond `relabel` and
+The order is in AGENTS.md *Running things*. While phase 6 is open, each
+pull moves `ANALYSIS_END` to its last whole UTC day (AGENTS.md *Phases and
+the analysis window*), so its new posts enter phase 6 once labelled; the
+pull's partial last day waits for the next pull. Beyond `relabel` and
 `topic-label`, since 2026-11-02:
 
 - **X holes** (paid, *Ask first*): `x-archive fill --estimate` (free) plans
@@ -365,14 +370,17 @@ inside the window do (the 2026-11-03 fill). Beyond `relabel` and
   keyword-or-Haiku candidates, then `--job stance-topic-census` for the
   rest (it sends any post with text that has no label on its current text,
   candidates included). Until then a post counts by the either flag and
-  `phases` warns with the count. Both jobs' caps bound the whole run, so
-  little room is left: stance-topic has used 7,449 calls and $10.77 of
-  7,600 and $30, the census 19,598 and $26.60 of 20,000 and $33 (both
-  raised 2026-11-03 for the fill's posts). A pull of more than a few
+  `phases` warns with the count. Both jobs' caps bound the whole run:
+  stance-topic's are 8,000 calls and $30, the census's 21,500 calls and
+  $33 (the calls raised 2026-11-22 for the Nov 22 refresh, after 7,449
+  calls and $10.77 and 19,598 calls and $26.60; `post-label estimate`
+  prints what each run has used since). A pull of more than a few
   hundred new posts needs them raised, the user's call.
 - **Trump's stance**: after `score-posts`, `teacher-check --source trump
-  --all --estimate` (it crashes while nothing is left to label, *Open*),
-  `--batch submit|status|collect`, then `--merge` (again after any later
-  `score-posts`).
-- **Replies**: nothing. The draws are frozen; a new tracked post would
-  need its own draws and labels.
+  --all --estimate`, `--batch submit|status|collect`, then `--merge` (again
+  after any later `score-posts`).
+- **Replies**: the eight tracked posts' draws are frozen. Phase 6 adds two
+  reply posts, picked by the rule fixed on 2026-11-22 (AGENTS.md *Phases
+  and the analysis window*) once phase 6's Trump posts carry a current
+  stance-topic label; each then needs `collect-replies` (*Ask first*) and
+  its own draws and labels.

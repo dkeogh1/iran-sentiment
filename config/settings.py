@@ -128,6 +128,26 @@ PHASE_GAPS = [("maga_prowar", "admin"), ("maga_prowar", "maga_antiwar")]
 # THESE accounts, not a claim about accounts we did not track.
 BOOTSTRAP_N = 1000
 BOOTSTRAP_SEED = 42
+# Window weights for the X broadcaster series (`phases --weights`,
+# src/analysis/window_weights.py; docs/decisions.md 2026-11-22). "none", the
+# definition of record: every post weighs 1. A sampled account
+# (ACCOUNT_WINDOW_CAPS) holds 5 posts a 35 h window on most of its grid but
+# every post where a pull read it whole, so raw counts its dense stretches
+# many times over. On the x-archive fill's window grid, a post in window w of
+# a sampled account, with h_w the account's posts held in w and N_w X's hour
+# count over w (`x-counts`; an edge bucket's held posts count where they are
+# held and only its unheld rest is apportioned by overlap; at least h_w), weighs
+#   "volume"  N_w / h_w (1 where h_w >= N_w): each account's posts stand for
+#             its real output, so an account counts by how much it posted;
+#   "design"  min(cap_w, N_w) / h_w: each window weighs as the posts the
+#             current design keeps there, so a stretch a pull read whole
+#             counts like a 5-a-window one.
+# Weight 1 under both: take-all accounts, posts outside every grid window,
+# keyword-search rows and Trump's feed. A post whose weight needs a count
+# that is not cached (past the counts' coverage, Nov 2 on until `x-counts`
+# runs for it) has none, and a weighted analysis that uses one is refused:
+# never weighted 1, never a design weight under volume.
+PHASE_WEIGHTS = "none"
 
 
 # ── Event overlays ─────────────────────────────────────────────────
@@ -516,9 +536,12 @@ REPLY_FRESH_POOL_MIN_SHARE = 0.98
 # `reply-loyalty` (inference.reply_loyalty): a replier's loyalty tier
 # (event_study.loyalty_score: bio keywords plus account age) takes the
 # account's age on this date, not on the day the command runs, so a tier
-# does not move with the run date. It is config.timeline.ANALYSIS_END, the
-# end of the analysis window: every reply was collected by then. (The
-# 2026-11-02 findings check ran on datetime.now(), a day later.)
+# does not move with the run date. Fixed at Nov 1, the first freeze's
+# ANALYSIS_END (every tracked post's replies were collected by then), and kept
+# there when the analysis went rolling (2026-11-22), so the published tiers
+# do not move with ANALYSIS_END either. An account created after it counts
+# as age 0, with a logged count (inference.replier_tiers). (The 2026-11-02
+# findings check ran on datetime.now(), a day later.)
 LOYALTY_REFERENCE_DATE = datetime(2026, 11, 1, tzinfo=UTC)
 # Measured on the 2026-10-05 v2 batch (1,141 requests, all end_turn, billed
 # $2.10): input tokens per request = a per-post prefix (the instructions,
@@ -660,8 +683,10 @@ POST_PILOT_SAVE_EVERY = 10
 # guess with 89% cache reads) and ~350 for the rater on Opus 5.5 (expected
 # ~$10.8 at twice Opus 5's 84). Raised 2026-11-03 for the X archive fill's
 # 1,024 new candidates (run 6,425 + 1,024 = 7,449; the user approved the
-# fill's label work, ~7,600 calls, on 2026-11-03).
-POST_STANCE_TOPIC_MAX_CALLS = 7600
+# fill's label work, ~7,600 calls, on 2026-11-03). Raised 2026-11-22 for the
+# Nov 22 refresh's 172 new candidates (run 7,449 + 172 = 7,621; the user
+# approved 8,000 calls on 2026-11-22).
+POST_STANCE_TOPIC_MAX_CALLS = 8000
 POST_STANCE_TOPIC_MAX_USD = 30.0
 POST_RATER_MAX_CALLS = 5400
 POST_RATER_MAX_USD = 20.0
@@ -687,8 +712,11 @@ POST_NOHANDLE_MAX_USD = 9.5
 # Raised 2026-11-03 for the X archive fill's 3,551 other new X posts (run
 # 16,047 billed $22.63; + 3,551 = 19,598 calls, ~$5.30 expected, ceiling
 # ~$12.5): the user approved ~21,000 calls and ~$33, sent in parts, on
-# 2026-11-03. At $33 the parts stay under ~2,900 calls each.
-POST_CENSUS_MAX_CALLS = 20000
+# 2026-11-03. At $33 the parts stay under ~2,900 calls each. Raised
+# 2026-11-22 for the Nov 22 refresh's ~1,180 other new posts (run 19,598 +
+# ~1,180; the user approved 21,500 calls on 2026-11-22; $33 still holds
+# the ceiling).
+POST_CENSUS_MAX_CALLS = 21500
 POST_CENSUS_MAX_USD = 33.0
 # Input tokens of an llm_prompt request on claude-opus-5, least squares on
 # billed usage against prompt characters, and its output tokens a call:
@@ -763,6 +791,21 @@ DISTILL_SWEEP = [
     {"name": "rb-128-3e5-4",  "base_model": "roberta-base", "max_len": 128, "lr": 3e-5, "epochs": 4},
 ]
 DISTILL_CV_FOLDS = 5
+# The distilled scorer of record (decisions.md 2026-09-30): the Opus-taught
+# DeBERTa, a dir under MODELS_DIR, and the column it writes on the replies
+# and Trump's feed. `score-distilled` and `score-posts` default to the pair.
+DISTILLED_SCORER_DIR = "stance_distilled_final_score_opus"
+DISTILLED_SCORER_COL = "score_opus_distilled"
+# Distilled columns already in the data that no record names, with the
+# model dir their Job scores from (k8s/jobs/score-*). score-distilled and
+# score-posts record every column they write in <parquet>_columns.json and
+# refuse one recorded, or named here, as another model's (2026-11-22).
+DISTILLED_COLUMN_MODELS = {
+    DISTILLED_SCORER_COL: DISTILLED_SCORER_DIR,
+    "score_distilled": "stance_distilled",  # Haiku-taught, history
+    "score_deb_distilled": "stance_distilled_final",  # Haiku-taught, history
+    "score_mixed_distilled": "stance_distilled_final_score_opus_mixed",  # history
+}
 
 # Reply-domain scorer (`reply-distill`, 2026-10-06). The posts-only scorer of
 # record never sees the Trump post a reply answers, and the v2 labels depend
@@ -772,8 +815,8 @@ DISTILL_CV_FOLDS = 5
 # with the reply alone ("text", what it sees today) or with the pair (reply,
 # parent post) ("ctx"), and judged leave-one-post-out. Base model: a dir
 # under MODELS_DIR, whose published reply scores are REPLY_DISTILL_BASE_COL.
-REPLY_DISTILL_BASE = "stance_distilled_final_score_opus"
-REPLY_DISTILL_BASE_COL = "score_opus_distilled"
+REPLY_DISTILL_BASE = DISTILLED_SCORER_DIR
+REPLY_DISTILL_BASE_COL = DISTILLED_SCORER_COL
 REPLY_DISTILL_VARIANTS = ("text", "ctx")
 # "text" runs at the base model's training length (recipe.txt: 256); "ctx"
 # needs room for the parent post too (the eight run 55-244 tokens, 90% of
@@ -893,7 +936,13 @@ WEB_POST_LABELS = {
 WEB_EVENTS = [
     ("2026-02-28", "Strikes"), ("2026-04-08", "Ceasefire"), ("2026-06-17", "Islamabad MOU"),
     ("2026-07-08", "MOU collapses"), ("2026-08-17", "MOU expires"), ("2026-09-01", "Strikes resume"),
+    ("2026-11-03", "Midterms"),
 ]
+# decomposition.json: each tier's change from the first phase to this one, a label
+# in config.timeline.PHASES (export-web refuses any other). The post's published
+# contrast, strikes -> midterm hold (Sep 19 - Nov 1): it stays put as phase 6 grows
+# (docs/decisions.md 2026-11-22). Switching it is the owner's call.
+WEB_DECOMPOSITION_PHASE = "midterm hold"
 
 
 # ── Plotting ───────────────────────────────────────────────────────

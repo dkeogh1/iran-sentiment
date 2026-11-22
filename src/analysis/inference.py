@@ -2,7 +2,9 @@
 Uncertainty and composition checks behind the published numbers.
 
   phase_stats        tier (or account) x phase means, split into war posts and
-                     everything else, with account-day block-bootstrap CIs
+                     everything else, with account-day block-bootstrap CIs;
+                     window-weighted when the frame carries WEIGHT_COL
+                     (window_weights.attach, `phases --weights`), raw otherwise
   phase_contrasts    each phase against the first: the all-post change split
                      into a topic-share effect and on-topic / off-topic stance
                      changes (a symmetric shift-share decomposition)
@@ -130,14 +132,78 @@ def prepare(df: pd.DataFrame, score_col: str, group: str = "tier",
 
 # ── Block bootstrap ────────────────────────────────────────────────
 
+# The column of a post's window weight (window_weights.attach; `phases
+# --weights`). A frame without it is raw, every post weighing 1: the record.
+WEIGHT_COL = "window_weight"
+
+
+def frame_weights(d: pd.DataFrame) -> np.ndarray | None:
+    """The window weights a frame carries (WEIGHT_COL), None when it carries
+    none (raw). Refuses (window_weights.WeightsUnavailable) a frame with a
+    post that has no weight: its window's count is not cached."""
+    if WEIGHT_COL not in d:
+        return None
+    from src.analysis.window_weights import require
+
+    require(d)
+    return d[WEIGHT_COL].to_numpy(dtype=float)
+
+
 def _clusters(d: pd.DataFrame, score_col: str) -> pd.DataFrame:
-    """One row per account-day: group, phase, and the on/off-topic sums."""
-    x = d.assign(s_on=np.where(d["on_topic"], d[score_col], 0.0),
-                 n_on=d["on_topic"].astype(int),
-                 s_off=np.where(d["on_topic"], 0.0, d[score_col]),
-                 n_off=(~d["on_topic"]).astype(int))
-    return (x.groupby(["user", "day", "group", "phase"], observed=True)
-             [["s_on", "n_on", "s_off", "n_off"]].sum().reset_index())
+    """One row per account-day: group, phase, and the on/off-topic sums.
+    With window weights (WEIGHT_COL) the sums are weighted: s_* the weighted
+    scores, n_* the weights; k_* count the posts and q_on sums the war
+    posts' squared weights (for the effective sample size)."""
+    wt = frame_weights(d)
+    if wt is None:
+        x = d.assign(s_on=np.where(d["on_topic"], d[score_col], 0.0),
+                     n_on=d["on_topic"].astype(int),
+                     s_off=np.where(d["on_topic"], 0.0, d[score_col]),
+                     n_off=(~d["on_topic"]).astype(int))
+        return (x.groupby(["user", "day", "group", "phase"], observed=True)
+                 [["s_on", "n_on", "s_off", "n_off"]].sum().reset_index())
+    on = d["on_topic"].to_numpy(dtype=bool)
+    ws = wt * d[score_col].to_numpy(dtype=float)
+    x = d.assign(
+        s_on=np.where(on, ws, 0.0),
+        n_on=np.where(on, wt, 0.0),
+        s_off=np.where(on, 0.0, ws),
+        n_off=np.where(on, 0.0, wt),
+        k_on=on.astype(int),
+        k_off=(~on).astype(int),
+        q_on=np.where(on, wt**2, 0.0),
+    )
+    cols = ["s_on", "n_on", "s_off", "n_off", "k_on", "k_off", "q_on"]
+    return x.groupby(["user", "day", "group", "phase"], observed=True)[cols].sum().reset_index()
+
+
+def weekly_sums(g: pd.DataFrame, score_col: str) -> pd.DataFrame:
+    """The weekly charts' sums on rows that carry window weights and a
+    `week`: per week, sum (weight x score), wsum (weight), w2sum (weight
+    squared, for the Kish effective number wsum^2 / w2sum) and count
+    (posts), indexed by week. A raw frame keeps the charts' own sum / count."""
+    wt = frame_weights(g)
+    if wt is None:
+        raise ValueError(f"weekly_sums needs window weights ({WEIGHT_COL})")
+    x = pd.DataFrame(
+        {
+            "week": g["week"].to_numpy(),
+            "sum": wt * g[score_col].to_numpy(dtype=float),
+            "wsum": wt,
+            "w2sum": wt**2,
+            "count": np.ones(len(g), dtype=int),
+        }
+    )
+    return x.groupby("week")[["sum", "wsum", "w2sum", "count"]].sum()
+
+
+def kish_n(wsum, w2sum):
+    """The Kish effective number of posts, wsum^2 / w2sum (0 where w2sum is
+    0): what a weighted window's posts are worth against the weekly charts'
+    WEB_MIN_WINDOW_POSTS, since a few heavy posts can carry a window of many."""
+    wsum, w2sum = np.asarray(wsum, dtype=float), np.asarray(w2sum, dtype=float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        return np.where(w2sum > 0, wsum**2 / w2sum, 0.0)
 
 
 def _block_weights(users: pd.Series, n_boot: int, seed: int) -> np.ndarray:
@@ -173,16 +239,39 @@ def _ci(v: np.ndarray, alpha: float = 0.05) -> tuple[float, float, float]:
 def bootstrap_cells(d: pd.DataFrame, score_col: str, n_boot: int = settings.BOOTSTRAP_N,
                     seed: int = settings.BOOTSTRAP_SEED) -> dict:
     """{(group, phase): replicate dict} plus observed counts, shared weights
-    so contrasts and gaps can be formed replicate by replicate."""
+    so contrasts and gaps can be formed replicate by replicate.
+
+    With window weights (WEIGHT_COL, window_weights.attach) every mean and
+    share is a weighted ratio (sum of weight x score over sum of weight), and
+    the bootstrap is the same account-day block resampling: each replicate
+    multiplies an account-day's resampling count into that day's weighted
+    sums. The weights are held fixed (X's counts and the grid are taken as
+    known), so the intervals carry the posts' sampling noise, not any error
+    in the counts. The counts add w_on (the war posts' summed weights: what
+    they stand for) and neff_on (Kish's effective number of war posts,
+    (sum w)^2 / sum w^2); n and n_on stay post counts. Raw (no WEIGHT_COL) is
+    the path of record, unchanged."""
     c = _clusters(d, score_col)
     w = _block_weights(c["user"], n_boot, seed)
+    weighted = "k_on" in c
     cells, counts = {}, {}
     for (g, p), idx in c.groupby(["group", "phase"], observed=True).indices.items():
         cells[(g, p)] = _cell(c.iloc[idx], w[idx])
         sub = c.iloc[idx]
-        counts[(g, p)] = {"n": int(sub["n_on"].sum() + sub["n_off"].sum()),
-                          "n_on": int(sub["n_on"].sum()),
-                          "n_accounts": int(sub["user"].nunique()), "n_days": int(len(sub))}
+        if not weighted:
+            counts[(g, p)] = {"n": int(sub["n_on"].sum() + sub["n_off"].sum()),
+                              "n_on": int(sub["n_on"].sum()),
+                              "n_accounts": int(sub["user"].nunique()), "n_days": int(len(sub))}
+            continue
+        w_on, q_on = float(sub["n_on"].sum()), float(sub["q_on"].sum())
+        counts[(g, p)] = {
+            "n": int(sub["k_on"].sum() + sub["k_off"].sum()),
+            "n_on": int(sub["k_on"].sum()),
+            "n_accounts": int(sub["user"].nunique()),
+            "n_days": len(sub),
+            "w_on": w_on,
+            "neff_on": w_on**2 / q_on if q_on else 0.0,
+        }
     return {"cells": cells, "counts": counts}
 
 
@@ -698,11 +787,20 @@ def replier_tiers(replies: pd.DataFrame, as_of=None) -> pd.DataFrame:
     """id, replier (the account's id, else its username) and loyalty tier
     (event_study.loyalty_tier of loyalty_score, the account's age taken on
     `as_of`: settings.LOYALTY_REFERENCE_DATE when None) per reply. A reply
-    with no account record is "unknown"."""
-    from src.analysis.event_study import loyalty_score, loyalty_tier
+    with no account record is "unknown". An account created after `as_of`
+    counts as age 0, and a warning counts its replies and repliers."""
+    from src.analysis.event_study import created_after, loyalty_score, loyalty_tier
 
     as_of = as_of or settings.LOYALTY_REFERENCE_DATE
     acct = replies["account"] if "account" in replies else pd.Series(None, index=replies.index)
+    late = acct.map(lambda a: isinstance(a, dict) and created_after(a, as_of)).astype(bool)
+    if late.any():
+        logger.warning(
+            "loyalty tiers: %d replies from %d accounts created after %s: counted as age 0",
+            int(late.sum()),
+            acct[late].map(lambda a: a.get("id") or a.get("username")).nunique(),
+            pd.Timestamp(as_of).isoformat(),
+        )
 
     def tier(a) -> str:
         if not isinstance(a, dict):

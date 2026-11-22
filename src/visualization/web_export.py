@@ -5,10 +5,11 @@ list of records so the MDX can hand it straight to a Plot mark. Numbers come
 from the same functions as `phases` / `reply-population`, never recomputed.
 
   maga_weekly.json      weekly stance on war posts: pro-war MAGA, anti-war MAGA, admin
-  events.json           the six milestones drawn as rules on the time charts
+  events.json           the milestones drawn as rules on the time charts (WEB_EVENTS)
   accounts.json         each X account's war-post stance (Opus) with a 95% CI,
                         plus RoBERTa valence on the same posts (the sign-flip chart)
-  decomposition.json    each tier's strike-phase -> September change, split into
+  decomposition.json    each tier's change from the strike phase to
+                        settings.WEB_DECOMPOSITION_PHASE ("midterm hold"), split into
                         "talked about the war less" and "changed its war stance"
   trump_phases.json     Trump's own Truth Social war posts by phase
                         (settings.TRUMP_STANCE_SCORE_COL: score_opus, Opus 5)
@@ -19,6 +20,12 @@ from the same functions as `phases` / `reply-population`, never recomputed.
 
 War posts are inference.war_flag's settings.TOPIC_SOURCE (Opus's stance-topic
 class since 2026-11-02), read once per prepared frame.
+
+Phases: decomposition.json names its phase (WEB_DECOMPOSITION_PHASE), never the
+last one, which grows with ANALYSIS_END since phase 6 (2026-11-22). The rest take
+every phase: maga_weekly.json's weeks and trump_phases.json's bars run to
+ANALYSIS_END, and accounts.json's whole war (inference.WHOLE_WAR) is the first
+phase's first day to the last phase's last day.
 """
 
 from __future__ import annotations
@@ -52,7 +59,11 @@ def maga_weekly(d: pd.DataFrame, score: str) -> list[dict]:
     """Weekly war-post stance per tier plus a post-weighted centred rolling
     mean over WEB_SMOOTH_WEEKS calendar weeks (a thin week cannot swing it,
     and a missing week is a gap, not a join). Windows with fewer than
-    WEB_MIN_WINDOW_POSTS war posts are dropped."""
+    WEB_MIN_WINDOW_POSTS war posts are dropped. A frame with window weights
+    (inference.WEIGHT_COL; export() never adds them) gets weighted stance and
+    smooth (inference.weekly_sums); n and n_window stay post counts, and a
+    window is dropped when its Kish effective number of posts
+    (inference.kish_n) is under WEB_MIN_WINDOW_POSTS."""
     w = d[d["on_topic"] & d["tier"].isin(settings.WEB_WEEKLY_TIERS)].copy()
     w["week"] = (
         pd.to_datetime(w["created_at"], utc=True)
@@ -60,22 +71,37 @@ def maga_weekly(d: pd.DataFrame, score: str) -> list[dict]:
         .dt.to_period("W-SUN")
         .dt.start_time
     )
+    weighted = inf.frame_weights(w) is not None
     rows = []
     for tier, g in w.groupby("tier"):
-        wk = g.groupby("week")[score].agg(["sum", "count"])
+        if weighted:
+            wk = inf.weekly_sums(g, score)
+        else:
+            wk = g.groupby("week")[score].agg(["sum", "count"])
         wk = wk.reindex(pd.date_range(wk.index.min(), wk.index.max(), freq="7D"), fill_value=0)
         roll = wk.rolling(settings.WEB_SMOOTH_WEEKS, center=True, min_periods=1).sum()
         for week, r in wk.iterrows():
             n_win = int(roll.loc[week, "count"])
             if n_win < settings.WEB_MIN_WINDOW_POSTS:
                 continue
+            if weighted and (
+                inf.kish_n(roll.loc[week, "wsum"], roll.loc[week, "w2sum"])
+                < settings.WEB_MIN_WINDOW_POSTS
+            ):
+                continue
+            if weighted:
+                stance = _r(r["sum"] / r["wsum"]) if r["count"] else None
+                smooth = _r(roll.loc[week, "sum"] / roll.loc[week, "wsum"])
+            else:
+                stance = _r(r["sum"] / r["count"]) if r["count"] else None
+                smooth = _r(roll.loc[week, "sum"] / n_win)
             rows.append(
                 {
                     "week": week.date().isoformat(),
                     "tier": settings.WEB_TIER_LABELS.get(tier, tier),
-                    "stance": _r(r["sum"] / r["count"]) if r["count"] else None,
+                    "stance": stance,
                     "n": int(r["count"]),
-                    "smooth": _r(roll.loc[week, "sum"] / n_win),
+                    "smooth": smooth,
                     "n_window": n_win,
                 }
             )
@@ -106,10 +132,33 @@ def accounts(df: pd.DataFrame, score: str) -> list[dict]:
     return sorted(rows, key=lambda x: x["stance"])
 
 
+def decomposition_phase() -> str:
+    """settings.WEB_DECOMPOSITION_PHASE, refused unless it is a label in
+    PHASES after the first: a renamed or missing phase, or the first phase
+    (the contrasts' base, which phase_contrasts never sets against itself),
+    must not export an empty chart."""
+    phase = settings.WEB_DECOMPOSITION_PHASE
+    later = inf.PHASE_ORDER[1:]
+    if phase not in later:
+        why = (
+            "is the first phase, the base every contrast starts from"
+            if phase == inf.PHASE_ORDER[0]
+            else "is not a phase in config.timeline.PHASES"
+        )
+        raise ValueError(
+            f"settings.WEB_DECOMPOSITION_PHASE {phase!r} {why}: one of "
+            f"{', '.join(map(repr, later))}"
+        )
+    return phase
+
+
 def decomposition(d: pd.DataFrame, score: str) -> list[dict]:
+    """Each tier's change from the first phase to WEB_DECOMPOSITION_PHASE (the
+    post's contrast, strikes -> midterm hold), not to the last phase."""
+    phase = decomposition_phase()
     boot = inf.bootstrap_cells(d, score)
     c = inf.phase_contrasts(boot)
-    c = c[c["phase"] == PHASES[-1][0]]
+    c = c[c["phase"] == phase]
     parts = [
         ("share_effect", "Talked about the war less (or more)"),
         ("on_topic_effect", "Changed its stance on the war"),
@@ -137,8 +186,9 @@ def trump_phases(score: str | None = None) -> list[dict]:
     """Trump's war posts by phase on `score` (settings.TRUMP_STANCE_SCORE_COL,
     score_opus, by default). A post with text in the phases but no score is
     left out with a logged count, never imputed; a feed without the column
-    raises (score-posts rewrites the parquet without score_opus: `teacher-check
-    --source trump --merge` writes it back). Each tick's dates are clipped to
+    raises (`teacher-check --source trump --merge` writes it; score-posts
+    keeps it on the rows it has, and the posts it adds have none until the
+    next merge). Each tick's dates are clipped to
     the feed: it was collected from Apr 4, so the first phase reads Apr 4,
     not Feb 1."""
     score = score or settings.TRUMP_STANCE_SCORE_COL
@@ -146,7 +196,7 @@ def trump_phases(score: str | None = None) -> list[dict]:
     if score not in df.columns:
         raise LookupError(
             f"{settings.TRUMP_FEED_STANCE.name} has no {score}: `teacher-check --source trump "
-            "--merge` writes it onto the feed (score-posts rewrites the parquet without it)"
+            "--merge` writes it onto the feed"
         )
     text = inf.has_text(df["text"]) & inf.assign_phase(df["created_at"]).notna()
     missing = int((text & df[score].isna()).sum())
@@ -258,6 +308,7 @@ def replies() -> list[dict]:
 
 
 def export(out_dir: Path, score: str = settings.STANCE_SCORE_COL) -> list[Path]:
+    decomposition_phase()  # refuse a bad setting before any file is written
     out_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_parquet(settings.SENTIMENT_OUTPUT)
     d = inf.prepare(df, score)

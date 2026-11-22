@@ -40,7 +40,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass, asdict
-from datetime import datetime, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from typing import Iterable
 
 import numpy as np
@@ -242,17 +242,41 @@ def loyalty_score(record: dict | pd.Series, as_of: datetime | None = None) -> fl
     bio_component = min(0.7, bio_hits * 0.2)  # 3 hits saturates
 
     age_component = 0.0
-    created = account.get("created_at")
-    if created:
+    created_dt = account_created(account)
+    if created_dt is not None:
         try:
-            created_dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
             ref = as_of if as_of is not None else datetime.now(timezone.utc)
-            years = (ref - created_dt).days / 365.25
-            age_component = min(0.3, max(0.0, years / 10))  # 3yr ≈ 0.3
-        except Exception:
+            # An account created after `ref` is age 0, never a negative age.
+            years = max(0.0, (ref - created_dt).days / 365.25)
+            age_component = min(0.3, years / 10)  # 3yr ≈ 0.3
+        except TypeError:  # a reference date with no zone: no age, as before
             pass
 
     return bio_component + age_component
+
+
+def account_created(account: dict | None) -> datetime | None:
+    """The account record's created_at as a timezone-aware datetime: None when
+    it has none, it is not an ISO string, or it carries no zone (a bare date
+    such as "2022-02-21"); loyalty_score gives such an account no age."""
+    created = (account or {}).get("created_at")
+    if not created or not isinstance(created, str):
+        return None
+    try:
+        dt = datetime.fromisoformat(created)  # 3.11+ reads "Z"
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None else None
+
+
+def created_after(account: dict | None, as_of: datetime) -> bool:
+    """True when the account was created after `as_of` (loyalty_score counts
+    it as age 0 there)."""
+    dt = account_created(account)
+    try:
+        return dt is not None and dt > as_of
+    except TypeError:  # a reference date with no zone
+        return False
 
 
 def loyalty_tier(score: float) -> str:
@@ -321,6 +345,7 @@ class EventWindowResult:
     diff_ci_low: float
     diff_ci_high: float
     score_col: str
+    cut: bool = False  # the window runs past the data's [start, end] (compare_events)
 
     def as_row(self) -> dict:
         return asdict(self)
@@ -363,15 +388,38 @@ def compare_events(
     window_hours: int = 48,
     score_col: str | None = None,
     filter_expr: str | None = None,
+    start: date | None = None,
+    end: date | None = None,
 ) -> pd.DataFrame:
     """
     Run `event_window` on every Event in `events` (from config.timeline)
     and return a DataFrame of pre/post means with bootstrap CI on the
     difference.
+
+    `start` / `end` (UTC dates, both inclusive; the CLI passes
+    ANALYSIS_START / ANALYSIS_END) keep only the posts inside them, as
+    `phases` does, so a pull's partial last day never enters, and set `cut`
+    on an event whose window runs past them: its pre or post side covers
+    less than `window_hours`, so it is not a full window.
     """
+    if start is not None or end is not None:
+        day = pd.to_datetime(df["created_at"], utc=True).dt.date
+        keep = pd.Series(True, index=df.index)
+        if start is not None:
+            keep &= day >= start
+        if end is not None:
+            keep &= day <= end
+        df = df[keep]
+    midnight = datetime.min.time()
+    lo_edge = None if start is None else datetime.combine(start, midnight, UTC)
+    hi_edge = None if end is None else datetime.combine(end + timedelta(days=1), midnight, UTC)
+    half = timedelta(hours=window_hours)
     rows: list[dict] = []
     for ev in events:
         ev_dt = datetime(ev.date.year, ev.date.month, ev.date.day, tzinfo=timezone.utc)
+        cut = (lo_edge is not None and ev_dt - half < lo_edge) or (
+            hi_edge is not None and ev_dt + half > hi_edge
+        )
         pre, post, col = event_window(
             df, ev_dt,
             window_hours=window_hours,
@@ -394,6 +442,7 @@ def compare_events(
                 diff_ci_low=lo,
                 diff_ci_high=hi,
                 score_col=col,
+                cut=bool(cut),
             ).as_row()
         )
     return pd.DataFrame(rows)

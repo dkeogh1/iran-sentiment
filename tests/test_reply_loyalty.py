@@ -45,6 +45,32 @@ def test_replier_tiers_default_to_the_settings_date(monkeypatch):
     assert inf.replier_tiers(reps)["loyalty"].tolist()[1] == "low"
 
 
+def test_an_account_created_after_the_reference_date_is_age_zero(caplog):
+    """The reference date stays Nov 1 while the analysis rolls on: an account
+    created after it has age 0, not a negative age that would take a saturated
+    bio (0.7, high) under the high cut, and replier_tiers counts its replies."""
+    ref = settings.LOYALTY_REFERENCE_DATE
+    assert ref == datetime(2026, 11, 1, tzinfo=UTC)  # the published tiers' date
+    new = {
+        "id": "a_new",
+        "bio": "MAGA patriot, Trump, conservative",
+        "created_at": "2026-12-15T00:00:00Z",
+    }
+    assert es.created_after(new, ref) and not es.created_after(MEDIUM, ref)
+    assert not es.created_after(HIGH, ref)  # a bare date has no zone: no age at all
+    assert es.loyalty_score({"account": new}, ref) == pytest.approx(0.7)
+    assert es.loyalty_tier(es.loyalty_score({"account": new}, ref)) == "high"
+    reps = pd.DataFrame({"id": ["1", "2", "3", "4"], "account": [new, new, MEDIUM, None]})
+    with caplog.at_level("WARNING", logger="src.analysis.inference"):
+        t = inf.replier_tiers(reps)
+    assert t["loyalty"].tolist() == ["high", "high", "medium", "unknown"]
+    assert "2 replies from 1 accounts created after 2026-11-01T00:00:00+00:00" in caplog.text
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="src.analysis.inference"):
+        inf.replier_tiers(reps.iloc[2:])
+    assert "created after" not in caplog.text  # nothing to count, nothing said
+
+
 def _with_accounts(reps: pd.DataFrame) -> pd.DataFrame:
     """Each reply's account by its index: high, medium, low in turn (one
     account each per post, so a post has three repliers)."""

@@ -8,7 +8,7 @@ runs free on dkbl2's RTX 3080, plus a check that Haiku is a fit teacher:
 | `teacher-check` | `teacher-check` | no | does Opus 5 disagree with the Haiku labels, and where? |
 | `distill` | `stance-distill` | yes | can a fine-tuned RoBERTa-large reproduce the teacher on held-out posts? |
 | `local-llm` | `stance-local-llm` | yes | can Qwen2.5-7B (4-bit) with the same prompt match the teacher? |
-| `score-distilled` | `score-distilled` | yes | population-level stance for every reply with the distilled model |
+| `score-distilled` | `score-distilled --model-dir .../stance_distilled --col score_distilled` | yes | population-level stance for every reply with the Haiku-taught model (history; the command's defaults are the scorer of record since 2026-11-22) |
 | `local-llm-qwen3`, `local-llm-qwen3-think` | `stance-local-llm --model Qwen/Qwen3-8B [--thinking]` | yes | the 2025 Qwen generation, reasoning off / on, same holdout sample |
 | `distill-opus` | `stance-distill --recipe deb-128-1e5-3 --label-col score_opus --fit-all` | yes | the sweep winner retrained on the Opus 5 labels (`relabel merge` first, then `sync-data.sh push`); holdout eval + final model |
 | `score-distilled-opus` | `score-distilled --model-dir .../stance_distilled_final_score_opus --col score_opus_distilled` | yes | population reply stance from the Opus-taught model (the reply scorer of record) |
@@ -65,7 +65,10 @@ Scoring runs at the model's training length, read from its `recipe.txt`
 into one, move it aside first. Both rules come from 2026-09-30, when the
 older reply scores turned out to come from a fit the sweep had replaced in
 place (`docs/decisions.md`). On the 3080, 98.7k replies take ~20 min at 256
-tokens and 15.6k take ~2 min at 128.
+tokens and 15.6k take ~2 min at 128. `score-distilled` and `score-posts`
+record the model dir and its weights' sha256 behind each column they write
+(`<parquet>_columns.json`) and refuse a column that holds another model's
+scores, a dir refit in place since included.
 
 Reply-domain scorer (2026-10-06). The posts-only scorer never sees the
 post a reply answers, which the v2 labels depend on (0.58 Pearson

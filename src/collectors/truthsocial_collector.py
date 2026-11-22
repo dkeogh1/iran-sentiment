@@ -434,6 +434,47 @@ def _latest_created_at(records: list[dict]) -> datetime | None:
     return max(stamps) if stamps else None
 
 
+FORCED_SUPERSEDED_REASON = "collect-truth --force: labelled from the text cached before the re-read"
+
+
+def changed_texts(prior: list[dict], fetched: list[dict]) -> dict[str, str]:
+    """{id: new text} for the cached posts a forced walk read again with
+    another text. Posts it adds, and cached posts it did not return, are
+    not in it."""
+    old = {str(r["id"]): r.get("text") or "" for r in prior if r.get("id")}
+    return {
+        str(p["id"]): p.get("text") or ""
+        for p in fetched
+        if str(p.get("id")) in old and (p.get("text") or "") != old[str(p["id"])]
+    }
+
+
+def _supersede_changed(handle: str, changes: dict[str, str]) -> None:
+    """As ts-fill-text and X's `collect --force` do: what was made from the
+    old text of the posts in `changes` goes first (ts_fill_text.
+    supersede_changed: the topic, Trump-check and post-label labels to their
+    *_superseded archives, the feed rows archived and cleared, so
+    score-posts and topic-label redo exactly those). Called before the cache
+    write: a run killed in between leaves the old text cached with its
+    labels archived, which costs a relabel, never a label left on a text it
+    was not made from. Raises while score-posts writes the feed."""
+    if not changes:
+        return
+    from src.collectors import ts_fill_text  # imports this module
+
+    r = ts_fill_text.supersede_changed(changes, FORCED_SUPERSEDED_REASON)
+    logger.warning(
+        "@%s: %d re-read posts have new text: labels moved to *_superseded %s; "
+        "%d feed rows cleared (%d archived). %s",
+        handle,
+        len(changes),
+        r["labels_moved"],
+        r["feed_rows_cleared"],
+        r["feed_rows_archived"],
+        ts_fill_text.next_steps(r["labels_moved"]),
+    )
+
+
 def collect_user(
     handle: str,
     tier: str,
@@ -453,6 +494,11 @@ def collect_user(
     Mirrors `x_collector.collect_user`:
       - force=True   : re-fetch the whole [start, end] window and merge it
                        into the cache by id, the fetched version winning.
+                       A cached post whose text it changes has its labels
+                       moved to *_superseded and its feed row cleared first
+                       (_supersede_changed). With a cache to merge into,
+                       refused before the walk while score-posts writes
+                       the feed (stance_local.refuse_while_scoring).
       - force=False  : incremental -- if a non-empty cache exists, fetch
                        only from the day of the latest cached post, drop
                        ids already cached, and append. Returns the full
@@ -467,6 +513,11 @@ def collect_user(
     cache = _account_cache_path(handle)
     start_date = start.date() if isinstance(start, datetime) else start
     end_date = end.date() if isinstance(end, datetime) else end
+    if force and cache.exists():
+        # The merge may clear feed rows; refuse now rather than after the walk.
+        from src.analysis.stance_local import refuse_while_scoring
+
+        refuse_while_scoring(settings.TRUMP_FEED_STANCE, "the rows a forced collect-truth clears")
 
     # Treat an empty cache file as "not collected". An earlier failed run
     # (rate limit, Cloudflare block, etc.) leaves a zero-byte file behind,
@@ -622,7 +673,8 @@ def collect_user(
     # A forced walk must not shrink the cache it was meant to refresh: one cut
     # short (the anonymous API 429s after ~5 pages) or run over a narrower
     # --since/--until window never reaches the rest. Merge into it by id, the
-    # fetched version of a post winning.
+    # fetched version of a post winning; what was made from the old text of a
+    # post it changes goes first (_supersede_changed).
     prior = _load_jsonl(cache) if force and cache.exists() else []
     if prior:
         if not complete:
@@ -636,6 +688,7 @@ def collect_user(
             )
         if not posts:  # cache untouched; newest first like every other return
             return sorted(prior, key=lambda r: r.get("created_at") or "", reverse=True)
+        _supersede_changed(handle, changed_texts(prior, posts))
         fetched = {p["id"] for p in posts}
         posts = sorted(
             posts + [r for r in prior if r.get("id") not in fetched],
@@ -673,14 +726,20 @@ def collect_all(
     (e.g. `TRUTH_SOCIAL_ACCOUNTS` from config.accounts).
 
     Returns {handle: post_count}. Accounts that fail to look up are
-    recorded as 0 rather than aborting the whole run.
+    recorded as 0 rather than aborting the whole run; a forced run that
+    score-posts' marker refuses (stance_local.ScoringInProgress) stops it,
+    since it refuses every account alike.
     """
+    from src.analysis.stance_local import ScoringInProgress
+
     summary: dict[str, int] = {}
     for tier, handles in accounts.items():
         for handle in handles:
             try:
                 posts = collect_user(handle, tier, start=start, end=end, force=force)
                 summary[handle] = len(posts)
+            except ScoringInProgress:
+                raise
             except Exception as e:
                 logger.error("Failed @%s on Truth Social: %s", handle, e)
                 summary[handle] = 0

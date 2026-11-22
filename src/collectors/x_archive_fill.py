@@ -10,10 +10,14 @@ so the filled stretches follow the current design (docs/decisions.md
     span, so a `collect --force` with longer windows replaces the earlier
     runs' grid where it ran), extended backward in GAP_FILL_WINDOW_HOURS
     steps to COLLECTION_START (a head under half a window merges into the
-    first backward window, as collect merges a short tail), and forward to
-    the end of config.timeline.ANALYSIS_END only when half a window or more
-    is left there. An account with no manifest rows gets plan_windows over
-    the whole range.
+    first backward window, as collect merges a short tail). Never forward:
+    past an account's last collect window is collect's to read from its
+    cursor (the newest cached post), so the fill never moves the cursor past
+    collect's windows. When the end of config.timeline.ANALYSIS_END is half a
+    window or more later, plan_fill logs what is left for collect per
+    account (left_for_collect; docs/decisions.md 2026-11-02, 2026-11-22). An
+    account with no manifest rows gets plan_windows from COLLECTION_START to
+    its cursor, and nothing when nothing is cached.
   - Target (plan_window): a sampled account's window (ACCOUNT_WINDOW_CAPS)
     should hold its cap, a take-all account's window everything X counts
     (the `x-counts` hour buckets). Windows are picked with the edge buckets
@@ -186,7 +190,7 @@ class Window:
     s: datetime
     e: datetime
     cap: int | None  # a sampled account's cap for this window; None for take-all
-    origin: str  # backward | manifest | forward
+    origin: str  # backward | manifest | no_manifest
     hours: int
 
 
@@ -235,7 +239,13 @@ def collect_rows(handle: str, manifest_rows: list[dict], end: datetime) -> list[
     return [w for w in out if w["s"] < end]
 
 
-def account_grid(rows: list[dict], w: int | None, start: datetime, end: datetime) -> list[Window]:
+def account_grid(
+    rows: list[dict],
+    w: int | None,
+    start: datetime,
+    end: datetime,
+    cursor: datetime | None = None,
+) -> list[Window]:
     """
     The fill's windows for one account, oldest first (module doc): the
     collect windows `rows` (collect_rows) as they are, preceded by windows of
@@ -243,8 +253,11 @@ def account_grid(rows: list[dict], w: int | None, start: datetime, end: datetime
     their edges keep its minute and second and their ends keep stepping
     through the clock and the week. A head under half a window merges into
     the first backward window (collect's tail rule, mirrored); a longer one
-    stands alone. Forward windows (plan_windows) only when the collect
-    windows end half a window or more before `end`. Caps: sampled (w) a
+    stands alone. Nothing past the last collect window, whatever `end`: that
+    is collect's forward pull. With no collect windows, plan_windows from
+    `start` to `cursor` (collect's next start: the newest cached post + 1 s)
+    or `end`, whichever comes first, and nothing with no cursor (nothing
+    cached: collect's first pull owns the account). Caps: sampled (w) a
     collect window keeps its manifest cap, any other window
     x_collector._window_cap; take-all None.
     """
@@ -255,7 +268,12 @@ def account_grid(rows: list[dict], w: int | None, start: datetime, end: datetime
         return xc._window_cap(w, s, e, hours) if w else None
 
     if not rows:
-        return [Window(s, e, cap(s, e, h), "forward", h) for s, e in xc.plan_windows(start, end, h)]
+        if cursor is None:
+            return []
+        return [
+            Window(s, e, cap(s, e, h), "no_manifest", h)
+            for s, e in xc.plan_windows(start, min(cursor, end), h)
+        ]
     out: list[Window] = []
     first = rows[0]["s"]
     if first > start:
@@ -278,10 +296,28 @@ def account_grid(rows: list[dict], w: int | None, start: datetime, end: datetime
         else:
             c = cap(r["s"], r["e"], hours)
         out.append(Window(r["s"], r["e"], c, "manifest", hours))
-    last = rows[-1]["e"]
-    if end - last >= step / 2:
-        out += [Window(s, e, cap(s, e, h), "forward", h) for s, e in xc.plan_windows(last, end, h)]
     return out
+
+
+def left_for_collect(acct: "Account", start: datetime, end: datetime) -> str | None:
+    """What lies past the account's grid up to `end` (the end of ANALYSIS_END),
+    left for collect, when it is half a window or more (where the fill once
+    planned forward windows); None otherwise."""
+    reach = acct.grid[-1].e if acct.grid else start
+    left = end - reach
+    if left < timedelta(hours=settings.GAP_FILL_WINDOW_HOURS) / 2:
+        return None
+    days = f"{left / timedelta(days=1):.1f} days"
+    if acct.rows:
+        edge = f"collect's last window ends {xcn.z(reach)}"
+    elif acct.cursor is not None:
+        edge = f"no collect window; its cursor (newest cached post + 1 s) is {xcn.z(reach)}"
+    else:
+        edge = "no collect window and nothing cached"
+    return (
+        f"@{acct.handle}: {edge}, {days} before the end of ANALYSIS_END: left for collect "
+        "(the fill plans nothing past collect's last window or, with none, its cursor)"
+    )
 
 
 # ── One account: the cache, the extras, the counts ─────────────────
@@ -312,13 +348,16 @@ class Account:
         self.w = settings.ACCOUNT_WINDOW_CAPS.get(handle)
         self.mode = "sample" if self.w else "take_all"
         self.counts = xcn.CountsCache(xcn.handle_query(handle), "hour")
-        self.rows = collect_rows(handle, manifest_rows, end)
-        self.grid = account_grid(self.rows, self.w, start, end)
         self.cached: dict[str, datetime] = {}
         for r in xc._load_jsonl(xc._account_cache_path(handle)):
             pid, ts = str(r.get("id")), r.get("created_at")
             if ts and pid not in self.cached:
                 self.cached[pid] = xcn.parse_ts(ts)
+        # collect's next start (x_collector.plan_account): the newest cached post + 1 s
+        newest = max(self.cached.values(), default=None)
+        self.cursor = newest + SECOND if newest is not None else None
+        self.rows = collect_rows(handle, manifest_rows, end)
+        self.grid = account_grid(self.rows, self.w, start, end, self.cursor)
         self.extras: dict[str, dict] = {}
         for r in _load_lines(extras_path(handle)):
             pid = str(r["id"])
@@ -667,6 +706,8 @@ def plan_fill(
         for h in handles:
             acct = Account(h, tier, rows, start, end)
             accts[h] = acct
+            if note := left_for_collect(acct, start, end):
+                logger.warning(note)
             tot = {"mode": acct.mode, "win": 0, "plus": plus_windows(acct)}
             tot.update({k: 0 for k in KINDS})
             tot.update(new=0.0, slice=0.0, hour=0.0, ceiling=0, req=0)

@@ -8,7 +8,9 @@ month before the Feb 28 strikes through the Apr 8 ceasefire, the June
 Islamabad deal and its July collapse, the renewed strikes of
 September, and the hold before the Nov 3 midterms.
 
-The analysis is frozen at the Nov 1 pull, before the midterms. X
+The findings below are from the Nov 1 pull, before the midterms (the
+analysis was frozen there until 2026-11-22, when a sixth phase from Nov 2
+opened; they have not been rerun on it yet, see `docs/decisions.md`). X
 broadcaster data runs from Feb 1 to 2026-11-01 for every account, with
 the holes X's timeline endpoint left filled from its full-archive search
 on Nov 3 (see *Data collection*; keyword searches are frozen at May 12);
@@ -702,9 +704,11 @@ the same as on the broadcaster data: on Haiku's categories,
   last refreshed to Oct 31, anonymously); replies via the
   authenticated v2 descendants endpoint after a one-time `ts-login`
   (Truth Social's new-device security-code check).
-- Window: Feb 1 -- Nov 1, 2026 for accounts (every account from Feb 1-4
-  since the archive fill), frozen at the Nov 1 pull before the Nov 3
-  midterms, with pre-war context events back to Jun 2025.
+- Window: Feb 1 -- Nov 1, 2026 for accounts in the findings here (every
+  account from Feb 1-4 since the archive fill), the Nov 1 pull before the
+  Nov 3 midterms, with pre-war context events back to Jun 2025. Since
+  2026-11-22 the code has a sixth phase from Nov 2 whose end rolls with
+  each pull (`docs/decisions.md`).
 
 ### Sentiment scoring
 
@@ -1134,7 +1138,8 @@ collect only spends tokens on new posts.
 config/
   settings.py          # paths, budget caps, batch sizes, tier colors
   accounts.py          # X/Truth Social handles organized by tier
-  timeline.py          # 138 key events (Jun 2025 - Oct 2026), the five phases, the window
+  timeline.py          # 171 key events (Jun 2025 - Nov 2026), the six phases (the last
+                       #   rolling to ANALYSIS_END), the window
   tracked_posts.py     # specific Trump posts for reply analysis
 src/
   cli.py               # Click CLI -- single entrypoint

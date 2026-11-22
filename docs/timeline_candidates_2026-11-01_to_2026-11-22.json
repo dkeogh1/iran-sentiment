@@ -1,0 +1,1308 @@
+[
+ {
+  "period": "2026-11-01 to 2026-11-22",
+  "events": [
+   {
+    "date": "2026-11-01",
+    "label": "Doha talks; Trump: 'make a deal, or we will end it'",
+    "description": "Iranian negotiators, including Deputy FM Gharibabadi, met Qatari mediators in Doha on a two-day plan to reopen Hormuz and restart talks with the US. A Reuters-cited official said they left Doha on Nov 1 with a draft 'being circulated for feedback'. Trump told RSBN the war would end 'very soon, one way or the other', and is reported to have said 'Iran will either make a deal, or we will end it.' No Truth Social post with that line is in his feed.",
+    "category": "diplomatic",
+    "impact": "polarizing",
+    "importance": 2,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/1/mediators-continue-us-iran-negotiations-amid-war-rhetoric-what-we-know",
+     "https://www.timesofisrael.com/liveblog-november-1-2026-2/",
+     "https://www.rappler.com/world/middle-east/usa-iran-war-doha-talks-updates-november-2-2026/",
+     "https://english.alarabiya.net/amp/News/middle-east/2026/11/02/iranian-negotiators-left-doha-talks-draft-proposal-is-being-circulated-official-says"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed; inside the frozen window (ANALYSIS_END = Nov 1). Checked 2026-11-22 against the caches: no post in Trump's Truth Social feed, and none on @POTUS or @WhiteHouse up to the Nov 1 23:12 UTC pull, carries 'we will end it', so the candidate's 'posted' is unconfirmed and the entry is not marked as a tracked post."
+   },
+   {
+    "date": "2026-11-01",
+    "label": "Axios: 'tough' Trump-Netanyahu call on resuming war",
+    "description": "Barak Ravid (Axios) reported that in a call on Oct 31 Netanyahu pushed for strikes right after the Nov 3 midterms, while Trump wanted to give negotiations a chance first. An Israeli source called the call 'tough' and a US source called it 'direct'. Trump called it a 'very good talk' and said he was 'not in much of a hurry' to reach a deal. (tracked account)",
+    "category": "diplomatic",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.axios.com/2026/11/01/trump-netanyahu-iran-negotiations-war",
+     "https://x.com/BarakRavid/status/2116958802779967772",
+     "https://www.iranintl.com/en/202611015366",
+     "https://www.israelnationalnews.com/news/435485",
+     "https://www.tribuneindia.com/news/usa-news/netanyahu-urges-trump-to-strike-iran-immediately-after-us-midterms-during-very-good-phone-call-report"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed; inside the frozen window. Ravid's X post decodes to Nov 1 18:21 UTC; it is not in the @BarakRavid cache (a sampled account) from the Nov 1 pull."
+   },
+   {
+    "date": "2026-11-01",
+    "label": "Carlson: Trump 'within days' of nuking Pickaxe Mountain",
+    "description": "At 8:47 pm ET Tucker Carlson posted on X that, under pressure from Netanyahu, the administration 'may be within days of launching a nuclear strike on Iran'. He named Pickaxe Mountain as the target and Nov 7 as the likely decision date, and wrote 'After the first nuclear strike, World War Three is inevitable.' On Nov 2 a White House official said Carlson has 'no insight into military planning'. The claim is unsubstantiated: Trump had ruled out nuclear use in mid-October. The post decodes to Nov 2 01:47 UTC, so the data place it on Nov 2. (tracked account)",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://x.com/TuckerCarlson/status/2117071025955389828",
+     "https://www.jpost.com/middle-east/iran-news/article-913648",
+     "https://www.aa.com.tr/en/americas/trump-could-launch-nuclear-strike-on-iran-within-days-commentator-claims/4108399",
+     "https://www.ibtimes.co.uk/white-house-challenges-carlson-nuclear-strike-iran-claim-1830166"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: the post is confirmed; the nuclear-plan claim is unverified. Critique: 'Pickax' respelled 'Pickaxe Mountain' as in the Oct 15 and Oct 21 entries; the post is Nov 2 01:47 UTC, so in the data it falls after the frozen window although the US date is Nov 1. Removed the folded Nov 2 Alex Jones endorsement, reported only by his own site."
+   },
+   {
+    "date": "2026-11-02",
+    "label": "Iran's 2-day Hormuz plan; Trump: deal 'could happen!'",
+    "description": "FM spokesman Baghaei said Tehran's offer was 'condensed and can be implemented within two days' if the US meets its conditions. IRNA said the Supreme Leader had given the government 'powers' to speed up talks. At 3:46 pm ET Trump posted that oil was 'DROPPING LIKE A ROCK... because people feel that there will not be a War with Iran... It could happen!' He told Axios he was 'in no rush' to decide on resuming fighting. Brent fell 7.6% to $104.77. (tracked account)",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/2/iran-pushing-accelerated-plan-for-ceasefire-talks-with-us",
+     "https://truthsocial.com/@realDonaldTrump/117548803071800973",
+     "https://www.cbsnews.com/live-updates/iran-war-us-trump-negotiations-midterms/",
+     "https://www.memeorandum.com/261102/p105",
+     "https://www.middleeasteye.net/live-blog/live-blog-update/trump-no-rush-decide-iran-axios-reports",
+     "https://www.cnbc.com/2026/11/02/oil-prices-fall-as-iran-us-pursue-diplomacy.html"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed; merged diplomacy, trump and voices (Axios 'no rush'). The post (117548803071800973, Nov 2 20:46 UTC) is in the feed, with a ReTruth at Nov 3 01:08 UTC."
+   },
+   {
+    "date": "2026-11-02",
+    "label": "US 'defensive' strikes on Qeshm on midterm eve",
+    "description": "Late on Nov 2 (9:48 pm ET, per CBS) US forces carried out limited 'defensive' strikes on Qeshm Island. US officials said the IRGC had fired at a US aircraft and launched a missile that threatened shipping, and that this was not a return to major combat. Trump later told Fox it was a 'minor attack' on a new anti-aircraft site that 'wasn't war', and said 'We might have to go after Pickaxe, but that's not a big deal.' The WSJ reported smaller unannounced strikes 'for several weeks'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.cbsnews.com/news/u-s-strikes-iran-targets/",
+     "https://abcnews.com/International/us-carries-defensive-airstrikes-irans-qeshm-island-officials/story?id=137792518",
+     "https://www.nbcnews.com/world/iran/us-conducted-defensive-strikes-iranian-targets-strait-hormuz-us-offici-rcna607161",
+     "https://www.aljazeera.com/news/2026/11/4/iran-says-us-reply-to-hormuz-plan-unconvincing-trump-confirms-strikes",
+     "https://www.cnbc.com/2026/11/03/iran-us-vance-trump-strikes.html",
+     "https://time.com/article/2026/11/18/qeshm-island-strikes-us-iran-end-forever-war-vance"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected; merged military, us_politics and trump. Critique asked whether this and the Nov 6 strike are one: kept as two. Al Jazeera calls Nov 6 'new' strikes, Iranian media reported strikes near Suza that day, and the military, us_politics and religious verifiers (and Wikipedia's timeline) list Nov 2 and Nov 6 apart. Both Trump quotes describe an anti-aircraft site, so the Fox quote here may be about Nov 6; the Fox interview's date was not pinned."
+   },
+   {
+    "date": "2026-11-03",
+    "label": "Midterms: Democrats win House and Senate",
+    "description": "Democrats won both chambers. In the Senate they flipped nine Republican seats (AK, IA, KS, ME, MS, NC, the Ohio special, SC, TX) for a 56-44 caucus; Michigan was a Democratic hold. NBC's House tally on Nov 21 was 257 D, 173 R, 5 uncalled. Voters interviewed on election day tied fuel prices to the war.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 5,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/4/democrats-win-control-of-house-and-senate-key-us-midterms-takeaways",
+     "https://www.nbcnews.com/politics/2026-elections/house-results",
+     "https://en.wikipedia.org/wiki/2026_United_States_Senate_elections",
+     "https://time.com/article/2026/11/05/iran-us-midterms-republicans-democrats-war-trump-hegseth/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (Michigan was a hold; nine flips; 56-44)."
+   },
+   {
+    "date": "2026-11-03",
+    "label": "Exit polls: ~6 in 10 voters call Iran war wrong",
+    "description": "The AP's Election Day poll found 'about six in 10' voters said attacking Iran was the wrong decision, and 'roughly one-third' called the war crucial to their House vote. The Fox News Voter Poll had 64% wrong and 36% right, with 74% calling the war crucial or a major factor. NBC's exit poll split Catholics 50% D, 49% R (Trump won about 55% in 2024), and evangelicals fell to 17% of voters.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.outlookindia.com/international/donald-trump-us-midterms-2026-voters-oppose-iran-war-exit-poll",
+     "https://foxnews.com/elections/polls/voter-poll-results",
+     "https://www.americamagazine.org/news/2026/11/04/catholic-vote-midterm-election-democrat-republican/",
+     "https://www.ibtimes.com/midterm-poll-religiously-unaffiliated-voters-evangelicals-3809511"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected; merged us_politics and religious (Catholic and evangelical vote)."
+   },
+   {
+    "date": "2026-11-03",
+    "label": "El-Sayed holds Michigan Senate seat for Democrats",
+    "description": "Abdul El-Sayed beat Republican Mike Rogers about 52.5% to 45.5% for retiring Democrat Gary Peters' open seat, becoming the first Muslim elected to the Senate. Rogers had moved from calling Iran an 'imminent threat' in February to a fall ad saying 'the war with Iran needs to end'. MTG had predicted in October that further strikes would hand him the seat.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://time.com/article/2026/11/03/abdul-el-sayed-michigan-senate-2026-midterm-elections-mike-rogers/",
+     "https://en.wikipedia.org/wiki/2026_United_States_Senate_elections",
+     "https://theintercept.com/2026/11/06/jd-vance-midterms-republicans-iran-war/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: corrected (a hold, not a flip; dated to election day, since the call time is unverified). MTG's prediction is the Oct 21 entry."
+   },
+   {
+    "date": "2026-11-03",
+    "label": "Ghalibaf: 'ball in America's court'; Qatar hopeful",
+    "description": "In a televised Election Day speech, chief negotiator Ghalibaf said Iran had given the US 'a powerful and rational response' and 'The ball is now in America's court to prevent war'. Security chief Rezaei called the US reply 'not convincing'. Qatar said 'We remain hopeful that there is still a chance for a deal', and Reuters reported a new Qatari suggestion with feedback expected within 36 hours.",
+    "category": "diplomatic",
+    "impact": "polarizing",
+    "importance": 2,
+    "sources": [
+     "https://www.arabnews.com/middle-east/irans-parliament-speaker-says-tehran-has-given-us-a-powerful-and-rational-response-3009545",
+     "https://www.cbsnews.com/live-updates/iran-war-us-trump-negotiations-midterms/"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed (Rezaei quote and the 36-hour window rest on CBS citing Reuters)."
+   },
+   {
+    "date": "2026-11-03",
+    "label": "Loomer on election night: 'Finish the job'",
+    "description": "As Democrats won both chambers, Laura Loomer posted at 11:48 pm ET: 'Time for President Trump to deal with Iran once and for all. Just do it. Nothing to lose now. Finish the job. @POTUS'. The same night she wrote that 'America is over' ('Not a meltdown. Just reality.'). The post decodes to Nov 4 04:48 UTC. (tracked account)",
+    "category": "media",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://x.com/LauraLoomer/status/2117841483843645545",
+     "https://www.rawstory.com/laura-loomer-2678241160/",
+     "https://www.rawstory.com/maga-midterms-2678274347/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed. In the data it falls on Nov 4 UTC."
+   },
+   {
+    "date": "2026-11-03",
+    "label": "Alex Jones: 'I'm 100% at war with Trump'",
+    "description": "On his election-night livestream Alex Jones broke with Trump: 'I think he's the ultimate Democrat sleeper cell', 'I'm 100% at war with Trump' and 'He did this on purpose.' The quoted lines do not mention Iran; coverage frames them as the end point of his break over the war. This is a break with Trump, not a change in Jones's anti-war stance.",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 2,
+    "sources": [
+     "https://www.rawstory.com/maga-midterms-2678274347/",
+     "https://www.aol.com/articles/alex-jones-declares-hes-100-173527000.html",
+     "https://www.mediaite.com/politics/alex-jones-brands-trump-a-sleeper-cell-democrat-after-midterm-pummeling-he-did-this-on-purpose/",
+     "https://www.primetimer.com/news/alex-jones-says-trump-is-the-ultimate-democrat-sleeper-cell-and-made-the-republicans-lose-the-midterms-on-purpose"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: found-by-verifier. Critique: the quoted lines do not mention Iran, so importance lowered from 3 to 2. Said on his livestream, not posted; @RealAlexJones is tracked, so clips may be in the data (not marked)."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "Vance: 'The reason we lost is the war'",
+    "description": "On the morning of Nov 4, VP Vance posted from his personal @JDVance account, not the tracked @VP: 'The reason we lost is the war. The president himself said so last night... If you'd like to argue it was worth it, that losing the Senate for the next 6 years was worth it, then do so.' JTA reports that his remedies included 'Change our relationship to Israel.' Don Jr. reposted it ('Every word of this is 100 100 100'); Mark Levin called it 'stunning'.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 4,
+    "sources": [
+     "https://www.nbcnews.com/politics/2026-election/vance-says-ranger-iran-war-caused-gop-midterm-losses-rcna607446",
+     "https://www.armytimes.com/news/pentagon-congress/2026/11/04/the-reason-we-lost-is-the-war-vance-blames-midterm-gop-losses-iran-conflict/",
+     "https://abcnews.com/Politics/vance-blames-iran-war-republicans-midterms-defeat-trump/story?id=137849295",
+     "https://www.jta.org/2026/11/04/politics/jd-vance-blames-israel-and-iran-war-for-gops-crushing-defeats",
+     "https://responsiblestatecraft.org/neocons-iran-war-midterms/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (personal account, not @VP); merged us_politics and voices. @JDVance is not a collected account, so this is not a tracked post."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "Trump: Vance 'largely true'; 'nothing different' on Iran",
+    "description": "On election night Trump told the WSJ 'Iran was a piece of it... I did the right thing. I would have done it again', and told the FT he had no immediate plans for new strikes. On Nov 4 he told reporters 'The Iran thing we had to do, and we will continue to do it', blamed 'The price, not the war' and said 'I would have done nothing different in Iran.' He called Vance's post 'largely true' but said he would fight again to stop an Iranian bomb. He said again that Vance 'was right' on Nov 8 and Nov 19, and called it 'a very accurate statement' on Nov 20.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/amp/news/liveblog/2026/11/3/us-midterm-election-results-live-polls-to-start-closing-in-some-states",
+     "https://abcnews.com/Politics/vance-blames-iran-war-republicans-midterms-defeat-trump/story?id=137849295",
+     "https://www.nbcnews.com/politics/2026-election/vance-says-ranger-iran-war-caused-gop-midterm-losses-rcna607446",
+     "https://www.cbsnews.com/live-updates/iran-war-trump-us-strait-hormuz-persian-gulf/",
+     "https://www.jpost.com/middle-east/iran-news/article-914040",
+     "https://www.nprillinois.org/2026-11-10/after-midterm-losses-trump-sends-mixed-messaging-about-next-steps-in-war-with-iran",
+     "https://www.dailyherald.com/2026/11/20/trump-iran-next-steps/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed; merged us_politics and trump (election-night FT/WSJ remarks folded in). Critique: his later 'was right' (Nov 8 to reporters, Nov 19 to Reuters; the Nov 19 entry's sources) and 'very accurate' (Nov 20) on Vance are repeats, merged here and removed from the Nov 8, Nov 19 and Nov 20 entries. Label reworded: 'largely true' was about Vance's post."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "Schumer: 'We are going to end the war'",
+    "description": "At his post-election news conference Schumer said 'We are going to end the war. We have some Republicans already who have joined us in ending the war.' He cited Congress's 'power of the purse' as a check on 'a president who does wars without the consent of the American people.' The White House called the Democrats' plans 'sham investigations and radical left policies'.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.tribuneindia.com/news/usa-news/with-or-without-trump-chuck-schumer-says-democrats-will-focus-on-cost-of-living-ending-iran-war-after-midterm-win/",
+     "https://english.news.cn/20261105/0253dc827c5649e4a2f1630692d37ea9/c.html",
+     "https://time.com/article/2026/11/05/iran-us-midterms-republicans-democrats-war-trump-hegseth/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "Iran hails midterms as 'NO TO WAR'; Khamenei unmoved",
+    "description": "Ghalibaf wrote on X that 'Americans said NO TO WAR, and we endorse this message', and warned that 'our NO comes with a Nightmare' if Washington ignores it. Supreme Leader Mojtaba Khamenei said anyone expecting US policy to soften was 'gravely mistaken', and Rezaei said Iran had 'handed Trump a strategic defeat on the battlefield'. A NYT report relayed on Nov 17-18 said Tehran hardened its negotiating stance after the result.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.pbs.org/newshour/world/iranian-leaders-say-midterm-results-show-u-s-voters-have-rejected-trumps-war",
+     "https://www.aljazeera.com/news/2026/11/4/iranian-leaders-welcome-us-midterms-but-trump-may-still-attack",
+     "https://time.com/article/2026/11/05/iran-us-midterms-republicans-democrats-war-trump-hegseth/",
+     "https://www.israelnationalnews.com/news/436504"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed; Rezaei's 'strategic defeat' (found-by-verifier) folded in."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "MTG to Vance: 'should have listened to me and Tucker'",
+    "description": "Replying to Vance on X, Marjorie Taylor Greene wrote that Republicans lost because ''24 campaign promises were not delivered'. She added 'You should have listened to me and Tucker and others who told you early' and 'Blaming the Iran war won't work.' On election night she had called the result 'a total referendum on Trump'. (tracked account if posted from @mtgreenee)",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://thenationaldesk.com/news/americas-news-now/mtg-says-vance-trump-should-have-listened-to-her-and-tucker-carlson-about-iran-war-israel-gop",
+     "https://www.rawstory.com/maga-midterms-2678274347/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed. Critique: the candidate said @mtgreenee, but the Oct 21 entry's post came from @FmrRepMTG and is not in the take-all @mtgreenee cache, so she posts from two accounts and the handle here is left open. After the next pull, look for this reply in mtgreenee.jsonl."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "Carlson: midterms are 'the end of the Trump era'",
+    "description": "On his Nov 4 show Carlson called the result 'the biggest blowout of our lifetimes' and said 'This is the end of the Trump era last night. We're done.' He called the Iran war the main reason for the loss. He said Trump chose 'Israel over the United States', that Republicans 'got exactly what they deserved', and 'we're done here with Trump.'",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.thewrap.com/media-platforms/politics/tucker-carlson-fox-news-trump-midterm-elections-reaction/",
+     "https://www.aol.com/articles/tucker-carlson-says-trump-era-174818000.html"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed. Said on his show, not posted; @TuckerCarlson is tracked, so clips may be in the data (not marked)."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "Levin feuds with Mace; calls Carlson a 'traitor'",
+    "description": "Rep. Nancy Mace called Mark Levin 'a moron' who had contributed to the GOP losses. Levin called her a 'washed up political loser' and said 'We lost last night for many reasons.' The same day he called Carlson 'among the biggest traitors to our country in our history' and called Vance's post 'stunning'. (tracked account)",
+    "category": "media",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.huffpost.com/entry/mark-levin-election-post_n_6aeb49a6e4b08d8d4a8cbb98",
+     "https://responsiblestatecraft.org/neocons-iran-war-midterms/",
+     "https://x.com/marklevinshow/status/2117946652094857544"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed (his 'phony and feckless peace negotiations' post is unverified and left out). The cited @marklevinshow post decodes to Nov 4 11:46 UTC."
+   },
+   {
+    "date": "2026-11-04",
+    "label": "IRGC claims mined tankers; NYT: US forces poised",
+    "description": "The IRGC said four tankers had been 'destroyed' by mines in a 'prohibited' lane and two vessels detained. By Nov 5 its claims had reached five tankers and a tugboat on fire (unverified). UKMTO separately logged a tanker hit by two projectiles about 50 nm north of Qatar. Pentagon officials told the NYT that thousands of US forces were poised to resume major combat on Trump's order, with no date set; no campaign followed.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/4/iran-says-us-reply-to-hormuz-plan-unconvincing-trump-confirms-strikes",
+     "https://www.aljazeera.com/news/2026/11/5/iran-says-tankers-struck-in-hormuz-amid-fears-of-new-us-attack"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed; NYT 'forces poised' (found-by-verifier) folded in."
+   },
+   {
+    "date": "2026-11-05",
+    "label": "Trump: may 'destroy the rest' of Iran; 'know soon'",
+    "description": "After his first national security meetings since the election, Trump said in the Oval Office: 'Now we will make a decision... I would rather not destroy the rest of the country if possible, but maybe I'll have to. You'll know soon enough.' Breitbart alone quotes 'we're very much locked and loaded' and 'virtually an occupation'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.breitbart.com/politics/2026/11/05/trump-decision-renewed-strikes-iran-coming-soon/",
+     "https://www.thenationalnews.com/news/mena/2026/11/06/youll-know-soon-enough-trump-considers-iran-options/",
+     "https://www.aa.com.tr/en/americas/trump-warns-that-iran-could-face-destruction-saying-you-ll-know-soon-enough-about-his-next-move/4113532"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-05",
+    "label": "Iran sends nuclear proposal to US via Qatar",
+    "description": "A senior Iranian official told Reuters that Tehran had sent a 'new nuclear and peace proposal' through Qatari mediators, to be discussed only after Washington meets Iran's seven demands. The US was examining it, and its contents were not made public.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/9/qatar-pm-to-meet-trump-whats-the-latest-on-us-iran-negotiations",
+     "https://www.aljazeera.com/amp/news/liveblog/2026/11/6/iran-war-live-trump-warns-us-may-have-to-destroy-rest-of-iran"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-05",
+    "label": "Hegseth video defends war amid replacement talk",
+    "description": "In a video Hegseth called the war a 'courageous and historic effort', said 'We will not back down', called the impeachment push a 'sham' and urged lawmakers to pass the Pentagon funding request. CBS had reported that Trump discussed replacing him, and a Trump adviser told Reuters he 'could be on the chopping block'. Trump said Hegseth had 'done a fantastic job'.",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://gvwire.com/2026/11/05/hegseth-vows-to-keep-fighting-from-pentagon-defends-iran-war/",
+     "https://time.com/article/2026/11/05/iran-us-midterms-republicans-democrats-war-trump-hegseth/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed. Where the video was posted was not checked; if on @PeteHegseth it is a tracked post."
+   },
+   {
+    "date": "2026-11-06",
+    "label": "Trump confirms 'minor strikes' on Qeshm air defenses",
+    "description": "After landing at Palm Beach, Trump confirmed 'minor strikes' on Qeshm: 'they built a little bit of an anti-aircraft device, and we knocked it out in about 15 minutes, maybe five.' After a call with Qatar's emir he said 'We've made a lot of progress with Iran... They want to make a deal.' Qatar called reports that the talks had failed 'false and misleading'. Iranian state media reported two missile strikes near Suza and claimed an MQ-9 shot down (unconfirmed).",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/7/trump-confirms-new-us-strikes-on-irans-qeshm-island",
+     "https://www.cbsnews.com/live-updates/iran-war-trump-us-strait-hormuz-persian-gulf/",
+     "https://www.aljazeera.com/amp/news/liveblog/2026/11/6/iran-war-live-trump-warns-us-may-have-to-destroy-rest-of-iran",
+     "https://time.com/article/2026/11/18/qeshm-island-strikes-us-iran-end-forever-war-vance"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed; merged military, trump, us_politics and diplomacy (Qatar emir call). Critique asked whether this repeats the Nov 2 strike: kept apart, see the Nov 2 entry's note. TIME's 'confirmed more strikes' was not checked by the us_politics verifier."
+   },
+   {
+    "date": "2026-11-06",
+    "label": "Axios: Vance leads quiet push for new Iran deal",
+    "description": "Ravid reported that Vance had spent about two weeks in indirect talks toward a new ceasefire and nuclear negotiations, speaking almost daily with Qatar's PM and Pakistan's army chief Asim Munir; Witkoff and Kushner were also involved. His late-October letter to SNSC secretary Rezaei (the Oct 28 entry) had drawn no formal reply, and a technical meeting had been discussed but not scheduled. (tracked account)",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.axios.com/2026/11/06/vance-leads-push-new-iran-deal",
+     "https://x.com/BarakRavid/status/2118844697544098048",
+     "https://www.iranintl.com/en/202611064490"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed (Axios page 403; read through Iran International). Ravid's X post decodes to Nov 6 23:15 UTC."
+   },
+   {
+    "date": "2026-11-06",
+    "label": "Trump: Israel 'WOULD NOT EXIST TODAY' but for him",
+    "description": "Truth Social, 1:09 pm ET (117570835652141710): 'Israel and, in fact, the entire Middle East, WOULD NOT EXIST TODAY if I did not stop Iran from having a Nuclear Weapon. Nobody wants to say that, but everybody knows it's true!' It had 4,548 replies by Nov 22. (tracked account)",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://truthsocial.com/@realDonaldTrump/117570835652141710",
+     "https://www.trumpstruth.org/statuses/43497"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-07",
+    "label": "IRGC lifts its 2,000 km missile-range limit",
+    "description": "IRGC spokesman Gen. Hossein Mohebbi said the self-imposed 2,000 km limit on ballistic-missile range 'has been lifted for us', and that Iran would 'demonstrate these capabilities in practice'. This followed the Supreme Leader's Oct 31 order for a 'geographically unrestricted' response.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.timesofisrael.com/liveblog_entry/irans-revolutionary-guard-says-self-proclaimed-limit-on-ballistic-missile-range-has-been-lifted/",
+     "https://en.wikipedia.org/wiki/2026_Iran_war"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: found-by-verifier. Critique: Rezaei's Nov 11 threat to US bases in Europe, folded in here, is now its own Nov 11 entry."
+   },
+   {
+    "date": "2026-11-07",
+    "label": "CENTCOM launches Task Force Iron Gate",
+    "description": "CENTCOM commander Adm. Brad Cooper set up Task Force Iron Gate to 'monitor, detect and disrupt' weapons, dual-use goods and illicit revenue crossing Iran's land borders and the Caspian. It extends the naval blockade, which CENTCOM says has stopped more than $25 billion in crude exports. Trump posted on Nov 8 (117582778301201947) that it was 'in full force and effect... very little gets into, or out of, Iran!'; the IRGC called it 'merely a wordplay'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.thenationalnews.com/news/gulf/2026/11/09/what-is-task-force-iron-gate-trumps-new-plan-to-choke-off-irans-military-supply-routes/",
+     "https://truthsocial.com/@realDonaldTrump/117582778301201947",
+     "https://www.aljazeera.com/news-analysis/2026/11/9/trump-says-iran-is-sealed-off-but-can-new-us-task-force-stop-weapons-flow"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: found-by-verifier; merged with the trump angle's Nov 8 Truth Social post (corrected: '20 people' is an analyst's figure). Trump's Nov 8 post (20:46 UTC) is a tracked post, but a reaction to CENTCOM's move, so the entry is not marked."
+   },
+   {
+    "date": "2026-11-07",
+    "label": "Levin blames Vance's 'isolationist' wing for loss",
+    "description": "On radio and Fox (Nov 4-8) Mark Levin blamed Vance for the 'utterly defective' MOU ('That was the vice president'). On Fox on Nov 7 he said that 'a movement within the Republican Party, as represented by the vice president' is isolationist and that the war needs a 'military victory'. On Nov 8 he attacked the 'podcast class' and the 'quislings'. The quotes come from a transcription by Media Matters, a critic.",
+    "category": "media",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.mediamatters.org/mark-levin/after-democratic-midterm-blowout-iran-war-propagandist-mark-levin-rewrites-history",
+     "https://responsiblestatecraft.org/neocons-iran-war-midterms/"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed. Radio and Fox remarks, not posts (@marklevinshow is tracked; not marked)."
+   },
+   {
+    "date": "2026-11-08",
+    "label": "Iran strikes Oman's Didamar Island radar",
+    "description": "Iran struck radar and navigation equipment on Oman's Didamar Island, beside the US-facilitated southern Hormuz route; Sentinel-2 imagery dated Nov 8 shows scorch marks. Iranian state media claimed the strike on Nov 10, saying the systems helped ships transit 'without Tehran's authorization', and Reuters confirmed it through three sources on Nov 11. Oman did not comment, and ships kept using the route.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://abcnews.com/International/strait-hormuz-attacks-increased-highest-level-iran-war/story?id=138304456",
+     "https://www.foxnews.com/world/iran-escalates-hormuz-claims-strike-omani-island-enemy-uses-us-military-ops"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: corrected."
+   },
+   {
+    "date": "2026-11-08",
+    "label": "Trump: new war 'highly unlikely'; 'not looking to'",
+    "description": "In a CNN phone interview Trump said renewed war 'depends on whether or not they sign a very strong agreement... The answer is highly unlikely it's going to be necessary.' In the same interview he said there were '38 bridges in our sight' and three carriers 'locked and loaded' (the third, the Roosevelt, arrived Nov 15). Asked on 60 Minutes about escalating now that the midterms are over, he said: 'Well, I'm not looking to. I don't think there's any reason to.'",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.cnbc.com/2026/11/08/trump-iran-strikes-unlikely-talks-hormuz.html",
+     "https://www.foxnews.com/live-news/iran-war-news-trump-saudi-houthi-november-8",
+     "https://www.nprillinois.org/2026-11-10/after-midterm-losses-trump-sends-mixed-messaging-about-next-steps-in-war-with-iran",
+     "https://www.cbsnews.com/live-updates/iran-war-trump-us-strait-hormuz-persian-gulf/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed; merged trump (CNN, 60 Minutes) and military. Critique: his 'Vance was right' remark moved to the Nov 4 entry; 'three carriers' counts the Roosevelt en route (due by the end of November per the Oct 1 entry)."
+   },
+   {
+    "date": "2026-11-08",
+    "label": "Rubio: demands 'outrageous'; Araghchi: 'rain down hell'",
+    "description": "Rubio said Iran's demands were 'not just unacceptable, but in some cases, outrageous and ridiculous' and 'I wouldn't say we're at the verge of a breakthrough.' FM Araghchi posted on X that Iran would 'rain down hell' if the US resumed attacks, and that 'Our 2-day proposal stands.'",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/9/qatar-pm-to-meet-trump-whats-the-latest-on-us-iran-negotiations",
+     "https://nukta.com/iran-s-araghchi-delivers-ultimatum-to-trump-accept-de-escalation-terms-or-face-hell-of-fire"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-08",
+    "label": "Herzog taps Eisenkot to form Israel's government",
+    "description": "After the Oct 27 election, President Herzog gave Yashar leader Gadi Eisenkot the mandate to form a government. Eisenkot had 67 recommendations to Netanyahu's 46 and has up to six weeks. Netanyahu stays on as caretaker PM while pressing Trump to resume the war, and on Nov 20 he pushed for a unity government.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.jta.org/2026/11/08/israel/president-herzog-tasks-gadi-eisenkot-with-forming-israels-next-government",
+     "https://www.president.gov.il/en/president-herzog-tasks-gadi-eisenkot-with-forming-a-government/",
+     "https://timesofisrael.com/liveblog-november-20-2026"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-08",
+    "label": "Iran: Qeshm hit again overnight; US silent",
+    "description": "Iranian state media said US forces fired projectiles at Qeshm overnight on Nov 8-9 (Iran time). Hormozgan's deputy governor said no residential or vital infrastructure was hit. The US did not acknowledge a strike. Iranian state TV said 11 tankers had been attacked in 10 days.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/9/iran-stands-by-demands-to-end-the-war-as-us-ramps-up-military-pressure",
+     "https://en.wikipedia.org/wiki/2026_Iran_war"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: found-by-verifier."
+   },
+   {
+    "date": "2026-11-09",
+    "label": "Qatar PM at White House; Trump: war 'effectively over'",
+    "description": "After a roughly 45-minute Oval Office meeting with Qatar's PM, with Vance present, Trump said 'Iran, militarily, is effectively over. We're just keeping it the status quo' and 'At this point, it won't be necessary, taking the military action'. His 4:29 pm ET post (117588608183719347) said the Gulf states 'would prefer the status quo' (the blockade plus Iron Gate), called renewed action 'quite unlikely' while staying 'locked and loaded', and saw 'positive momentum toward an end to this Conflict.' Rezaei dismissed reports of a Vance meeting as 'fake news about imaginary talks', and on Nov 11 called a WSJ report of one 'completely false and a lie'. (tracked account)",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://www.euronews.com/2026/11/10/trump-says-iran-war-effectively-over-as-tehran-denies-planned-talks",
+     "https://www.aljazeera.com/news/2026/11/9/trump-calls-iran-war-effectively-over-after-talks-with-qatar-pm",
+     "https://truthsocial.com/@realDonaldTrump/117588608183719347",
+     "https://www.arabnews.com/middle-east/trump-says-iran-war-is-militarily-effectively-over-after-qatar-pm-talks-3010816",
+     "https://www.jewishinsider.com/2026/11/trump-qatar-prime-minister-positive-momentum-iran/",
+     "https://www.timesofisrael.com/liveblog-november-10-2026/",
+     "https://www.aa.com.tr/en/us-israel-iran-war/us-jd-vance-weighs-direct-talks-with-iranian-security-official-to-end-war-report/4121438"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (in-person meeting, not a call); merged military, diplomacy, trump and found-by-verifier. Checked 2026-11-22: 'status quo', 'quite unlikely', 'locked and loaded' and 'positive momentum' are all in the post's text in the feed. Critique: Rezaei's two denials (Nov 9 and Nov 11) merged here; the Nov 11 WSJ entry is dropped as a re-report of the Oct 28 entry."
+   },
+   {
+    "date": "2026-11-10",
+    "label": "Rubio: 'no need for major combat operations'",
+    "description": "In Paris after the G7 foreign ministers' meetings, Rubio said 'The President has concluded that for the time being there is no need for major combat operations' because 'we're achieving the same objective by economic means'. He added 'The economic pressure is going to get even worse.' On Nov 13 he told the Federalist Society that the 'economic pain' is 'so great that there's no need for military action.'",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.al-monitor.com/originals/2026/11/rubio-sees-no-need-major-combat-operations-against-iran",
+     "https://www.breitbart.com/politics/2026/11/10/rubio-no-need-major-combat-operations-against-iran/",
+     "https://www.timesofisrael.com/liveblog-november-14-2026/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed; Rubio's Nov 13 Federalist Society remark (found-by-verifier) folded in."
+   },
+   {
+    "date": "2026-11-10",
+    "label": "Reuters/Ipsos: 71% want Congress to end Iran war",
+    "description": "A Reuters/Ipsos poll (Nov 6-9, 1,705 adults) found 71% of Americans want Congress to pass legislation ending the conflict, including 93% of Democrats and 51% of Republicans. Only 26% approved of Trump's handling of Iran, and his overall approval was 32%.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.businessday.co.za/world/americas/2026-11-10-most-americans-want-congress-to-end-trumps-iran-war/",
+     "https://www.newsweek.com/donald-trump-approval-rating-falling-midterm-losses-12709719"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-10",
+    "label": "Hegseth: impeachment 'not patriotism... sabotage'",
+    "description": "At a Pentagon briefing Hegseth called the impeachment effort 'a farce' and 'a stunt' and said 'This is not patriotism. This is sabotage.' He claimed Iran's 'navy sunk, their air force grounded' and that 'We control the Strait of Hormuz'. Of Trump he said 'He did not kick the can; he kicked their teeth in', adding 'I would do it again tomorrow.'",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://foreignpolicy.com/2026/11/10/hegseth-speech-impeachment-transcript-pentagon-full-text/",
+     "https://www.iranintl.com/en/202611103150"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-10",
+    "label": "House shelves Massie's Hegseth impeachment, 211-204",
+    "description": "Rep. Thomas Massie filed eight impeachment articles on Nov 9, three of them on waging the Iran war in breach of the War Powers Resolution. On Nov 10 the House voted 211-204 to refer them to committee; Massie was the lone Republican voting to keep them alive. Trump posted that 'with... TWO VICTORIES, Venezuela and Iran, Pete Hegseth should be praised, not Impeached' (Nov 9) and that the attempt 'has miserably FAILED!' (Nov 10). Jeffries vowed to 'run Pete Hegseth out of town'.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.npr.org/2026/11/10/nx-s1-6036813/house-votes-to-effectively-end-the-impeachment-effort-against-pete-hegseth",
+     "https://www.nbcnews.com/politics/congress/republican-led-house-rejects-hegseth-impeachment-effort-rcna608534",
+     "https://truthsocial.com/@realDonaldTrump/117589581287691662",
+     "https://truthsocial.com/@realDonaldTrump/117594721408592840"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (3 of the 8 articles concern Iran); merged us_politics, trump Nov 9 post and found-by-verifier Nov 10 post. Trump's two posts are tracked posts but reactions to the vote, so the entry is not marked."
+   },
+   {
+    "date": "2026-11-10",
+    "label": "Brent dips below $90 for first time since August",
+    "description": "Brent touched $89.16, its first time under $90 since August, and settled at $91.49 as Trump said the war was 'going to be ending fairly soon'. It was $92.57 on Nov 20, down nearly 20% in November.",
+    "category": "military",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://www.cnbc.com/2026/11/10/oil-prices-trump-iran.html",
+     "https://www.cnbc.com/2026/11/02/oil-prices-fall-as-iran-us-pursue-diplomacy.html",
+     "https://tradingeconomics.com/commodity/brent-crude-oil"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: corrected. Critique: the repeated Nov 2 price and the Oct 30 contract note moved out of the description. The note: Brent's Nov 2 fall of 7.6% to $104.77 (the Nov 2 entry) was from the January contract's $113.43 close on Oct 30; the Oct 30 entry's $117.64 is the expiring December contract, so the two agree (the military verifier had flagged $117.64 as a conflict). The trump verifier found the 'ending fairly soon' remark only in NBC, at a press conference dated Nov 9 or 10."
+   },
+   {
+    "date": "2026-11-10",
+    "label": "Military archbishop Broglio urges US-Iran dialogue",
+    "description": "At the Catholic Military Conference (Nov 9-11), Archbishop Timothy Broglio told EWTN that 'everything should be done to encourage dialogue' between Iran and the US and 'to avoid war', since 'War is always the last possible option'. He said civilian harm 'should be avoided at all cost'.",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://www.ewtnnews.com/world/us/theologians-retired-commander-reflect-on-just-war-at-catholic-military-conference",
+     "https://www.catholicworldreport.com/2026/11/10/theologians-retired-commander-reflect-on-just-war-at-catholic-military-conference/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed (dated to publication; the interview took place Nov 9-11)."
+   },
+   {
+    "date": "2026-11-11",
+    "label": "Rezaei threatens US bases in Europe",
+    "description": "SNSC secretary Mohsen Rezaei threatened to strike US bases 'even... in a European country' if they are used for attacks on Iran. It came four days after the IRGC lifted its 2,000 km missile-range limit.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.arabnews.com/middle-east/iran-security-chief-threatens-to-strike-us-bases-in-europe-if-used-for-attacks-3011215"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Found by the military verifier and folded into the Nov 7 missile-range entry. Critique: un-folded to its own date. Single source (Arab News)."
+   },
+   {
+    "date": "2026-11-11",
+    "label": "Israel cabinet orders Iran strike prep; Eisenkot objects",
+    "description": "Israeli media reported that caretaker PM Netanyahu's security cabinet ordered the IDF to step up preparations for an attack on Iran. Eisenkot warned that deploying forces 'without a direct and immediate threat' could have 'devastating consequences', and Liberman said a caretaker government may not drag Israel into war without parliamentary oversight. At a Nov 12 briefing the IDF reportedly said it 'sees no urgent need to attack Iran' but would join a US campaign (Channel 13).",
+    "category": "political",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/13/can-netanyahu-launch-a-strike-on-iran-before-he-leaves",
+     "https://www.timesofisrael.com/in-netanyahu-eisenkot-briefing-idf-reportedly-says-no-urgent-need-to-strike-iran/",
+     "https://www.timesofisrael.com/liveblog-november-12-2026/"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: corrected (IDF assessment dated Nov 12)."
+   },
+   {
+    "date": "2026-11-11",
+    "label": "Sanders, 3 senators: no stopgap that funds the war",
+    "description": "Sens. Sanders, Bennet, Van Hollen and Duckworth said any short-term package by the Dec 11 deadline 'must include language that restricts the Trump Administration from using appropriated funds' to 'continue his war against Iran'. They noted that 'More than 20 American service members have been killed.' On Nov 12 Jeffries said 'We need to end the reckless and costly war of choice in Iran', opposed 'any additional money' for it and did not rule out a shutdown.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.sanders.senate.gov/press-releases/news-sanders-bennet-van-hollen-duckworth-release-joint-statement-opposing-more-funding-for-trumps-war-on-iran/",
+     "https://www.denvergazette.com/2026/11/12/jeffries-refuses-to-rule-out-government-shutdown-over-iran-war/",
+     "https://dailycaller.com/2026/11/12/democrat-lawmakers-iran-war-funding-freeze-govt-funding-deal/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (dated Nov 11, per the Senate release); merged us_politics and voices. A joint release, not a post; @SenSanders is tracked and may have posted it (not marked)."
+   },
+   {
+    "date": "2026-11-11",
+    "label": "83 Catholic scholars urge bishops to oppose Iran war",
+    "description": "OSV News reported a letter dated Nov 9 from 83 Catholic theologians and educators, organized by Kevin Ahern and Eli McCarthy. It asked the US bishops to publicly oppose 'any renewal or expansion of military operations against Iran' before their Nov 16-19 assembly. The assembly in Baltimore ended with no statement on Iran or war.",
+    "category": "protest",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://catholicreview.org/more-than-80-theologians-educators-urge-us-bishops-to-publicly-oppose-iran-war/",
+     "https://angelusnews.com/news/theologians-letter-iran",
+     "https://www.usccb.org/news/2026/recap-us-bishops-plenary-assembly-baltimore"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed (dated to first report); the USCCB assembly's silence (Nov 19) folded in."
+   },
+   {
+    "date": "2026-11-12",
+    "label": "Trump: 'We don't need a deal'; pulls Vance off Iran",
+    "description": "Truth Social, 8:07 am ET (117603621591099598): Trump asked Vance 'to focus his complete and total attention on the Massive Corruption and Crime' in Democratic-run states, then wrote 'We don't need a deal with Iran. Those days have long since passed. We've got their money, Hundreds of Billions of Dollars, and we've got their Strait!' It followed a Nov 11 WSJ report that Vance was weighing direct talks with Rezaei, and the same day a Ghalibaf adviser said Tehran had rejected Vance's request for direct talks. Trump told Hugh Hewitt it was 'possible I would do it right now' of resuming strikes, and that leaving the 'Iran crazies' in power would 'absolutely' be 'a defeat'. (tracked account)",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://truthsocial.com/@realDonaldTrump/117603621591099598",
+     "https://www.cnbc.com/2026/11/12/trump-iran-deal-hormuz-strait.html",
+     "https://www.npr.org/2026/11/13/nx-s1-6039160/trump-redirects-vance-from-iran-to-focus-on-combatting-fraud-in-democratic-led-states",
+     "https://www.iranintl.com/en/202611129077",
+     "https://www.yahoo.com/news/politics/articles/trump-tells-vance-turn-focus-200158576.html",
+     "https://www.aa.com.tr/en/us-israel-iran-war/us-jd-vance-weighs-direct-talks-with-iranian-security-official-to-end-war-report/4121438",
+     "https://www.iranintl.com/en/202611124239"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected; merged diplomacy, us_politics, voices, trump and the Hewitt interview (found-by-verifier). Critique: the Nov 11 WSJ report repeats the Oct 28 entry (Vance's offer to meet Rezaei, likely in Doha), so it is context here, not an entry; Tehran's Nov 12 rejection moved here from it. The post leads with the Vance directive, so its replies may not be mainly about Iran (trump verifier)."
+   },
+   {
+    "date": "2026-11-12",
+    "label": "Van Hollen challenges Schumer over war funding",
+    "description": "Sen. Chris Van Hollen said he would challenge Schumer for Senate Democratic leader. He argues Schumer has not used the power of the purse to force an end to the war, and that the Dec 11 funding deadline 'should not be a finger-in-the-wind issue'. Schumer said he has the votes; the caucus vote is expected in early December.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.nbcnews.com/politics/congress/sen-chris-van-hollen-says-will-challenge-sen-chuck-schumer-majority-le-rcna609100",
+     "https://www.cbsnews.com/news/chris-van-hollen-challenge-chuck-schumer-senate-majority-leader-democrat/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (Dec 1 vote date unverified, dropped)."
+   },
+   {
+    "date": "2026-11-13",
+    "label": "Iran drones target US radar in Bahrain",
+    "description": "The IRGC claimed it destroyed a US early-warning radar in Bahrain, in retaliation for an air attack on a telecom tower in Sirik, Hormozgan (attacker unconfirmed). CENTCOM said both drones were shot down with no damage. It was the first such attempt on Bahrain since September. On Nov 15 the IRGC said six drones had targeted a radar at the Al-Riffa base; Bahrain intercepted them and held Iran 'fully responsible'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.jpost.com/middle-east/iran-news/article-914794",
+     "https://www.foxnews.com/world/bahrain-intercepts-iranian-drones-targeting-us-radar-after-2-month-lull-gulf-strikes",
+     "https://abcnews.com/International/live-updates/iran-live-updates-tanker-attacked-strait-hormuz-ukmto/?id=138171071&entryId=138171210"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-13",
+    "label": "IAEA alarm on unseen Isfahan enrichment plant",
+    "description": "A confidential IAEA report said the agency is 'increasingly concerned' about the underground Isfahan enrichment plant, which Iran declared in 2025 but has never let inspectors visit. The agency does not know its exact location and cannot conclude there has been no diversion of material. More than 400 kg of near-weapons-grade uranium is unaccounted for.",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.thenationalnews.com/news/mena/2026/11/13/iaea-expresses-concern-over-iranian-underground-uranium-enrichment-plant/",
+     "https://www.iranintl.com/en/202611133720"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed. Critique: Rezaei's 'not a single particle' removed; it repeats the Oct 20 entry ('Rezaei: no uranium leaves Iran')."
+   },
+   {
+    "date": "2026-11-13",
+    "label": "UNSC on Hormuz: 25 seafarers killed since February",
+    "description": "At a Security Council meeting requested by Bahrain, UN Assistant Secretary-General Khiari said at least 25 seafarers had been killed around Hormuz since the war began, and that October had the most attacks on shipping since February. The IMO counted 136 incidents from Mar 1 to Nov 11. The US said 'Iran ignores this Council', and no draft resolution was tabled.",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://press.un.org/en/2026/sc16509.doc.htm",
+     "https://www.aljazeera.com/news/2026/11/14/un-says-25-seafarers-killed-in-around-hormuz-since-february"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed; merged diplomacy and the UN seafarer count (found-by-verifier)."
+   },
+   {
+    "date": "2026-11-13",
+    "label": "Axios: Mossad chief in DC as Netanyahu presses for war",
+    "description": "Ravid reported, citing three sources, that Mossad director Roman Gofman met CIA Director Ratcliffe in Washington and was due to see Witkoff in Miami, as part of Netanyahu's push for Trump to resume the war. Trump had so far preferred the blockade, economic pressure and a possible deal. The FT had reported Netanyahu calling Trump 'every day'. (tracked account)",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.axios.com/2026/11/13/mossad-israel-iran-war-netanyahu-pressures-trump",
+     "https://x.com/BarakRavid/status/2121242442657665141",
+     "https://english.news.cn/20261113/210212f65f3a453c8621c1c9932aa2fb/c.html",
+     "https://www.timesofisrael.com/liveblog-november-10-2026/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed. Ravid's X post decodes to Nov 13 14:03 UTC."
+   },
+   {
+    "date": "2026-11-14",
+    "label": "Reuters: Trump may hold off strikes absent provocation",
+    "description": "Reuters, citing three sources, reported that Trump told advisers he may not attack Iran barring new provocations from Tehran or the Houthis. He had reportedly told MBS on Oct 31 that he planned to strike after the midterms; MBS urged him to wait, and Erdogan also urged restraint. A White House official said: 'Only President Trump knows what he will do, and when.'",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.timesofisrael.com/trump-tells-advisers-he-may-not-attack-iran-as-long-as-it-doesnt-provoke-us-sources-say/",
+     "https://www.timesofisrael.com/liveblog-november-14-2026/"
+    ],
+    "confidence": "medium",
+    "selected": true,
+    "note": "Verifier: confirmed; merged military and diplomacy (found-by-verifier)."
+   },
+   {
+    "date": "2026-11-15",
+    "label": "Third US carrier arrives; NYT: strike plans drawn up",
+    "description": "The USS Theodore Roosevelt strike group entered the CENTCOM area on a scheduled deployment, joining the George H.W. Bush and George Washington. More than 20 US Navy ships are enforcing the blockade, and the Makin Island ARG followed. The same day the NYT reported US-Israeli plans for renewed strikes, likely on energy and other economic infrastructure.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://aljazeera.com/news/2026/11/16/uss-roosevelt-arrives-in-middle-east-is-the-us-iran-war-about-to-resume",
+     "https://abcnews.com/International/live-updates/iran-live-updates-tanker-attacked-strait-hormuz-ukmto/?id=138171071&entryId=138171210",
+     "https://gulfnews.com/world/mena/us-israel-draw-up-plans-for-possible-strikes-on-irans-economic-infrastructure-1.500748574"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-15",
+    "label": "Trump pushes op-ed: 'Wait Till You See Defeat'",
+    "description": "At 8:40 pm ET Trump posted 'A must read!!!' with a link to a WSJ opinion piece titled 'If You Think War Is Unpopular, Wait Till You See Defeat' (117623567982116164). The author and the piece's argument were not verified. (tracked account)",
+    "category": "media",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://truthsocial.com/@realDonaldTrump/117623567982116164",
+     "https://www.trumpstruth.org/statuses/43594"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed (the post); the op-ed's author is unverified."
+   },
+   {
+    "date": "2026-11-16",
+    "label": "CNN: intel on Iranian dirty-bomb plot in Washington",
+    "description": "CNN, citing seven officials, reported intelligence that Iran is developing options to target senior administration officials in Washington with a dirty bomb or chemical weapon; officials were divided on its capability and intent. In Manila on Nov 17 Trump said 'we take it very seriously because they happen to be crazy' and warned Iran would 'pay a price the likes of which no country has ever paid'. Iran called the report baseless, and the White House said there were 'no credible threats to the homeland'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/17/is-iran-plotting-a-dirty-bomb-attack-in-the-us-what-we-know",
+     "https://www.cbsnews.com/live-updates/iran-war-us-nuclear-oil-strait-of-hormuz/"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-16",
+    "label": "Carlson: Trump told me he wants to de-escalate",
+    "description": "On a Nov 16 episode Carlson said 'I had a long talk with him the other day... I'm convinced he wants to de-escalate'. He said he was 'positive' Trump had not wanted the war and had been 'pushed, forced to do this'. Only Carlson attests to the call. It is a softer tone than his Nov 4 'end of the Trump era'.",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://katv.com/news/nation-world/tucker-carlson-says-he-spoke-to-trump-and-is-convinced-he-wants-to-de-escalate-in-iran-nukes-truth-social-house-senate-rrt",
+     "https://www.ibtimes.co.uk/loomer-challenges-carlson-trump-iran-war-stance-1833453"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed. Said on his show, not posted; @TuckerCarlson is tracked, so clips may be in the data (not marked)."
+   },
+   {
+    "date": "2026-11-16",
+    "label": "Vance: Trump won't let Iran become a 'forever war'",
+    "description": "On Fox News (a Monday, likely Nov 16) Vance said Trump 'is not going to let this become a forever war' and 'We told the American people we would do no more forever wars.' This rests on TIME alone.",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://time.com/article/2026/11/18/qeshm-island-strikes-us-iran-end-forever-war-vance/"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed (single source)."
+   },
+   {
+    "date": "2026-11-16",
+    "label": "Trump attacks 60 Minutes over Iran attack report",
+    "description": "Truth Social, 9:17 am ET (117626544494395657): 'The new people running 60 Minutes are even worse than their predecessors.' He claimed only 2 of the 8,000-9,000 one-way drones Iran has fired since Feb 28 'got through', and that '99.99%' of about 2,000 ballistic missiles were shot down or caused no US deaths; these are his figures, unverified. It had 4,697 replies by Nov 22. (tracked account)",
+    "category": "media",
+    "impact": "polarizing",
+    "importance": 2,
+    "sources": [
+     "https://truthsocial.com/@realDonaldTrump/117626544494395657",
+     "https://www.trumpstruth.org/statuses/43603"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-16",
+    "label": "Araghchi at ECO in Islamabad, then talks in Oman",
+    "description": "At the ECO foreign ministers' meeting in Islamabad, Araghchi accused the US of 'aggression, threats, targeted assassinations, economic coercion, and blockades', and Pakistan pledged to continue its mediation. He met Oman's FM Busaidi in Muscat on Nov 17, amid efforts to revive the Pakistan-mediated June memorandum.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://www.timesofisrael.com/liveblog-november-16-2026/",
+     "https://www.anews.com.tr/middle-east/2026/11/17/iranian-foreign-minister-arrives-in-oman-for-talks",
+     "https://nournews.ir/en/news/362765/omani-fm-describes-meeting-with-araghchi-as-constructive"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: corrected (the Busaidi meeting was Nov 17)."
+   },
+   {
+    "date": "2026-11-17",
+    "label": "US jets hit Qeshm missile site after Bahrain drone attack",
+    "description": "The IRGC sent one-way attack drones at a US-operated radar at Bahrain's Sheikh Isa Air Base, its third attack on Bahrain in five days; CENTCOM called the claimed hit 'FALSE'. Hours later US fighter jets struck an IRGC missile launch site on Qeshm, which a US official called 'self-defense'. IRNA reported five or six explosions, and Hormozgan's deputy governor said civilian areas were undamaged.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.nbcnews.com/world/iran/iran-widens-gulf-attacks-targeting-us-air-base-kuwait-sites-bahrain-rcna610128",
+     "https://www.aljazeera.com/news/2026/11/17/kuwait-reports-drone-attacks-as-iran-us-trade-attacks-on-qeshm-and-bahrain",
+     "https://time.com/article/2026/11/18/qeshm-island-strikes-us-iran-end-forever-war-vance",
+     "https://www.cbsnews.com/live-updates/iran-war-us-nuclear-oil-strait-of-hormuz/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-17",
+    "label": "Iran drones target US sites at Kuwait's Ali Al Salem",
+    "description": "Kuwait reported intercepting hostile drones late on Nov 17 (early Nov 18 local time). Iran's army claimed attacks on US air-defence systems and drone and missile platforms at Ali Al Salem Air Base in reply to the Qeshm strike, its first attack on Kuwait since early September. Kuwait called the attacks 'criminal', and CENTCOM said 'No U.S. personnel have been injured in any attempted Iranian attacks this week.'",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/17/kuwait-reports-drone-attacks-as-iran-us-trade-attacks-on-qeshm-and-bahrain",
+     "https://www.nbcnews.com/world/iran/iran-widens-gulf-attacks-targeting-us-air-base-kuwait-sites-bahrain-rcna610128",
+     "https://www.middleeasteye.net/live-blog/live-blog-update/no-us-personnel-injured-any-attempted-iranian-attacks-week"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: corrected (date moved from Nov 18 to Nov 17 ET)."
+   },
+   {
+    "date": "2026-11-17",
+    "label": "Hormuz tanker attacks peak; crews missing",
+    "description": "The LPG tanker Tara Gas, with 24 Indian crew, was hit off Khasab on Nov 16 and again on Nov 17 and abandoned, with one crew member missing. The NAVIG8 MESSI was hit on Nov 17; ADNOC said one crew member was missing and 11 injured. UKMTO counted six tanker attacks in the week to Nov 18, and 263 transits, about 65% below pre-war. Iran's navy and the IRGC claimed mine strikes ('the Strait of Hormuz is closed'); the US says the main routes are clear.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.marineinsight.com/strait-hormuz-shipping-65-below-tanker-attacks/",
+     "https://gcaptain.com/another-tanker-hit-in-strait-of-hormuz-as-maritime-attacks-surge-worldwide/",
+     "https://www.cbsnews.com/live-updates/iran-war-us-nuclear-oil-strait-of-hormuz/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed."
+   },
+   {
+    "date": "2026-11-17",
+    "label": "Loomer rebuts Carlson; says US 'attacked by Iran'",
+    "description": "Laura Loomer answered Carlson's account with 'I highly doubt this is true', and said the negotiations made the US look 'pathetic and weak' ('The world is laughing at us'). The same day she wrote 'It's very obvious we are being attacked by Iran with assistance from China and Russia' about a run of US tech outages, and urged Trump, then in the Philippines, to come home. The NYT found no common cause for the outages. (tracked account)",
+    "category": "media",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.ibtimes.co.uk/loomer-challenges-carlson-trump-iran-war-stance-1833453",
+     "https://www.wndnewscenter.org/very-obvious-trump-adviser-says-u-s-is-being-attacked-by-these-3-countries-urges-president-to-return-to-america/"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed. Marked as posts on @LauraLoomer: the sources say she 'wrote' them; the post ids were not seen."
+   },
+   {
+    "date": "2026-11-18",
+    "label": "Gulf condemns Iran attacks; Qatar: talks harder",
+    "description": "After Iran's attacks on Kuwait and Bahrain (Bahrain's fourth day of attacks since Nov 13), Saudi Arabia condemned them 'in the strongest terms' and the GCC held Iran 'responsible for this escalation'. Qatar called it 'a dangerous escalation' and warned that escalation by both sides makes a negotiated solution, or even continued dialogue, harder. The same day CENTCOM commander Adm. Cooper met Israeli military and intelligence leaders in Tel Aviv.",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/18/kuwait-bahrain-face-new-iran-attacks-after-us-strike-on-qeshm-island",
+     "https://www.nbcnews.com/world/iran/iran-widens-gulf-attacks-targeting-us-air-base-kuwait-sites-bahrain-rcna610128",
+     "https://www.timesofisrael.com/liveblog-november-18-2026/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: corrected; Bahrain's second round and Cooper in Tel Aviv (found-by-verifier) folded in."
+   },
+   {
+    "date": "2026-11-18",
+    "label": "CENTCOM extends blockade to ship-to-ship transfers",
+    "description": "A CENTCOM advisory said ships that take cargo at sea from vessels loaded in Iran may be treated as evading the blockade, and may be stopped, boarded, diverted or captured, with force 'consistent with applicable law'. It followed TankerTrackers reports of a ship-to-ship loading of Iranian crude in the Gulf. The blockade was reinstated on Jul 14.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://gcaptain.com/u-s-targets-ship-to-ship-transfers-in-expanded-iran-maritime-blockade/",
+     "https://www.aljazeera.com/news/2026/11/20/us-targets-irans-ship-to-ship-transfers-can-tehran-break-the-blockade"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed (vessel names and USNI counts unverified, left out)."
+   },
+   {
+    "date": "2026-11-18",
+    "label": "NYT: Netanyahu urges 4-7 day campaign; Trump undecided",
+    "description": "The NYT reported that Netanyahu is urging Trump to join a four- to seven-day air campaign and that Trump has not decided. US options focus on missile and drone arsenals, energy facilities and IRGC headquarters; Israeli plans add nuclear sites and power infrastructure. Bombers are on 96-hour notice and an extra Patriot battery has gone to Israel. Per Axios, some US officials consider the Israeli intelligence behind the push 'driven by an agenda'.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.haaretz.com/israel-news/israel-security/2026-11-19/ty-article/report-netanyahu-presses-trump-for-four-to-seven-day-campaign-against-iran/000001a1-f1b2-d9ff-a7b5-f1bec1d70000",
+     "https://www.ynetnews.com/article/bjiti0irze",
+     "https://www.timesofisrael.com/liveblog-november-19-2026/"
+    ],
+    "confidence": "medium",
+    "selected": true,
+    "note": "Verifier: confirmed; merged military and diplomacy (found-by-verifier); NYT original not read."
+   },
+   {
+    "date": "2026-11-18",
+    "label": "Trump: Iran eyeing chem, bio arms; MOU 'waste of time'",
+    "description": "In a Fox News interview in Shenzhen, Trump said without evidence: 'There is indication that Iran is looking at gasses, looking at bio, because we've shut them out with the nuclear', and 'if it does happen, we wipe them out'. He called the June memorandum 'a waste of time' and said 'we will see what happens after January 1.' Iran's foreign ministry called it 'the same fraudulent script' used before the 2003 Iraq invasion.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.cbsnews.com/live-updates/iran-war-us-gulf-retaliation-strikes-strait-of-hormuz/",
+     "https://www.cbsnews.com/live-updates/iran-war-trump-tehran-denies-chemical-weapons/",
+     "https://www.breitbart.com/politics/2026/11/19/trump-signals-no-more-major-iran-strikes-in-2026-economic-pressure-mounts-on-tehran/",
+     "https://www.timesofisrael.com/liveblog-november-19-2026/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: confirmed; merged diplomacy, trump and us_politics (found-by-verifier)."
+   },
+   {
+    "date": "2026-11-18",
+    "label": "MTG to Trump: you 'got whooped' over Iran",
+    "description": "Trump had posted on Nov 17 about the 'Biggest drop in gasoline in 18 years'. Marjorie Taylor Greene replied from her X account at 11:28 am ET: 'The price of gas dropped after the election because you got whooped in the midterms BECAUSE YOU have been psychotically threatening to basically nuke Iran.' She called it a 'stupid pointless war'. (tracked account if posted from @mtgreenee)",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://x.com/mtgreenee/status/2123090866306711664",
+     "https://www.ibtimes.co.uk/ex-maga-ally-tells-donald-trump-he-got-whooped-midterms-over-stupid-pointless-war-1833827"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed; merged us_politics and voices. Critique: the candidate said @mtgreenee, but the Oct 21 entry's post came from @FmrRepMTG, which the take-all @mtgreenee cache does not hold, and an x.com URL resolves by id whatever handle it shows. After the pull, check whether 2123090866306711664 is in mtgreenee.jsonl. Trump's Nov 17 post is in the feed (22:09 UTC)."
+   },
+   {
+    "date": "2026-11-19",
+    "label": "Trump defers Iran strike decision to the new year",
+    "description": "Returning from China, Trump told Axios by phone: 'I am not rushing into any decision on Iran. We will see what happens after the beginning of the year.' He told Reuters 'We've got time', and Israel's Channel 12 the same. Axios reported he is still weighing a joint operation with Israel on suspected nuclear sites including Pickaxe Mountain, plus bridges, power plants and leaders.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 4,
+    "sources": [
+     "https://gulfnews.com/world/americas/will-us-strike-iran-again-trump-says-decision-can-wait-until-2027-1.500754568",
+     "https://www.haaretz.com/us-news/2026-11-20/ty-article/trump-pushes-iran-strike-decision-to-next-year-weve-got-time/000001a1-f623-d175-abf5-fe3795240000",
+     "https://www.ynetnews.com/article/ryvtvkkkqg",
+     "https://www.cbsnews.com/live-updates/iran-war-trump-tehran-denies-chemical-weapons/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (dated Nov 19, not Nov 21); merged us_politics, voices, trump and diplomacy. Critique: the Vance 'was right' remark moved to the Nov 4 entry."
+   },
+   {
+    "date": "2026-11-19",
+    "label": "Senate rejects Iran war powers resolution, 48-51",
+    "description": "In the first war vote since the midterms, the Senate rejected 48-51 a resolution directing the removal of US forces from hostilities with Iran. Republicans Collins, Murkowski and Paul voted yes. Tillis (a yes on Sep 24) and Cassidy (a yes in May and June) voted no, as did Fetterman. Gillibrand and Duckworth pushed a stopgap amendment for 'not one more dime' for offensive operations. A Navy nominee put the war's cost at $48.3B, and Sanders posted from @BernieSanders, not the tracked @SenSanders: 'The wars in Vietnam, Iraq and Iran were based on lies.'",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "http://www.rollcall.com/2026/11/19/iran-resolution-blocked-in-first-war-powers-vote-since-midterms",
+     "https://www.cbsnews.com/news/iran-war-powers-vote-senate-republicans/",
+     "https://www.hngn.com/articles/273913/20261121/senate-rejects-iran-war-powers-measure-funding-fight-looms.htm",
+     "https://www.gillibrand.senate.gov/news/press/release/gillibrand-duckworth-demand-passage-of-their-government-funding-bill-amendment-to-defund-and-end-trumps-costly-iran-war/",
+     "https://www.washingtonexaminer.com/policy/defense/4808819/navy-comptroller-nominee-iran-war-cost/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected ('21st vote' and Murphy's absence unverified, dropped). Critique: the candidate called it the House-passed concurrent resolution '(220-204 in September)'. The timeline has no September House vote (House: 215-208 on Jun 3, 214-208 on Jul 23), and the Senate already rejected the House-passed resolution 49-50 on Sep 24, so that history is dropped and which measure this was is left open. Cassidy's and Tillis's earlier yes votes are the May 19, Jun 23 and Sep 24 entries."
+   },
+   {
+    "date": "2026-11-19",
+    "label": "Houthi missile damages Riyadh's PIF Tower",
+    "description": "Before dawn a Houthi missile damaged Riyadh's 385 m PIF Tower, blowing out windows on up to eight floors. The King Abdullah Financial District was evacuated, with no injuries. It followed a Nov 8 Houthi hit on an Aramco building in the same district and Nov 17 Houthi drone strikes on East-West pipeline pumping stations. The Saudi coalition struck Hodeidah, Sanaa, Saada and Taiz on Nov 20.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.iranintl.com/en/202611190933",
+     "https://www.foxnews.com/world/iran-backed-houthi-terrorist-attack-hits-riyadh-tallest-skyscraper-hq-saudi-public-investment-fund",
+     "https://www.timesofisrael.com/yemens-houthis-fire-3-missiles-at-riyadh-after-saudi-coalitions-special-operation/",
+     "https://www.cbsnews.com/live-updates/iran-war-us-nuclear-oil-strait-of-hormuz/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: corrected; the Nov 8 Aramco and Nov 17 pipeline attacks (found-by-verifier) folded in."
+   },
+   {
+    "date": "2026-11-19",
+    "label": "IAEA Board: US, E3 accuse Iran of 'stonewalling'",
+    "description": "At the IAEA Board, the US, UK, France and Germany accused Iran of 'stonewalling' and said the agency had 'lost continuity of knowledge' of Iran's HEU stockpile 'for a year and a half'. Iran's envoy said Iran will not accept 'unconditional and unlimited cooperation' while it is under attack. On Nov 16 Deputy FM Gharibabadi had barred access to the bombed sites 'until Iran's conditions are met and the war has permanently ended'. No resolution was reported.",
+    "category": "diplomatic",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.jpost.com/international/article-915481",
+     "https://www.cbsnews.com/live-updates/iran-war-us-gulf-retaliation-strikes-strait-of-hormuz/",
+     "https://www.timesofisrael.com/liveblog-november-16-2026/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed; Iran's Nov 16 refusal of IAEA access (found-by-verifier) folded in."
+   },
+   {
+    "date": "2026-11-19",
+    "label": "Trump meets Xi, Putin at APEC: 'Iran cannot have a nuke'",
+    "description": "At APEC in Shenzhen, Trump met Putin and then Xi. In prepared remarks to Xi he stressed restoring energy flows through Hormuz and said 'Iran cannot have a nuclear weapon.' The three leaders held an hour-long trilateral on nuclear arms; their joint statement does not mention Iran.",
+    "category": "diplomatic",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://www.timesofisrael.com/liveblog-november-19-2026/",
+     "https://www.cbsnews.com/news/trump-xi-putin-china-apec-summit/"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: found-by-verifier (importance lowered from 3: whether Iran was discussed is unclear)."
+   },
+   {
+    "date": "2026-11-20",
+    "label": "Trump presser: 'a real deal, not a fake deal'",
+    "description": "At a White House news conference after the China trip, Trump said Iran wants a deal but 'not... acceptable to me', 'We want to make a real deal, not a fake deal', and 'Iran will never have a nuclear weapon, ever.' Asked whether he would do the war again: 'absolutely, the answer is yes'. Treasury sanctioned four Iranian 'oil trustees' the same day.",
+    "category": "political",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.dailyherald.com/2026/11/20/trump-iran-next-steps/",
+     "https://www.nbcnews.com/politics/trump-administration/live-blog/trump-asia-trip-xi-putin-congress-2026-live-updates-rcna610347",
+     "https://www.scrippsnews.com/politics/the-president/trump-to-hold-white-house-press-conference-following-meeting-with-putin-xi",
+     "https://aljazeera.com/news/2026/11/21/irans-irgc-downs-us-drone-over-hormuz-as-efforts-to-end-war-remain-stalled"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: corrected; merged diplomacy and trump. Critique: his 'a very accurate statement' on Vance moved to the Nov 4 entry. 'not acceptable to me' is ynet-only (trump verifier)."
+   },
+   {
+    "date": "2026-11-20",
+    "label": "Qatari team in Tehran; Iran: not yet formal talks",
+    "description": "A Qatari delegation led by Ali al-Thawadi held two hours of talks in Tehran on the night of Nov 20, a day after Witkoff and Kushner met 'senior Qatari officials' in Berlin (Axios). Deputy FM Gharibabadi said the talks 'have not yet become formal negotiations' and called the blockade 'an act of war'. On Nov 21 Araghchi said the seven conditions 'must be implemented' for Hormuz to reopen. He said a 'fair solution' could still be reached and that Iran's nuclear doctrine 'has not changed'.",
+    "category": "diplomatic",
+    "impact": "polarizing",
+    "importance": 3,
+    "sources": [
+     "https://www.aljazeera.com/news/2026/11/21/iran-says-held-talks-with-qatari-mediators-urges-us-to-accept-conditions",
+     "https://www.newarab.com/news/qatari-delegation-visited-tehran-talks-iran-deputy-fm",
+     "https://www.middleeasteye.net/live-blog/live-blog-update/trump-envoys-met-qatari-officials-berlin-discuss-us-iran-mediation",
+     "https://www.timesofisrael.com/liveblog-november-21-2026/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed; merged diplomacy, voices, the Berlin meeting and Araghchi's doctrine remark (found-by-verifier). Araghchi's refusal to send the 60% uranium abroad is left out: it repeats the Oct 20 entry's position."
+   },
+   {
+    "date": "2026-11-20",
+    "label": "CBS: US, Israel weigh new assault 'in the short term'",
+    "description": "CBS reported that the US and Israel are considering 'launching a new assault on Iran in the short term'. CENTCOM denied a Tasnim report of a new missile strike on Qeshm. On Nov 21 it denied an IRGC claim to have hit a US F-16: 'Iran did not attack a U.S. F-16 fighter aircraft yesterday — at all.'",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 2,
+    "sources": [
+     "https://www.cbsnews.com/live-updates/iran-war-trump-tehran-denies-chemical-weapons/",
+     "https://www.jns.org/news/u-s-news/centcom-denies-iranian-claim-of-missile-strike-on-us-f-16"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: confirmed; FT report (found-by-verifier, via The American Conservative) folded in. Critique: the cited TAC page is 'iran-war-day-277', and counting Feb 28 as day 1 (the Nov 21 entry's day-268 is Nov 22), day 277 is Dec 1, after today, so the URL cannot exist yet. It was the only source for the FT report (strikes before the new year; CENTCOM on readiness past December), so the FT claim, the URL and 'before new year' in the label are dropped and importance lowered from 3 to 2. Re-verify the FT report before restoring it."
+   },
+   {
+    "date": "2026-11-20",
+    "label": "Iran gathers tankers at Kharg to test blockade",
+    "description": "Satellite imagery and ship tracking showed more than 14 tankers off Kharg Island with crews assigned and Iranian flags raised, as hardliners pushed for a convoy to China to challenge the US blockade. No convoy has been announced or sailed. Fars and IRGC-linked figures threatened oil facilities in six Gulf states.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.euronews.com/2026/11/20/iran-readies-tanker-convoy-at-kharg-island-to-test-us-oil-blockade",
+     "https://maritime-executive.com/article/reports-claim-iran-is-preparing-oil-convoy-to-test-u-s-blockade",
+     "https://euronews.com/2026/11/21/iran-attacks-us-bases-in-bahrain-as-its-tankers-get-ready-to-break-the-us-blockade"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: corrected (staging only; no official convoy)."
+   },
+   {
+    "date": "2026-11-20",
+    "label": "Polls: Iran war opposition at record 60.4%",
+    "description": "Silver Bulletin's Iran war average reached an all-time high of 60.4% oppose and 30.8% support, up from 36/57 on Oct 30. An Economist/YouGov poll (Nov 9-11) found 63% want the war ended as quickly as possible even if some objectives go unmet, against 21% who want to keep fighting. A reported Reuters/Ipsos figure of 31% approval (Nov 13-16) is unconfirmed.",
+    "category": "political",
+    "impact": "dovish",
+    "importance": 3,
+    "sources": [
+     "https://www.natesilver.net/p/iran-war-polls-popularity-approval",
+     "https://yougov.com/en-us/articles/55976-looking-to-2028-presidential-election-donald-trump-approval-nears-all-time-low-november-9-11-2026-economist-yougov-poll"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected (the Reuters/Ipsos 31% figure is flagged)."
+   },
+   {
+    "date": "2026-11-21",
+    "label": "Iran missiles, drones hit Bahrain; Sitra plant ablaze",
+    "description": "On the night of Nov 21 Iran fired two waves of drones and ballistic missiles at US-linked sites in Bahrain. The IRGC claimed two US Patriot radars destroyed, citing a US strike on a Hengam Island radar that the US has not confirmed. Bahrain said a civilian industrial plant in Sitra caught fire and two people were injured, one critically, and did not confirm the IRGC's claims. Saudi Arabia held Iran 'responsible', the GCC and Jordan condemned the attack, and Qatar called it a 'grave escalation' that 'impairs diplomatic endeavors'. There was no Trump response by mid-morning Nov 22.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 4,
+    "sources": [
+     "https://www.thenationalnews.com/news/gulf/2026/11/22/two-injured-one-critically-in-iranian-attack-on-industrial-plant-in-bahrain/",
+     "https://www.aljazeera.com/news/2026/11/22/whats-behind-irans-escalation-of-attacks-in-the-gulf",
+     "https://www.aljazeera.com/news/2026/11/21/bahrain-says-iranian-attack-causes-fire-at-industrial-facility",
+     "https://www.timesofisrael.com/liveblog-november-22-2026/"
+    ],
+    "confidence": "high",
+    "selected": true,
+    "note": "Verifier: corrected; merged military, the trump angle (found-by-verifier) and the Nov 22 Saudi/Qatar condemnations (found-by-verifier)."
+   },
+   {
+    "date": "2026-11-21",
+    "label": "Tankers hit off Khasab; IRGC claims US drones downed",
+    "description": "Early on Nov 21 UKMTO reported tankers hit by projectiles about 11 nm north and 17 nm east of Khasab, with no casualties. That followed a Nov 20 hit 8 nm north of Khasab that started a fire. State media called the night's operations the most 'intense and varied' yet, and the IRGC unveiled an underground launcher that fires two liquid-fuelled missiles. It claimed an MQ-9 and two MQ-1s downed on Nov 21-22; the US has confirmed no loss.",
+    "category": "military",
+    "impact": "hawkish",
+    "importance": 3,
+    "sources": [
+     "https://www.cnbc.com/2026/11/21/two-tanker-attacks-reported-near-omans-khasab-ukmto-says.html",
+     "https://abcnews.com/Business/wireStory/iran-strikes-3-tankers-shows-off-missile-launchers-138345075",
+     "https://www.aljazeera.com/news/2026/11/21/irans-irgc-downs-us-drone-over-hormuz-as-efforts-to-end-war-remain-stalled",
+     "https://gcaptain.com/another-tanker-hit-in-strait-of-hormuz-as-maritime-attacks-surge-worldwide/"
+    ],
+    "confidence": "high",
+    "selected": false,
+    "note": "Verifier: confirmed; the Nov 20 Khasab hit (found-by-verifier) folded in."
+   },
+   {
+    "date": "2026-11-21",
+    "label": "Trump: 'permanent' deal; Jeffries: end war in first days",
+    "description": "In a Fox News phone interview Trump said 'I'm going to make a deal that is going to be permanent' and 'I'm not going to let somebody allow them to have a nuclear weapon', a turn from his Nov 12 'We don't need a deal.' The same day incoming Speaker Hakeem Jeffries told the NYT that the next Congress should 'aggressively move' in its first days to end the war.",
+    "category": "media",
+    "impact": "dovish",
+    "importance": 2,
+    "sources": [
+     "https://www.cbsnews.com/live-updates/iran-war-trump-tehran-denies-chemical-weapons/",
+     "https://www.theamericanconservative.com/iran-war-day-268-iran-strikes-bahrain-as-tensions-soar/",
+     "https://www.haaretz.com/us-news/2026-11-22/ty-article/hakeem-jeffries-vows-to-end-iran-war-levy-sanctions-on-violent-settlers/000001a2-027d-d175-abf6-1e7d38a80000"
+    ],
+    "confidence": "medium",
+    "selected": false,
+    "note": "Verifier: found-by-verifier; merged the us_politics and trump entries."
+   }
+  ],
+  "dropped": [
+   "Nov 4 Pope Leo, general audience (religious): he quoted Fratelli tutti on war as 'a failure of politics and of humanity' in a text prepared in advance, and asked L'Oeuvre d'Orient for peace 'particularly in the Middle East'. It names no war, no election and not Iran, so the plan's own rule against general papal prayers drops it (critique).",
+   "Nov 8 Pope Leo to President Milei in Buenos Aires: leaders must 'acknowledge the limits of the power entrusted to them'. He mentioned neither Iran nor war; the link was Reuters' framing (critique).",
+   "Nov 16 Pope Leo on the Lima-Rome flight: asked about the US midterms, he hoped for 'less war and less division' and said he was not making a political comment. Names no conflict (critique). The Nov 6-16 Latin America trip fits the Oct 27 entry: on this flight he said the tumour removed on Oct 13 was 'entirely contained' (religious verifier).",
+   "Nov 11 WSJ: Vance weighs face-to-face talks with Rezaei, possibly in Doha (diplomacy): a re-report of the Oct 28 entry's WaPo detail (critique). Merged: Rezaei's 'completely false and a lie' into the Nov 9 entry, and the Nov 12 rejection by a Ghalibaf adviser into the Nov 12 entry. Its claim that Trump privately questioned the June framework, disputed by a White House official and known only through secondary outlets, is left out; Trump called the memorandum 'a waste of time' on Nov 18.",
+   "Nov 2 Alex Jones endorsing Carlson's nuclear-strike claim: reported only by his own site (alexjoneslive.com); it was folded into the Nov 1 Carlson entry and is removed.",
+   "FT, Nov 20: US and Israeli officials want strikes restarted before the new year, with CENTCOM warning on readiness. Its only source was a The American Conservative 'iran-war-day-277' URL, a day number that falls on Dec 1; removed from the Nov 20 CBS entry until re-verified (critique).",
+   "Restatements of the Oct 20 entry ('Rezaei: no uranium leaves Iran'): Rezaei's Nov 13 'not a single particle' (removed from the IAEA entry) and Araghchi's Nov 21 refusal to send the 60% uranium abroad (removed from the Nov 20 Qatar entry).",
+   "Repeats of Trump's Nov 4 'largely true' on Vance: 'was right' (Nov 8, Nov 19) and 'a very accurate statement' (Nov 20), removed from those entries and noted in the Nov 4 one (critique).",
+   "Left out before verification (plan): image-only Trump posts (the Nov 7 meme, the Nov 21 deaths chart), which have no text and enter no series; general papal prayers that name no conflict; and single-source low-confidence items (the Orbiter drone, expired Tomahawks, Czerny, Loomer's ground-stop post)."
+  ],
+  "verify_note": "Verified 2026-11-22 by a research workflow (six angle researchers, a verifier per angle, a synthesis and a critique); 83 candidates, of which 80 remain after the critique's merges and drops. The three Nov 1 entries fall inside the frozen window (ANALYSIS_END = Nov 1); the rest lie after it. 'selected' marks the set proposed for config/timeline.py; 'note' carries the verifier's verdict and any critique correction. A description ending '(tracked account)' is a post by an account the pipeline collects, so event-study windows around it are partly circular. The search budget ran out on every angle, so some items rest on one source; the notes and descriptions say which. Addendum, later on 2026-11-22 (docs/decisions.md): the analysis is no longer frozen at Nov 1. The Nov 1 entries are in phase 5 ('midterm hold') and the Nov 2-21 entries in phase 6 ('midterms, standoff', to ANALYSIS_END); 'the frozen window' in the notes above is phase 5 as it stood when they were written."
+ }
+]

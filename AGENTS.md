@@ -82,10 +82,11 @@ Hand these to the user, with the estimate, instead of running them:
     model and prompt; `TRUMP_TEACHER_CHECK_MAX_CALLS` covers every post with
     text): `--all --estimate` adds a usage-fit figure from the check's own
     batches (all 3,222 posts with text are labelled since 2026-11-03; with
-    none left the estimate crashes, STATUS *Open*). Then
+    none left it says "nothing to label", fixed 2026-11-22). Then
     `--merge` (free) writes score_opus / label_opus onto the feed parquet by
-    id. score-posts keeps them on the rows it has, and the posts it adds
-    have none until the next `--merge`. Never run `--merge` while
+    id. score-posts keeps them on the rows it has (a row that gains text
+    loses them and is rescored), and the posts it adds have none until the
+    next `--merge`. Never run `--merge` while
     score-posts runs: it reads the parquet when it starts and writes it back
     as it read it when it ends (the merge refuses while score-posts'
     `<feed>.scoring` marker names a live process on dkbl1). On the GPU path
@@ -122,7 +123,7 @@ Hand these to the user, with the estimate, instead of running them:
     `post-label estimate --job stance-topic-census` makes no
     call and prints the calls by set, the expected cost and the ceiling
     against `POST_CENSUS_MAX_CALLS` / `POST_CENSUS_MAX_USD`. The caps
-    (20,000 calls and $33 since 2026-11-03) sit at or under the approvals,
+    (21,500 calls since 2026-11-22, $33 since 2026-11-03) sit at or under the approvals,
     far below a no-cache-hit ceiling: send the census in `--limit` parts
     (collected between parts; each is gated on billed spend so far plus its
     own ceiling), and a part the caps refuse goes back to the user. It
@@ -203,6 +204,7 @@ python -m src.cli summary    # stats tables (default --score is the stance of re
 python -m src.cli phases     # tier x phase stance with CIs, split into war posts / topic share
                              #   [--source x|trump] [--by tier|user] [--topic opus|either|llm|keyword]
                              #   [--score score_opus_stance|score_opus55|...] (post-label columns)
+                             #   [--weights none|design|volume] (X window weights; none is the record)
 python -m src.cli reply-population  # reply audience's Opus stance per post, direct and corrected (free)
                                     #   [--labels v1|v2|v2b] [--first-draws]; v2 pools the fresh draws
 python -m src.cli reply-label report --job v2b  # v2 vs v2b, paired on the first draws (free)
@@ -225,7 +227,11 @@ timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
 `collect` -> `merge` for the new posts; `topic-label estimate|submit|status|collect`;
 `post-label estimate|submit|status|collect --job stance-topic` for new war
 candidates, then `--job stance-topic-census` for the rest (the topic flag of
-record); `phases`, `visualize`, `export-web`; `backup`.
+record); `phases`, `visualize`, `export-web` (not into dkweb while *Blog
+charts* says to hold); `backup`. While the last phase is open, each pull
+moves `ANALYSIS_END` (`config/timeline.py`) to its last whole UTC day; once
+the owner has closed it, it stays put (see *Phases and the analysis
+window*).
 
 A batch `collect` (`relabel`, `topic-label`, `--batch collect`, `reply-label
 collect`) streams results through the SDK, which breaks on this host (httpx
@@ -259,7 +265,8 @@ src/     cli.py (every command), backup.py
                   reply population, fresh draws), stance_local.py (GPU experiments, teacher
                   checks, batch transport), reply_labels.py (v2b, cat-v2, v2-fresh),
                   batch_io.py (results download, batch delete), pricing.py (model prices, tags),
-                  post_labels.py (alternate post raters: stance-topic, second rater, no-handle)
+                  post_labels.py (alternate post raters: stance-topic, second rater, no-handle),
+                  window_weights.py (optional X window weights for `phases --weights`)
   visualization/  plots.py, web_export.py
 data/    raw/x/<handle>.jsonl, raw/x_sampling/ (collect and fill windows), raw/x_counts/,
          raw/x_archive/ (probe, fill state, request log, set-aside posts), raw/truthsocial/,
@@ -286,6 +293,34 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 
 ## Conventions and invariants
 
+### Phases and the analysis window
+
+- `config/timeline.py` has six phases since 2026-11-22 (the owner's call,
+  [docs/decisions.md](docs/decisions.md)). Phases 1-5 (Feb 1 to Nov 1, the
+  last "midterm hold") are closed and keep their dates. Phase 6, "midterms,
+  standoff", runs from Nov 2 to `ANALYSIS_END`, which rolls: at each pull it
+  is the pull's last whole UTC day (Nov 21 for the 2026-11-22 pull). Phase 6
+  closes at the next regime change (major US/Israeli strikes resume or a
+  deal is signed) or on 2027-01-02, before the new Congress sits, whichever
+  comes first: the owner's call, and its last day is then written into
+  `PHASES`. `ANALYSIS_END` then stays at that day (the last phase ends at
+  it: tests/test_timeline.py), and a pull adds nothing to any phase, until
+  the owner opens the next phase, which rolls the same way (this reading
+  awaits the owner's confirmation; decisions.md). The whole war
+  (`inference.WHOLE_WAR`) is Feb 1 to the last phase's end. Figures size to `len(PHASES)`; nothing may assume a count of
+  phases or take `PHASES[-1]` as a fixed contrast.
+- export-web's decomposition stays on `settings.WEB_DECOMPOSITION_PHASE`
+  ("midterm hold") until the owner switches it, and
+  `settings.LOYALTY_REFERENCE_DATE` stays 2026-11-01: neither moves with
+  `ANALYSIS_END`.
+- The phase-6 reply posts were fixed before any reply was collected or
+  read: the two most-replied Trump posts dated in phase 6 (2026-11-02 to
+  `ANALYSIS_END`) whose current stance-topic (Opus) label is `iran_war`,
+  reply counts as of the 2026-11-22 feed pull. The bound is pinned at that
+  pull, so a later pull does not move it: dated 2026-11-02 to 2026-11-21
+  by UTC date (`inference.assign_phase`), so the 12 feed posts dated Nov 22
+  are out (this reading awaits the owner's confirmation; decisions.md).
+
 ### Tiers and scorers
 
 - `config/accounts.py` groups handles into tiers: admin, maga_prowar,
@@ -305,7 +340,14 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   256-token training length) is the reply scorer of record for replies (and
   stays on Trump's feed for `--score`); `score_opus_distilled_v0` keeps the
   pre-2026-09-30 reply scores from an overwritten fit and never joins a
-  series. Never overwrite
+  series. `score-distilled` and `score-posts` default to it
+  (`settings.DISTILLED_SCORER_DIR` / `DISTILLED_SCORER_COL`), record the
+  model dir and its weights' sha256 behind each column they write in
+  `<parquet>_columns.json`, and refuse a column recorded, or named in
+  `settings.DISTILLED_COLUMN_MODELS`, as another model's, one whose dir was
+  refit in place since (`stance_distilled`: every `stance-distill` run
+  rewrites it; a column's first record takes the dir as it is then) and an
+  LLM's `score_<tag>` / `label_<tag>` (2026-11-22). Never overwrite
   a `data/models/stance_distilled_final*` dir: the data holds its scores.
   Other columns: `score_vader`, `score_transformer`
   (RoBERTa valence, a quick look only), `score_llm` (Haiku). Anything
@@ -325,6 +367,16 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   `WAR_TOPIC_PATTERN` OR the Haiku label from `topic-label`), `llm` and
   `keyword` stay for comparison: the either flag missed ~29% of the
   Iran-war X posts and took in ~1,300 that are not.
+- **Raw is the record; window weights are an option.** Every post weighs 1
+  in every published series (`settings.PHASE_WEIGHTS = "none"`). `phases
+  --weights design|volume` (src/analysis/window_weights.py; definitions and
+  choices in [docs/decisions.md](docs/decisions.md) 2026-11-22) weighs a
+  sampled account's posts by window on the x-archive fill's grid and writes
+  `_<scheme>-weighted` CSVs beside the raw ones, never over them. A weighted
+  run is refused while a post it uses has no weight (its window's hour
+  counts are not cached and the weight needs them): that takes a paid
+  `x-counts`, never a weight of 1. Making a weighting the record is the
+  owner's call, with a decisions.md entry.
 - **Faith-based voices need LLM stance.** VADER and RoBERTa sign-flip religious
   anti-war rhetoric ("peace", "mercy" read as positive). Never report a
   valence score for `religious_authority` or any future faith-based tier
@@ -363,8 +415,10 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   the Opus stance of low-, medium- and high-loyalty repliers and high minus
   low per post, pooled and within posts, on reply-population's sample,
   weights and intervals. A replier's tier takes the account's age on
-  `settings.LOYALTY_REFERENCE_DATE` (fixed, so tiers do not move with the
-  run date); event-study's loyalty table still uses the run date. A tier
+  `settings.LOYALTY_REFERENCE_DATE` (2026-11-01, fixed, so tiers move with
+  neither the run date nor `ANALYSIS_END`; an account created after it is
+  age 0, with a logged count); event-study's loyalty table still uses the
+  run date. A tier
   is per reply (that reply's account snapshot): a replier whose bio
   differs between replies is in two, and the output counts them.
 - A model's relabel columns are `score_<tag>` with a tag no other model has
@@ -393,8 +447,9 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   paired subsample for its report only (its ALL row weights each tier by
   its pool over its pairs). A label made from a text the post no longer has is
   never used, and the post is labelled again (the old label moves to the
-  cache's `*_superseded` archive; x-backfill-text, `collect --force` and
-  ts-fill-text move these caches' labels there too, as for relabel's).
+  cache's `*_superseded` archive; x-backfill-text, `collect --force`,
+  ts-fill-text and `collect-truth --force` move these caches' labels there
+  too, as for relabel's).
   None of these goes into `STANCE_SCORE_COL` or `PLOT_SCORE_COLS`; making
   one a definition of record is the user's call, with a decisions.md entry
   (`topic_opus` is the topic flag of record since 2026-11-02).
@@ -514,8 +569,12 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   - Grid: each account's collect windows from the manifests, as they are,
     extended back to `COLLECTION_START` in 35 h steps (a head under half a
     window merges into the first, as collect merges a short tail); nothing
-    forward while the manifests end within half a window of the end of
-    `ANALYSIS_END`. A later collect run owns its whole span: an earlier
+    forward of an account's last collect window, whatever `ANALYSIS_END`
+    says (2026-11-22): that is collect's, and the plan logs per account what
+    is left for it when the end of `ANALYSIS_END` is half a window or more
+    later. An account with no manifest rows gets windows from
+    `COLLECTION_START` to its newest cached post, none when nothing is
+    cached. A later collect run owns its whole span: an earlier
     run's windows inside it are dropped and the ones across its edges cut
     there, so a `collect --force` with longer windows replaces the
     incremental runs' grid where it ran.
@@ -551,8 +610,9 @@ k8s/, scripts/k8s/   GPU experiment Jobs
     rest from the cache; `--force` plans done windows again (the old state
     kept aside).
   - collect's cursor is the newest cached post, and the fill writes nothing
-    past the last collect window, so it never moves the cursor. Errors as
-    in `x-counts`.
+    past the last collect window (with none, past the newest cached post), so
+    it never moves the cursor past what collect has read: the forward pull
+    stays collect's. Errors as in `x-counts`.
 - Requests ask for `note_tweet` (full text over 280 characters) and
   `referenced_tweets`, never expansions: X bills per resource returned
   ([docs/decisions.md](docs/decisions.md)). `collect --force` merges the
@@ -572,7 +632,12 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   that reach the cache edge (Truth Social ignores `min_id`, so it walks
   backward): authenticated, it refuses a batch that stops short; `--anonymous`
   holds pages in `<handle>.partial.jsonl` until it gets there, so a killed
-  run resumes.
+  run resumes. `--force` merges the re-read into the cache by id; as in
+  ts-fill-text (`ts_fill_text.supersede_changed`), a post whose text it
+  changes has its labels moved to `*_superseded` and its feed row archived
+  and cleared first, and both refuse while score-posts' `<feed>.scoring`
+  marker names a live process on dkbl1 (2026-11-22); as for `--merge`,
+  never between a `sync-data.sh push` and its pull.
 - Replies use the v2 descendants endpoint (`TS_DESCENDANTS_PATH`; v1 is dead)
   with the `TRUTHSOCIAL_TOKEN` that `ts-login` writes to `.env`. After a
   `ts-login`, the user re-encrypts `secrets.env`.
@@ -625,6 +690,18 @@ The host's restic drive is often unplugged, so S3 is the copy to count on.
 ### Blog charts (dkweb)
 
 Rerun `export-web` after any rescoring, then `npm run build` in dkweb.
+`decomposition.json` is the first phase against
+`settings.WEB_DECOMPOSITION_PHASE` ("midterm hold", the post's contrast),
+never the last phase; export-web refuses a label that is not in `PHASES`,
+or the first (the contrasts' base).
+**Hold since 2026-11-22: don't run export-web into dkweb** until the owner
+has decided the post's window. export-web now writes six-phase, rolling
+data: `accounts.json` over the whole war (Feb 1 to `ANALYSIS_END`),
+`maga_weekly.json` to `ANALYSIS_END` and a sixth bar in
+`trump_phases.json`, while the post's text and captions still say the data
+stop on Nov 1 (dkweb `src/content/blog/iran-war-stance/index.mdx`: the
+accounts caption, "The data stop on Nov 1", the weekly chart's alt text).
+The JSONs and those dates change together, in one dkweb change.
 `replies.json` pools the fresh draws (`REPLY_POPULATION_FRESH_DRAWS`, the
 published basis since 2026-11-02: 9,071 draws); export-web warns only
 when it exports without them. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in

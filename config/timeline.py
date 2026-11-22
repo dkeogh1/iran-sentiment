@@ -1313,20 +1313,404 @@ EVENTS: list[Event] = [
         "meeting produced no joint communiqué.",
         category="diplomatic", impact="dovish", importance=2,
     ),
+    # Nov 1, the midterm hold's last day (verified 2026-11-22, sources in
+    # docs/timeline_candidates_2026-11-01_to_2026-11-22.json)
+    Event(
+        date=date(2026, 11, 1),
+        label="Doha talks; Trump: 'make a deal, or we will end it'",
+        description="Iranian negotiators, including Deputy FM Gharibabadi, met Qatari mediators "
+        "in Doha on a two-day plan to reopen Hormuz and restart talks with the US. A "
+        "Reuters-cited official said they left Doha on Nov 1 with a draft 'being "
+        "circulated for feedback'. Trump told RSBN the war would end 'very soon, one "
+        "way or the other', and is reported to have said 'Iran will either make a "
+        "deal, or we will end it.' No Truth Social post with that line is in his "
+        "feed.",
+        category="diplomatic", impact="polarizing", importance=2,
+    ),
+    Event(
+        date=date(2026, 11, 1),
+        label="Axios: 'tough' Trump-Netanyahu call on resuming war",
+        description="Barak Ravid (Axios) reported that in a call on Oct 31 Netanyahu pushed for "
+        "strikes right after the Nov 3 midterms, while Trump wanted to give "
+        "negotiations a chance first. An Israeli source called the call 'tough' and a "
+        "US source called it 'direct'. Trump called it a 'very good talk' and said he "
+        "was 'not in much of a hurry' to reach a deal. (tracked account)",
+        category="diplomatic", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 1),
+        label="Carlson: Trump 'within days' of nuking Pickaxe Mountain",
+        description="At 8:47 pm ET Tucker Carlson posted on X that, under pressure from "
+        "Netanyahu, the administration 'may be within days of launching a nuclear "
+        "strike on Iran'. He named Pickaxe Mountain as the target and Nov 7 as the "
+        "likely decision date, and wrote 'After the first nuclear strike, World War "
+        "Three is inevitable.' On Nov 2 a White House official said Carlson has 'no "
+        "insight into military planning'. The claim is unsubstantiated: Trump had "
+        "ruled out nuclear use in mid-October. The post decodes to Nov 2 01:47 UTC, "
+        "so the data place it on Nov 2. (tracked account)",
+        category="media", impact="dovish", importance=3,
+    ),
+    # ── Midterms, standoff (Nov 2 -> Nov 22; verified 2026-11-22, sources in
+    # docs/timeline_candidates_2026-11-01_to_2026-11-22.json) ─────────────
+    Event(
+        date=date(2026, 11, 2),
+        label="Iran's 2-day Hormuz plan; Trump: deal 'could happen!'",
+        description="FM spokesman Baghaei said Tehran's offer was 'condensed and can be "
+        "implemented within two days' if the US meets its conditions. IRNA said the "
+        "Supreme Leader had given the government 'powers' to speed up talks. At 3:46 "
+        "pm ET Trump posted that oil was 'DROPPING LIKE A ROCK... because people feel "
+        "that there will not be a War with Iran... It could happen!' He told Axios he "
+        "was 'in no rush' to decide on resuming fighting. Brent fell 7.6% to $104.77. "
+        "(tracked account)",
+        category="diplomatic", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 2),
+        label="US 'defensive' strikes on Qeshm on midterm eve",
+        description="Late on Nov 2 (9:48 pm ET, per CBS) US forces carried out limited "
+        "'defensive' strikes on Qeshm Island. US officials said the IRGC had fired at "
+        "a US aircraft and launched a missile that threatened shipping, and that this "
+        "was not a return to major combat. Trump later told Fox it was a 'minor "
+        "attack' on a new anti-aircraft site that 'wasn't war', and said 'We might "
+        "have to go after Pickaxe, but that's not a big deal.' The WSJ reported "
+        "smaller unannounced strikes 'for several weeks'.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 3),
+        label="Midterms: Democrats win House and Senate",
+        description="Democrats won both chambers. In the Senate they flipped nine Republican "
+        "seats (AK, IA, KS, ME, MS, NC, the Ohio special, SC, TX) for a 56-44 caucus; "
+        "Michigan was a Democratic hold. NBC's House tally on Nov 21 was 257 D, 173 "
+        "R, 5 uncalled. Voters interviewed on election day tied fuel prices to the "
+        "war.",
+        category="political", impact="dovish", importance=5,
+    ),
+    Event(
+        date=date(2026, 11, 3),
+        label="Exit polls: ~6 in 10 voters call Iran war wrong",
+        description="The AP's Election Day poll found 'about six in 10' voters said attacking "
+        "Iran was the wrong decision, and 'roughly one-third' called the war crucial "
+        "to their House vote. The Fox News Voter Poll had 64% wrong and 36% right, "
+        "with 74% calling the war crucial or a major factor. NBC's exit poll split "
+        "Catholics 50% D, 49% R (Trump won about 55% in 2024), and evangelicals fell "
+        "to 17% of voters.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 4),
+        label="Vance: 'The reason we lost is the war'",
+        description="On the morning of Nov 4, VP Vance posted from his personal @JDVance account, "
+        "not the tracked @VP: 'The reason we lost is the war. The president himself "
+        "said so last night... If you'd like to argue it was worth it, that losing "
+        "the Senate for the next 6 years was worth it, then do so.' JTA reports that "
+        "his remedies included 'Change our relationship to Israel.' Don Jr. reposted "
+        "it ('Every word of this is 100 100 100'); Mark Levin called it 'stunning'.",
+        category="political", impact="polarizing", importance=4,
+    ),
+    Event(
+        date=date(2026, 11, 4),
+        label="Trump: Vance 'largely true'; 'nothing different' on Iran",
+        description="On election night Trump told the WSJ 'Iran was a piece of it... I did the "
+        "right thing. I would have done it again', and told the FT he had no "
+        "immediate plans for new strikes. On Nov 4 he told reporters 'The Iran thing "
+        "we had to do, and we will continue to do it', blamed 'The price, not the "
+        "war' and said 'I would have done nothing different in Iran.' He called "
+        "Vance's post 'largely true' but said he would fight again to stop an Iranian "
+        "bomb. He said again that Vance 'was right' on Nov 8 and Nov 19, and called "
+        "it 'a very accurate statement' on Nov 20.",
+        category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 4),
+        label="Schumer: 'We are going to end the war'",
+        description="At his post-election news conference Schumer said 'We are going to end the "
+        "war. We have some Republicans already who have joined us in ending the war.' "
+        "He cited Congress's 'power of the purse' as a check on 'a president who does "
+        "wars without the consent of the American people.' The White House called the "
+        "Democrats' plans 'sham investigations and radical left policies'.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 4),
+        label="MTG to Vance: 'should have listened to me and Tucker'",
+        description="Replying to Vance on X, Marjorie Taylor Greene wrote that Republicans lost "
+        "because ''24 campaign promises were not delivered'. She added 'You should "
+        "have listened to me and Tucker and others who told you early' and 'Blaming "
+        "the Iran war won't work.' On election night she had called the result 'a "
+        "total referendum on Trump'. (tracked account if posted from @mtgreenee)",
+        category="media", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 4),
+        label="Carlson: midterms are 'the end of the Trump era'",
+        description="On his Nov 4 show Carlson called the result 'the biggest blowout of our "
+        "lifetimes' and said 'This is the end of the Trump era last night. We're "
+        "done.' He called the Iran war the main reason for the loss. He said Trump "
+        "chose 'Israel over the United States', that Republicans 'got exactly what "
+        "they deserved', and 'we're done here with Trump.'",
+        category="media", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 5),
+        label="Trump: may 'destroy the rest' of Iran; 'know soon'",
+        description="After his first national security meetings since the election, Trump said in "
+        "the Oval Office: 'Now we will make a decision... I would rather not destroy "
+        "the rest of the country if possible, but maybe I'll have to. You'll know "
+        "soon enough.' Breitbart alone quotes 'we're very much locked and loaded' and "
+        "'virtually an occupation'.",
+        category="military", impact="hawkish", importance=4,
+    ),
+    Event(
+        date=date(2026, 11, 6),
+        label="Axios: Vance leads quiet push for new Iran deal",
+        description="Ravid reported that Vance had spent about two weeks in indirect talks toward "
+        "a new ceasefire and nuclear negotiations, speaking almost daily with Qatar's "
+        "PM and Pakistan's army chief Asim Munir; Witkoff and Kushner were also "
+        "involved. His late-October letter to SNSC secretary Rezaei (the Oct 28 "
+        "entry) had drawn no formal reply, and a technical meeting had been discussed "
+        "but not scheduled. (tracked account)",
+        category="diplomatic", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 7),
+        label="CENTCOM launches Task Force Iron Gate",
+        description="CENTCOM commander Adm. Brad Cooper set up Task Force Iron Gate to 'monitor, "
+        "detect and disrupt' weapons, dual-use goods and illicit revenue crossing "
+        "Iran's land borders and the Caspian. It extends the naval blockade, which "
+        "CENTCOM says has stopped more than $25 billion in crude exports. Trump "
+        "posted on Nov 8 (117582778301201947) that it was 'in full force and "
+        "effect... very little gets into, or out of, Iran!'; the IRGC called it "
+        "'merely a wordplay'.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 8),
+        label="Trump: new war 'highly unlikely'; 'not looking to'",
+        description="In a CNN phone interview Trump said renewed war 'depends on whether or not "
+        "they sign a very strong agreement... The answer is highly unlikely it's "
+        "going to be necessary.' In the same interview he said there were '38 bridges "
+        "in our sight' and three carriers 'locked and loaded' (the third, the "
+        "Roosevelt, arrived Nov 15). Asked on 60 Minutes about escalating now that "
+        "the midterms are over, he said: 'Well, I'm not looking to. I don't think "
+        "there's any reason to.'",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 9),
+        label="Qatar PM at White House; Trump: war 'effectively over'",
+        description="After a roughly 45-minute Oval Office meeting with Qatar's PM, with Vance "
+        "present, Trump said 'Iran, militarily, is effectively over. We're just "
+        "keeping it the status quo' and 'At this point, it won't be necessary, taking "
+        "the military action'. His 4:29 pm ET post (117588608183719347) said the Gulf "
+        "states 'would prefer the status quo' (the blockade plus Iron Gate), called "
+        "renewed action 'quite unlikely' while staying 'locked and loaded', and saw "
+        "'positive momentum toward an end to this Conflict.' Rezaei dismissed reports "
+        "of a Vance meeting as 'fake news about imaginary talks', and on Nov 11 "
+        "called a WSJ report of one 'completely false and a lie'. (tracked account)",
+        category="diplomatic", impact="dovish", importance=4,
+    ),
+    Event(
+        date=date(2026, 11, 10),
+        label="Rubio: 'no need for major combat operations'",
+        description="In Paris after the G7 foreign ministers' meetings, Rubio said 'The President "
+        "has concluded that for the time being there is no need for major combat "
+        "operations' because 'we're achieving the same objective by economic means'. "
+        "He added 'The economic pressure is going to get even worse.' On Nov 13 he "
+        "told the Federalist Society that the 'economic pain' is 'so great that "
+        "there's no need for military action.'",
+        category="diplomatic", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 10),
+        label="House shelves Massie's Hegseth impeachment, 211-204",
+        description="Rep. Thomas Massie filed eight impeachment articles on Nov 9, three of them "
+        "on waging the Iran war in breach of the War Powers Resolution. On Nov 10 the "
+        "House voted 211-204 to refer them to committee; Massie was the lone "
+        "Republican voting to keep them alive. Trump posted that 'with... TWO "
+        "VICTORIES, Venezuela and Iran, Pete Hegseth should be praised, not "
+        "Impeached' (Nov 9) and that the attempt 'has miserably FAILED!' (Nov 10). "
+        "Jeffries vowed to 'run Pete Hegseth out of town'.",
+        category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 11),
+        label="Sanders, 3 senators: no stopgap that funds the war",
+        description="Sens. Sanders, Bennet, Van Hollen and Duckworth said any short-term package "
+        "by the Dec 11 deadline 'must include language that restricts the Trump "
+        "Administration from using appropriated funds' to 'continue his war against "
+        "Iran'. They noted that 'More than 20 American service members have been "
+        "killed.' On Nov 12 Jeffries said 'We need to end the reckless and costly war "
+        "of choice in Iran', opposed 'any additional money' for it and did not rule "
+        "out a shutdown.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 12),
+        label="Trump: 'We don't need a deal'; pulls Vance off Iran",
+        description="Truth Social, 8:07 am ET (117603621591099598): Trump asked Vance 'to focus "
+        "his complete and total attention on the Massive Corruption and Crime' in "
+        "Democratic-run states, then wrote 'We don't need a deal with Iran. Those "
+        "days have long since passed. We've got their money, Hundreds of Billions of "
+        "Dollars, and we've got their Strait!' It followed a Nov 11 WSJ report that "
+        "Vance was weighing direct talks with Rezaei, and the same day a Ghalibaf "
+        "adviser said Tehran had rejected Vance's request for direct talks. Trump "
+        "told Hugh Hewitt it was 'possible I would do it right now' of resuming "
+        "strikes, and that leaving the 'Iran crazies' in power would 'absolutely' be "
+        "'a defeat'. (tracked account)",
+        category="diplomatic", impact="hawkish", importance=4,
+    ),
+    Event(
+        date=date(2026, 11, 12),
+        label="Van Hollen challenges Schumer over war funding",
+        description="Sen. Chris Van Hollen said he would challenge Schumer for Senate Democratic "
+        "leader. He argues Schumer has not used the power of the purse to force an "
+        "end to the war, and that the Dec 11 funding deadline 'should not be a "
+        "finger-in-the-wind issue'. Schumer said he has the votes; the caucus vote is "
+        "expected in early December.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 13),
+        label="Iran drones target US radar in Bahrain",
+        description="The IRGC claimed it destroyed a US early-warning radar in Bahrain, in "
+        "retaliation for an air attack on a telecom tower in Sirik, Hormozgan "
+        "(attacker unconfirmed). CENTCOM said both drones were shot down with no "
+        "damage. It was the first such attempt on Bahrain since September. On Nov 15 "
+        "the IRGC said six drones had targeted a radar at the Al-Riffa base; Bahrain "
+        "intercepted them and held Iran 'fully responsible'.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 14),
+        label="Reuters: Trump may hold off strikes absent provocation",
+        description="Reuters, citing three sources, reported that Trump told advisers he may not "
+        "attack Iran barring new provocations from Tehran or the Houthis. He had "
+        "reportedly told MBS on Oct 31 that he planned to strike after the midterms; "
+        "MBS urged him to wait, and Erdogan also urged restraint. A White House "
+        "official said: 'Only President Trump knows what he will do, and when.'",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 15),
+        label="Third US carrier arrives; NYT: strike plans drawn up",
+        description="The USS Theodore Roosevelt strike group entered the CENTCOM area on a "
+        "scheduled deployment, joining the George H.W. Bush and George Washington. "
+        "More than 20 US Navy ships are enforcing the blockade, and the Makin Island "
+        "ARG followed. The same day the NYT reported US-Israeli plans for renewed "
+        "strikes, likely on energy and other economic infrastructure.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 16),
+        label="Carlson: Trump told me he wants to de-escalate",
+        description="On a Nov 16 episode Carlson said 'I had a long talk with him the other "
+        "day... I'm convinced he wants to de-escalate'. He said he was 'positive' "
+        "Trump had not wanted the war and had been 'pushed, forced to do this'. Only "
+        "Carlson attests to the call. It is a softer tone than his Nov 4 'end of the "
+        "Trump era'.",
+        category="media", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 17),
+        label="US jets hit Qeshm missile site after Bahrain drone attack",
+        description="The IRGC sent one-way attack drones at a US-operated radar at Bahrain's "
+        "Sheikh Isa Air Base, its third attack on Bahrain in five days; CENTCOM "
+        "called the claimed hit 'FALSE'. Hours later US fighter jets struck an IRGC "
+        "missile launch site on Qeshm, which a US official called 'self-defense'. "
+        "IRNA reported five or six explosions, and Hormozgan's deputy governor said "
+        "civilian areas were undamaged.",
+        category="military", impact="hawkish", importance=4,
+    ),
+    Event(
+        date=date(2026, 11, 18),
+        label="NYT: Netanyahu urges 4-7 day campaign; Trump undecided",
+        description="The NYT reported that Netanyahu is urging Trump to join a four- to seven-day "
+        "air campaign and that Trump has not decided. US options focus on missile and "
+        "drone arsenals, energy facilities and IRGC headquarters; Israeli plans add "
+        "nuclear sites and power infrastructure. Bombers are on 96-hour notice and an "
+        "extra Patriot battery has gone to Israel. Per Axios, some US officials "
+        "consider the Israeli intelligence behind the push 'driven by an agenda'.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 18),
+        label="Trump: Iran eyeing chem, bio arms; MOU 'waste of time'",
+        description="In a Fox News interview in Shenzhen, Trump said without evidence: 'There is "
+        "indication that Iran is looking at gasses, looking at bio, because we've "
+        "shut them out with the nuclear', and 'if it does happen, we wipe them out'. "
+        "He called the June memorandum 'a waste of time' and said 'we will see what "
+        "happens after January 1.' Iran's foreign ministry called it 'the same "
+        "fraudulent script' used before the 2003 Iraq invasion.",
+        category="military", impact="hawkish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 19),
+        label="Trump defers Iran strike decision to the new year",
+        description="Returning from China, Trump told Axios by phone: 'I am not rushing into any "
+        "decision on Iran. We will see what happens after the beginning of the year.' "
+        "He told Reuters 'We've got time', and Israel's Channel 12 the same. Axios "
+        "reported he is still weighing a joint operation with Israel on suspected "
+        "nuclear sites including Pickaxe Mountain, plus bridges, power plants and "
+        "leaders.",
+        category="political", impact="dovish", importance=4,
+    ),
+    Event(
+        date=date(2026, 11, 19),
+        label="Senate rejects Iran war powers resolution, 48-51",
+        description="In the first war vote since the midterms, the Senate rejected 48-51 a "
+        "resolution directing the removal of US forces from hostilities with Iran. "
+        "Republicans Collins, Murkowski and Paul voted yes. Tillis (a yes on Sep 24) "
+        "and Cassidy (a yes in May and June) voted no, as did Fetterman. Gillibrand "
+        "and Duckworth pushed a stopgap amendment for 'not one more dime' for "
+        "offensive operations. A Navy nominee put the war's cost at $48.3B, and "
+        "Sanders posted from @BernieSanders, not the tracked @SenSanders: 'The wars "
+        "in Vietnam, Iraq and Iran were based on lies.'",
+        category="political", impact="polarizing", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 20),
+        label="Polls: Iran war opposition at record 60.4%",
+        description="Silver Bulletin's Iran war average reached an all-time high of 60.4% oppose "
+        "and 30.8% support, up from 36/57 on Oct 30. An Economist/YouGov poll (Nov "
+        "9-11) found 63% want the war ended as quickly as possible even if some "
+        "objectives go unmet, against 21% who want to keep fighting. A reported "
+        "Reuters/Ipsos figure of 31% approval (Nov 13-16) is unconfirmed.",
+        category="political", impact="dovish", importance=3,
+    ),
+    Event(
+        date=date(2026, 11, 21),
+        label="Iran missiles, drones hit Bahrain; Sitra plant ablaze",
+        description="On the night of Nov 21 Iran fired two waves of drones and ballistic missiles "
+        "at US-linked sites in Bahrain. The IRGC claimed two US Patriot radars "
+        "destroyed, citing a US strike on a Hengam Island radar that the US has not "
+        "confirmed. Bahrain said a civilian industrial plant in Sitra caught fire and "
+        "two people were injured, one critically, and did not confirm the IRGC's "
+        "claims. Saudi Arabia held Iran 'responsible', the GCC and Jordan condemned "
+        "the attack, and Qatar called it a 'grave escalation' that 'impairs "
+        "diplomatic endeavors'. There was no Trump response by mid-morning Nov 22.",
+        category="military", impact="hawkish", importance=4,
+    ),
 ]
 
 # Date range for primary analysis window
 ANALYSIS_START = date(2026, 2, 1)
-# Frozen at the Sep 18 -> Nov 1 pull (2026-11-01): the cycle ends before the Nov 3
-# midterms and any post-election strikes (user's call, 2026-11-02).
-ANALYSIS_END = date(2026, 11, 1)
+# Rolling (the owner's call, 2026-11-22; docs/decisions.md): at each pull ANALYSIS_END
+# is the pull's last whole UTC day, here the 2026-11-22 pull's Nov 21. It was frozen
+# at Nov 1 from 2026-11-02 to 2026-11-22.
+ANALYSIS_END = date(2026, 11, 21)
 
-# The five phases the README tables and `phases` command report on:
-# (label, first day, last day), both inclusive.
+# The phases the README tables and `phases` command report on:
+# (label, first day, last day), both inclusive. Phases 1-5 keep their dates. Phase 6
+# ends at ANALYSIS_END, so it grows with each pull, until it closes at the next regime
+# change (major US/Israeli strikes resume or a deal is signed) or on 2027-01-02,
+# before the new Congress sits, whichever comes first (the owner's call): then its
+# last day is written in here.
 PHASES = [
     ("strikes, ceasefire", date(2026, 2, 1), date(2026, 4, 21)),
     ("talks, MOU", date(2026, 4, 22), date(2026, 6, 17)),
     ("collapse, blockade", date(2026, 6, 18), date(2026, 8, 17)),
     ("expiry, strikes", date(2026, 8, 18), date(2026, 9, 18)),
     ("midterm hold", date(2026, 9, 19), date(2026, 11, 1)),
+    ("midterms, standoff", date(2026, 11, 2), ANALYSIS_END),
 ]
