@@ -8,8 +8,11 @@ metadata:
     app.kubernetes.io/component: reply-crossfit-ctx
 spec:
   backoffLimit: 0
-  # 10 h: ten folds on ~10,300 labels each, ~4-5 h estimated (2026-11-23).
-  activeDeadlineSeconds: 36000
+  # 6 h: ten folds on ~10,300 labels each, ~4.7 h estimated (2026-11-23). Started
+  # after 09:15 ET it ends before quant's 15:40 ET window; started after 19:00 ET,
+  # before 05:45 ET. A post is written whole before the next, so a run the
+  # deadline stops (a KubeJobFailed page) resumes at the next unscored post.
+  activeDeadlineSeconds: 21600
   ttlSecondsAfterFinished: 86400
   template:
     metadata:
