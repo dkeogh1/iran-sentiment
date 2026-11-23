@@ -1,6 +1,6 @@
 # Status
 
-As of 2026-11-22. Update the date and the lines that change after each refresh.
+As of 2026-11-23. Update the date and the lines that change after each refresh.
 
 ## Data
 
@@ -173,8 +173,18 @@ Two layers at different depths. Nothing runs on a schedule.
   `reply-label --job v2-fresh`, 7,995 on 2026-11-02 and 2,000 on
   2026-11-22; 5 already had v2 labels): 11,344 labelled draws on ten
   posts (9,071 on eight from 2026-11-02; ten since 2026-11-22, the
-  user's call, `docs/decisions.md`), written to
-  `reply_population_score_opus_distilled_v2.csv`. The first draws, 1,500
+  user's call, `docs/decisions.md`). Since 2026-11-23 (the owner's call,
+  `docs/decisions.md`) the corrected figures take their census from
+  `score_ctx_crossfit` (`settings.REPLY_POPULATION_COL`; below), written
+  to `reply_population_score_ctx_crossfit_v2.csv`: same estimates (none
+  moved outside its old interval), narrower intervals (the pooled mean's
+  by 23%). The distilled-census file,
+  `reply_population_score_opus_distilled_v2.csv`, is kept as history, and
+  the first-draw and v2b files stay on it. `score_ctx_crossfit` is the
+  parent-post reply scorer cross-fitted on the 11,425 pooled v2 labels
+  (2026-11-23, `reply-crossfit-ctx` on dkbl2's 3080, 4 h 1 min, free):
+  every reply with text is scored by a fit that never saw its post's
+  labels; its raw scores do not compare across posts. The first draws, 1,500
   (1,200 for the eight posts, 150 for each new one), are frozen in
   `data/processed/reply_sample_draws.parquet`. The eight older posts'
   1,157 labelled replies also carry v2b (v2 without the praise rule,
@@ -184,7 +194,13 @@ Two layers at different depths. Nothing runs on a schedule.
   that carried replies was deleted on the API at its collect.
   `reply-loyalty` (free) gives the loyalty gradient on the pooled draws
   (65,051 repliers; the 128 accounts created after
-  `LOYALTY_REFERENCE_DATE`, Nov 1, count as age 0). The v1 labels (1,225;
+  `LOYALTY_REFERENCE_DATE`, Nov 1, count as age 0), unchanged by the
+  census switch (rerun 2026-11-23). `reply-crowd` (free, 2026-11-23,
+  1,000 replicates; `data/processed/reply_crowd_*_score_ctx_crossfit_v2.csv`)
+  splits the change from the eight earlier posts to the two phase-6 posts
+  into accounts seen in both periods and turnover, and sets returners
+  against one-off repliers on the same post; published in the README and
+  the dkweb post since 2026-11-23 (the owner's call). The v1 labels (1,225;
   423 made from text cut to 100 characters, none with the parent post) and
   their last run, the unsuffixed CSV, are kept as history.
   `score_opus_distilled` was rescored 2026-09-30 at its 256-token
@@ -308,7 +324,10 @@ posts:
 - **Replies**: v2 labels on the first and fresh draws pooled, on ten posts
   since 2026-11-22 (11,344; on eight, 9,071, from 2026-11-02;
   `REPLY_POPULATION_FRESH_DRAWS`; ten posts the user's call), with v2b
-  beside them where the praise rule matters.
+  beside them where the praise rule matters. The correction's census is
+  `score_ctx_crossfit` since 2026-11-23 (`settings.REPLY_POPULATION_COL`,
+  the owner's call). `reply-crowd`'s record is its post-stratified direct
+  estimator; its GREG is a check.
 - **Phases and weights** (2026-11-22): six phases, the sixth rolling to
   `ANALYSIS_END` (AGENTS.md *Phases and the analysis window*); raw, every
   post weighing 1, is the record, and `phases --weights design|volume`
@@ -351,35 +370,45 @@ posts:
 
 ## Open
 
-- **The dkweb post** `iran-war-stance` is on dkweb `main` as of 2026-11-03
-  (five phases, data to Nov 1, eight reply posts; merged 2026-10-04 and
-  again 2026-11-02), behind Cloudflare Access until launch. dkweb is a
-  private repo; the findings are public only through this repo. Since
-  2026-11-22 (the user's call) the post is being extended to phase 6 as a
-  draft on dkweb's local branch `iran-post-phase6` (not pushed, not
-  merged): export-web's six-phase, ten-post JSONs and the post's text,
-  awaiting the user's read. The user's calls there:
-  `settings.WEB_DECOMPOSITION_PHASE` (the decomposition chart stays
-  strikes -> "midterm hold" until switched); the post's date (2026-11-02)
-  and description; merging to `main`; launching. Under the Opus flag
+- **The dkweb post** `iran-war-stance` is behind Cloudflare Access until
+  launch (merged to dkweb `main` 2026-10-04 and again 2026-11-02). dkweb
+  is a private repo; the findings are public only through this repo.
+  From 2026-11-22 (the user's call) it was extended to phase 6 on dkweb's
+  local branch `iran-post-phase6`: export-web's six-phase, ten-post JSONs
+  (replies.json on the cross-fit census since 2026-11-23), the post's text
+  and the *Who came back in November* finding. The owner's calls of
+  2026-11-23 (`docs/decisions.md`): the branch merges to `main` that day,
+  with the post dated 2026-11-23 (it never launched, so no update note);
+  the description stays; the decomposition chart stays strikes ->
+  "midterm hold" (`settings.WEB_DECOMPOSITION_PHASE`). Still open:
+  launching, the owner's step. Under the Opus flag
   @Pontifex (16 war posts) and @USCCB (15) fall under
   `WEB_MIN_ACCOUNT_POSTS` (20), so the account charts show 15 accounts, not
   17; the post says why the Pope is left out. Still worth a look on the
   page: the reply-scatter labels and the audience bars' domains, now with
   ten posts.
-- **`reply-crowd`** (2026-11-23, `docs/decisions.md`): built; run at 1,000
-  replicates with `--col score_ctx_crossfit` as its GREG check (outputs
-  `data/processed/reply_crowd_*_score_ctx_crossfit_v2.csv`); nothing
-  published. Open, the owner's calls: approve the decisions entry (headline
-  rows P1 and P2, the record estimator); whether and how to publish (README,
-  the dkweb draft). Its GREG stays a check unless the owner says otherwise.
-- **`score_ctx_crossfit`** (2026-11-23, `docs/decisions.md`): the parent-post
-  reply scorer cross-fitted on the 11,425 pooled v2 labels, on every reply
-  with text. It narrows `reply-population`'s assisted intervals on nine of
-  ten posts with the same estimates; the published figures stay on
-  `score_opus_distilled` until the owner moves them. Its raw scores do not
-  compare across posts. The GPU namespace was deleted after the pull
-  (2026-11-23); reviving it is in AGENTS.md *Where things run*.
+- **`reply-crowd`**: done and published 2026-11-23 (the owner's call,
+  `docs/decisions.md`): the decisions entry approved, the split (P2)
+  leading and returners (P1) second, in the README and the dkweb post.
+  Still open, each the owner's call and paid: the labels its entry lists
+  (a praise-rule check on the phase-6 first draws, a label retest, a
+  census of the both-period accounts' earlier replies).
+- **`score_ctx_crossfit`**: done 2026-11-23; the census of the published
+  reply figures since that day (the owner's call, `docs/decisions.md`).
+  The GPU namespace was deleted after the pull (2026-11-23); reviving it
+  is in AGENTS.md *Where things run*, and every reply refresh now needs
+  it (*What a refresh needs*).
+- **The slope-1 assisted estimator** (`reply-population`'s `assisted_*`,
+  the published corrected figures): whether to fix it, by GREG with an
+  estimated slope or by publishing direct only, is the owner's call
+  (`docs/decisions.md` 2026-11-23, reply-crowd's *Owner's calls*). A fix
+  moves the published reply intervals. On the cross-fit census its
+  interval is wider than direct (`opus_*`) on one post's mean
+  (massie_hegseth, by 0.0002), four posts' pro-war shares (by up to
+  0.006), six posts' anti-war shares and the ALL row's (ceasefire 37%
+  wider, hold_off_attack 27%, deal_complete and power_plant_day 14%,
+  trump_strait 7%, civilisation_dies 5%; ALL 11%) and seven posts'
+  neutral shares and the ALL row's (by at most 0.003).
 - **Phase 6 is open.** It closes at the next regime change (major
   US/Israeli strikes resume or a deal is signed) or on 2027-01-02,
   whichever comes first, the user's call; its last day then goes into
@@ -396,7 +425,10 @@ posts:
   pull is much longer than Nov 22's (*What a refresh needs*).
 - **Five-phase CSVs left over** (2026-11-22). `phases --by user` (X), the
   alternate topic definitions and scorers, `summary`, the first-draw reply
-  files and the v2 - v2b pairing were not rerun on six phases (*Timeline*
+  files (with `--col score_opus_distilled`, the census the README quotes
+  them on; the default is now `score_ctx_crossfit`) and the v2 - v2b
+  pairing (direct, the same on either census) were not rerun on six
+  phases (*Timeline*
   above): they are free but write `data/processed/`. The next free run
   should redo them, `phases --by user` first, so the README's phase-6
   per-account cells (from `visualize`'s table) have a CSV of record, and
@@ -433,8 +465,10 @@ posts:
 - Reply scorers against the v2 labels, settled 2026-10-07: a scorer that
   reads each reply with its Trump post beats the scorer of record
   leave-one-post-out (pooled 0.64 vs 0.58; June deal 0.62 vs 0.14) but
-  would narrow the published intervals only modestly, so it stays an
-  experiment (`docs/decisions.md`). The old mixed model
+  would narrow the published intervals only modestly, so it stayed an
+  experiment (`docs/decisions.md`). Refit on the pooled labels on
+  2026-11-23 (held out, pooled 0.68 vs 0.57), its cross-fit became the
+  census of the published reply figures. The old mixed model
   (`score_mixed_distilled`, v1 rows) is history. The 2026-11-22 drift check
   on the two new posts (0.58 Pearson against their v2-fresh labels) found
   no reason to refit.
@@ -493,3 +527,13 @@ pull's partial last day waits for the next pull. Beyond `relabel` and
   2026-11-22) bound the whole `v2-fresh` run: 9,995 calls and $20.45 used,
   so another post's 1,000 fresh draws ($1.14-2.26 a post on 2026-11-22)
   needs them raised. A new reply post is the user's call.
+  `reply-population`, `reply-loyalty`, `reply-crowd` and export-web refuse
+  a reply with text and no `score_ctx_crossfit`. New replies to a tracked
+  post, with no new labels: `sync-data.sh push` (the PVC must hold them),
+  the `reply-crossfit-ctx` Job (it refits that post's fold and rescores
+  the post whole, ~24 min), then `sync-data.sh pull`. A new tracked post,
+  or any new v2 or v2-fresh labels: every fold's training rows change and
+  the column's record (`n_rows`, `rows_sha`) refuses them, so it is a full
+  cross-fit into a new column (~4 h for ten folds, longer with more), and
+  moving `settings.REPLY_POPULATION_COL` to that column changes the
+  published census: the owner's call (`docs/decisions.md` 2026-11-23).

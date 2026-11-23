@@ -4,6 +4,99 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-23: The owner's calls on the reply figures and the post
+
+The owner's calls, made the same day on the questions the two entries
+below and the 2026-11-22 entries left open: the agent's three
+recommendations, taken as put.
+
+- **The published reply figures move onto the cross-fit scorer.**
+  `settings.REPLY_POPULATION_COL = "score_ctx_crossfit"` is the census
+  column of `reply-population`'s model-assisted correction (the corrected
+  figures of record), the population of `reply-loyalty` and `reply-crowd`
+  (and the census of `reply-crowd`'s GREG check), and export-web's
+  replies.json; every one of them defaults to it, and `--col` still picks
+  another. Same estimates, narrower intervals: across the ten posts the
+  corrected mean is +0.101 [+0.093, +0.108] against +0.100 [+0.091,
+  +0.110], pro-war 42.6% [41.8%, 43.4%] against 42.7% [41.6%, 43.7%],
+  anti-war 27.6% [26.7%, 28.5%] against 27.4% [26.3%, 28.3%]. No post's
+  estimate moves outside its old interval; the largest moves are
+  civilisation_dies' mean (-0.098 to -0.077), ceasefire's (+0.252 to
+  +0.229) and deal_complete's anti-war share (46.3% to 48.7%). Output:
+  `reply_population_score_ctx_crossfit_v2.csv`; the distilled-census
+  file stays as history, and so do the first-draw and v2b files run on
+  it (each compares two draw or label sets on one census). `reply-loyalty` does not
+  move (the population is the same replies): +0.128 [+0.08, +0.17]
+  pooled, +0.118 [+0.06, +0.17] within posts. `score_opus_distilled` keeps
+  its other roles: the reply scorer whose own reading the README's
+  *Model stance* column shows, `score-distilled`'s default, and Trump's
+  feed under `--score`.
+- **What it costs.** A reply with text and no score in the column now
+  refuses the run (`inference._reply_frames`; it used to be left out
+  with a warning, which weights its post's other replies up for it). Two
+  cases:
+  - New replies to a tracked post, with no new labels: `sync-data.sh
+    push` (the PVC must hold them), then the `reply-crossfit-ctx` Job on
+    dkbl2's GPU, which refits that post's fold and rescores its replies
+    whole (about 24 minutes), then `sync-data.sh pull`, before
+    `reply-population`, `reply-loyalty`, `reply-crowd` or export-web.
+  - A new tracked post, or any new v2 or v2-fresh labels: every fold's
+    training rows change. The column's record names the rows it was fit
+    on (`n_rows`, `rows_sha`), so `score_ctx_crossfit` refuses the new
+    fit; refitting one post's fold alone would leave the other posts'
+    fits without the new labels. It takes a full cross-fit into a new column (4 hours
+    for ten folds, longer with more), and moving `REPLY_POPULATION_COL`
+    to that column changes the published census: the owner's call. The
+    labels themselves are paid (*Ask first*).
+
+  The GPU namespace is deleted between experiments, so each such refresh
+  revives it (AGENTS.md *Where things run*). The test stubs carry no cross-fit
+  column, so the tests set the column back to `score_opus_distilled`
+  (`tests/conftest.py`).
+- **The slope-1 assisted estimator is still the owner's call.** The
+  reply-crowd entry below recorded that its intervals were wider than
+  direct (the labels alone) on five posts and left the fix (GREG, or
+  direct only) to the owner. It was not among the three recommendations
+  taken today, so it stays open (docs/STATUS.md *Open*). On the cross-fit
+  census the assisted interval is still wider than direct on one post's
+  mean (massie_hegseth, by 0.0002), four posts' pro-war shares (by up to
+  0.006), six posts' anti-war shares and the ALL row's (ceasefire 37%
+  wider, hold_off_attack 27%, deal_complete and power_plant_day 14%,
+  trump_strait 7%, civilisation_dies 5%; ALL 11%) and seven posts'
+  neutral shares and the ALL row's (by at most 0.003). The README quotes
+  those anti-war intervals (ALL 28% [27%, 28%], civilisation_dies 45%
+  [42%, 48%]).
+- **The reply-crowd finding is published** (README *Audience replies*,
+  *Who came back in November*, and the dkweb post). The entry below is
+  approved as written: the late phase, the all-earlier base, the
+  post-stratified direct estimator and the reply weight as the record.
+  P2 leads (the change in the no-side and pro-war shares from the eight
+  earlier posts to the two November posts, split into accounts seen in
+  both periods and turnover), and P1 comes second (returners against
+  one-off repliers on the same post, within posts, mean and pro-war). The
+  wording keeps the entry's limits: "accounts seen in both periods",
+  never "the same people"; "took no side on the war (the November posts
+  were mostly about other things)"; never that anyone changed their mind
+  or softened, or that a new crowd drove anything; the split of the mean
+  is "not measurable"; design and account-cluster intervals side by
+  side; and the text ends with the change-of-mind caveat. GREG on
+  `score_ctx_crossfit` stays a check (the entry's default). The paid
+  labels it listed are not approved.
+- **The post** (dkweb `src/content/blog/iran-war-stance/index.mdx`): dated
+  2026-11-23, the day it was brought up to date. It has never launched, so
+  it carries no update note. Its description stays as it is. The
+  decomposition chart stays on "midterm hold"
+  (`settings.WEB_DECOMPOSITION_PHASE` unchanged). The draft branch
+  `iran-post-phase6` merges to dkweb `main`, which is behind Cloudflare
+  Access. Launch stays the owner's step.
+- **Rejected:**
+  - keeping the published figures on the distilled census, with wider
+    intervals and no gain in the estimates;
+  - leaving a reply with no cross-fit score out with a warning, as
+    before;
+  - dating the post 2026-11-02 with an update note, since it never
+    launched.
+
 ## 2026-11-23: The reply scorer retrained on the pooled labels: a better auxiliary, not a calibrated scorer
 
 - **What ran:** the parent-post reply scorer (`reply-distill`, variant

@@ -2230,7 +2230,9 @@ def phases(
 
 
 @main.command("reply-population")
-@click.option("--col", default="score_opus_distilled", show_default=True)
+@click.option("--col", default=None,
+              help="Scored reply column to weight (default settings.REPLY_POPULATION_COL, "
+                   "the published figures' census)")
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
 @click.option(
     "--labels",
@@ -2254,6 +2256,8 @@ def reply_population_cmd(col: str, n_boot: int, labels_version: str, first_draws
     weighted correction), with bootstrap CIs. No API. The CSV name carries
     the label set past v1."""
     from src.analysis.inference import reply_population
+
+    col = col or settings.REPLY_POPULATION_COL
 
     try:
         rp = reply_population(
@@ -2293,8 +2297,9 @@ def reply_population_cmd(col: str, n_boot: int, labels_version: str, first_draws
 
 
 @main.command("reply-loyalty")
-@click.option("--col", default="score_opus_distilled", show_default=True,
-              help="The scored reply column that defines the population, as reply-population")
+@click.option("--col", default=None,
+              help="The scored reply column that defines the population, as reply-population "
+                   "(default settings.REPLY_POPULATION_COL)")
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
 @click.option(
     "--labels",
@@ -2312,6 +2317,8 @@ def reply_loyalty_cmd(col: str, n_boot: int, labels_version: str, first_draws: b
     pooled, and within posts (averaged by post size), design-weighted with
     bootstrap CIs as reply-population. Free: no API. Aggregates only."""
     from src.analysis.inference import LOYALTY_TIERS, reply_loyalty
+
+    col = col or settings.REPLY_POPULATION_COL
 
     try:
         rows, n = reply_loyalty(
@@ -2365,9 +2372,8 @@ def _fmt_share(r, k: str) -> str:
 @main.command("reply-crowd")
 @click.option(
     "--col",
-    default="score_opus_distilled",
-    show_default=True,
-    help="Census column for the GREG check (a cross-fit once recorded)",
+    default=None,
+    help="Census column for the GREG check (default settings.REPLY_POPULATION_COL)",
 )
 @click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
 @click.option(
@@ -2386,6 +2392,8 @@ def reply_crowd_cmd(
     periods and turnover, with a reference over every pair of posts. Opus v2 labels,
     post-stratified, bootstrap CIs. Free: no API. Aggregates only."""
     from src.analysis.reply_crowd import output_names, reply_crowd
+
+    col = col or settings.REPLY_POPULATION_COL
 
     try:
         tables, n = reply_crowd(

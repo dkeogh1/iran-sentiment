@@ -539,6 +539,19 @@ REPLY_FRESH_MAX_USD = 25.0
 # on eight from 2026-11-02, the user's call; docs/decisions.md); set False
 # only to reproduce the first-draw-only figures.
 REPLY_POPULATION_FRESH_DRAWS = True
+# The census column the published reply figures are weighted with (the
+# model-assisted correction in reply-population, the population of
+# reply-loyalty and reply-crowd, export-web's replies.json): the parent-post
+# scorer cross-fitted on the pooled v2 labels since 2026-11-23 (the owner's
+# call; docs/decisions.md), score_opus_distilled before. A reply with text
+# and no score in it refuses the run. New replies to a tracked post, with no
+# new labels: `sync-data.sh push`, the reply-crossfit-ctx Job (refits that
+# post's fold, ~24 min), `sync-data.sh pull` (k8s/README.md). A new tracked
+# post or any new v2 / v2-fresh labels change every fold's training rows,
+# which the column's record fixes (n_rows, rows_sha), so this column refuses
+# them: a full cross-fit into a new column, and moving this setting to it is
+# the owner's call.
+REPLY_POPULATION_COL = "score_ctx_crossfit"
 REPLY_FRESH_POOL_MIN_SHARE = 0.98
 # `reply-loyalty` (inference.reply_loyalty): a replier's loyalty tier
 # (event_study.loyalty_score: bio keywords plus account age) takes the

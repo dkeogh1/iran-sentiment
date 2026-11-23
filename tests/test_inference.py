@@ -235,6 +235,34 @@ def test_reply_population_takes_a_crossfit_column_and_refuses_an_in_sample_one(r
         inf.reply_population(col="score_ctx_distilled", n_boot=20)
 
 
+def test_reply_population_defaults_to_the_record_column_and_refuses_unscored_replies(
+        reply_files, monkeypatch):
+    # settings.REPLY_POPULATION_COL is the default census; a reply with text
+    # and no score in it refuses the run instead of leaving the post's other
+    # replies to stand in for it.
+    import json
+
+    from src.analysis.event_study import bucket_draws
+    from src.analysis.stance_local import reply_columns_path
+    reps = _replies({"p": [-0.9] * 30 + [0.9] * 10})
+    reps["score_opus_distilled"] = np.where(reps["score_transformer"] < 0, -0.5, 0.25)
+    reps["score_ctx_crossfit"] = np.where(reps["score_transformer"] < 0, -0.4, 0.3)
+    reply_files(reps, _opus(bucket_draws(reps, n_per_bucket=5, score_col="score_transformer")))
+    reply_columns_path().write_text(json.dumps({
+        "score_ctx_crossfit": {"crossfit": True, "trained_on_reply_labels": "v2"}}))
+    monkeypatch.setattr(settings, "REPLY_POPULATION_COL", "score_ctx_crossfit")
+    default = inf.reply_population(n_boot=20).set_index("post").loc["p"]
+    named = inf.reply_population(col="score_ctx_crossfit", n_boot=20).set_index("post").loc["p"]
+    assert default["model_mean"] == pytest.approx(named["model_mean"])
+    assert default["model_mean"] == pytest.approx((30 * -0.4 + 10 * 0.3) / 40)
+    reps.loc[[3, 33], "score_ctx_crossfit"] = np.nan
+    reply_files(reps, _opus(bucket_draws(reps, n_per_bucket=5, score_col="score_transformer")))
+    with pytest.raises(ValueError, match="2 replies with text have no score_ctx_crossfit"):
+        inf.reply_population(n_boot=20)
+    with pytest.raises(ValueError, match="score_nope is not in"):
+        inf.reply_population(col="score_nope", n_boot=20)
+
+
 
 def _growing_post():
     """Post x before and after a later reply collection: 60 replies per

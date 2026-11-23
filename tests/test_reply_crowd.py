@@ -507,7 +507,8 @@ def test_a_missing_or_partly_written_column_is_refused(crowd, monkeypatch):
     reps["score_ctx_crossfit"] = np.where(reps["tracked_slug"] == "hold_off_attack", np.nan, 0.2)
     crowd(reps)
     _no_api(monkeypatch)
-    with pytest.raises(ValueError, match="partly written"):
+    # inference._reply_frames refuses first (every reply with text needs a score)
+    with pytest.raises(ValueError, match="partly written|have no score_ctx_crossfit"):
         rc.crowd_frames("score_ctx_crossfit")
     res = CliRunner().invoke(main, ["reply-crowd", "--n-boot", "5", "--col", "score_nope"])
     assert res.exit_code == 1 and "score_nope is not in" in res.output

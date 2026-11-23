@@ -211,7 +211,8 @@ python -m src.cli phases     # tier x phase stance with CIs, split into war post
                              #   [--score score_opus_stance|score_opus55|...] (post-label columns)
                              #   [--weights none|design|volume] (X window weights; none is the record)
 python -m src.cli reply-population  # reply audience's Opus stance per post, direct and corrected (free)
-                                    #   [--labels v1|v2|v2b] [--first-draws]; v2 pools the fresh draws
+                                    #   [--labels v1|v2|v2b] [--first-draws]; v2 pools the fresh draws;
+                                    #   census --col defaults to settings.REPLY_POPULATION_COL
 python -m src.cli reply-label report --job v2b  # v2 vs v2b, paired on the first draws (free)
 python -m src.cli reply-loyalty     # Opus stance by replier loyalty tier, high - low (free)
 python -m src.cli reply-crowd       # same accounts or a different crowd: returners vs one-offs,
@@ -235,7 +236,10 @@ timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
 `post-label estimate|submit|status|collect --job stance-topic` for new war
 candidates, then `--job stance-topic-census` for the rest (the topic flag of
 record); `phases`, `visualize`, `export-web` (into whatever branch the
-dkweb checkout has: a draft branch, see *Blog charts*); `backup`. While the last phase is open, each pull
+dkweb checkout has, see *Blog charts*); `backup`. New replies (a refresh of
+the tracked posts, or a new one) need `reply-distill --crossfit` on the GPU
+and a pull before `reply-population`, `reply-loyalty`, `reply-crowd` or
+`export-web` (*Tiers and scorers*). While the last phase is open, each pull
 moves `ANALYSIS_END` (`config/timeline.py`) to its last whole UTC day; once
 the owner has closed it, it stays put (see *Phases and the analysis
 window*).
@@ -347,7 +351,9 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   and a post without it is left out with a count, never imputed.
   `score_opus_distilled` (DeBERTa distilled from the Opus labels, run at its
   256-token training length) is the reply scorer of record for replies (and
-  stays on Trump's feed for `--score`); `score_opus_distilled_v0` keeps the
+  stays on Trump's feed for `--score`), though since 2026-11-23 the published
+  reply figures take their census from `settings.REPLY_POPULATION_COL`
+  (`score_ctx_crossfit`, below); `score_opus_distilled_v0` keeps the
   pre-2026-09-30 reply scores from an overwritten fit and never joins a
   series. `score-distilled` and `score-posts` default to it
   (`settings.DISTILLED_SCORER_DIR` / `DISTILLED_SCORER_COL`), record the
@@ -399,10 +405,29 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   characters once links and a leading `RT @x: ` or `RT: ` are removed)
   leave every denominator and are never scored.
 - Reply population shares come from `reply-population` (Opus-corrected
-  against the v2 reply labels, `settings.REPLY_TEACHER_LABELS_VERSION`), not
-  raw `score_opus_distilled`, which runs ~15 points pro-war (63% vs 49% for
-  the v2 Opus labels on the 1,157 labelled replies with text). Its direct
-  columns (`opus_*`) weight the labels alone by bucket.
+  against the v2 reply labels, `settings.REPLY_TEACHER_LABELS_VERSION`), never
+  from a scorer's raw scores: `score_opus_distilled` runs ~15 points pro-war
+  (63% vs 49% for the v2 Opus labels on the 1,157 labelled replies with
+  text), and `score_ctx_crossfit`'s level is off per post.
+  `reply-population`'s direct columns (`opus_*`) weight the labels alone
+  by bucket. The correction's
+  census is `settings.REPLY_POPULATION_COL`: `score_ctx_crossfit` since
+  2026-11-23 (the owner's call, [docs/decisions.md](docs/decisions.md);
+  same estimates, narrower intervals), `score_opus_distilled` before. It is
+  also the population of `reply-loyalty` and `reply-crowd` and the census
+  of export-web's replies.json. A reply with text and no score in it
+  refuses the run, never drops out. New replies to a tracked post, with no
+  new labels: `sync-data.sh push`, the `reply-crossfit-ctx` Job on dkbl2's
+  GPU (`reply-distill --crossfit`; it rescores that post whole, ~24 min),
+  then `sync-data.sh pull`. A new tracked post, or any new v2 or v2-fresh
+  labels (paid), changes every fold's training rows, which the column's
+  record fixes (`n_rows`, `rows_sha`), so `score_ctx_crossfit` refuses
+  them: that is a full cross-fit into a new column (~4 h for ten folds),
+  and moving `REPLY_POPULATION_COL` to it is the owner's call. The
+  first-draw and v2b CSVs stay on `score_opus_distilled`
+  (`--col score_opus_distilled` reproduces them). The tests pin the column
+  to `score_opus_distilled` (`tests/conftest.py`): their stubs have no
+  cross-fit column.
 - Reply label files: one per prompt, model and id source
   (`stance_local.reply_labels_path`). The v2 label set is the stance
   sample's file plus the fresh draws' (`teacher_labels_replies_v2-fresh_*`,
@@ -447,7 +472,10 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   `--per-account` the returners and change, and every file names `--col`
   (a column missing or partly written is refused). Any future targeted labels
   for it get their own job and file and never join `reply-population` or
-  the v2 set. Publishing its figures and its headline rows are the owner's call.
+  the v2 set. Published since 2026-11-23 (the owner's call): the split (P2)
+  leads and returners (P1) come second, worded as decisions.md's
+  2026-11-23 entries fix ("accounts seen in both periods", never a change
+  of mind); direct stays the record and GREG a check.
 - A model's relabel columns are `score_<tag>` with a tag no other model has
   (`settings.MODEL_TAGS`: claude-opus-5 `opus`, claude-opus-5-5 `opus55`,
   claude-fable-5-1 `fable51`); `relabel merge` refuses a column
@@ -496,8 +524,11 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 - A scorer fit on the Opus-labelled replies (`reply-distill`) enters
   `reply-population` only as a cross-fit column (`--crossfit`: each post
   scored by a fit that never saw its labels); `reply-population` refuses
-  a full-sample one. `reply_sentiment_columns.json` records the model
-  behind each such column; one column never takes two models' scores.
+  a full-sample one. `score_ctx_crossfit` is such a column and the census
+  of record (`settings.REPLY_POPULATION_COL`, above); never compare its raw
+  scores across posts or use them for a group contrast.
+  `reply_sentiment_columns.json` records the model behind each such
+  column; one column never takes two models' scores.
 - `analyze --llm` and `event-study` / `stance` are restart-safe and
   incremental: only posts or replies without a score are sent. `analyze`
   restores a prior score only onto the same text, so a post whose text
@@ -724,10 +755,12 @@ Rerun `export-web` after any rescoring, then `npm run build` in dkweb.
 never the last phase; export-web refuses a label that is not in `PHASES`,
 or the first (the contrasts' base).
 **Drafts live on a dkweb branch (the owner's call, 2026-11-22).** The post
-is being extended to phase 6 as a draft on dkweb's local branch
-`iran-post-phase6` (not pushed, not merged). export-web writes into
-whatever branch the dkweb checkout has, so check out the draft branch
-before running it; nothing reaches dkweb `main` until the owner says.
+was extended to phase 6 as a draft on dkweb's local branch
+`iran-post-phase6`, which merges to `main` on 2026-11-23 (the owner's
+call), the post dated that day; `main` is behind Cloudflare Access and
+launch stays the owner's step. export-web writes into whatever branch the
+dkweb checkout has, so a later draft gets its own branch, checked out
+before export-web runs; nothing reaches dkweb `main` until the owner says.
 export-web writes six-phase, rolling data: `accounts.json` over the whole
 war (Feb 1 to `ANALYSIS_END`), `maga_weekly.json` to `ANALYSIS_END` and a
 sixth bar in `trump_phases.json`, so the post's dates (dkweb
@@ -735,10 +768,11 @@ sixth bar in `trump_phases.json`, so the post's dates (dkweb
 data's end date, the weekly chart's alt text) change with the JSONs, in
 the same dkweb change. Switching `WEB_DECOMPOSITION_PHASE` and the post's
 date and description are the owner's calls. `replies.json` pools the
-fresh draws (`REPLY_POPULATION_FRESH_DRAWS`): on the draft branch, 11,344
-draws on ten posts (2026-11-22); dkweb `main` keeps the published
-9,071-draw, eight-post basis until the owner merges. export-web warns
-only when it exports without them. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
+fresh draws (`REPLY_POPULATION_FRESH_DRAWS`; 11,344 draws on ten posts
+since 2026-11-22) on the census of `settings.REPLY_POPULATION_COL`
+(`score_ctx_crossfit` since 2026-11-23), so new replies need the GPU
+cross-fit before export-web. export-web warns only when it exports
+without the fresh draws. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
 `global.css`.
 
 ## Docs map

@@ -377,7 +377,7 @@ def _check_column(col: str, raw: pd.DataFrame | None, drawn_posts) -> None:
 
 
 def crowd_frames(
-    col: str = "score_opus_distilled",
+    col: str | None = None,
     model: str | None = None,
     draws: str = "all",
     status_on: str | None = None,
@@ -386,6 +386,7 @@ def crowd_frames(
     """The population, labelled draws (v2, after _whole_fresh_posts) and
     participation, read once. draws: all / first / fresh. exclude: any of
     heavy, dup_text, new_accounts (robustness)."""
+    col = col or settings.REPLY_POPULATION_COL
     from src.analysis.stance_local import read_reply_label_set
 
     column_guard(col)
@@ -1607,7 +1608,7 @@ def _close_to_population(fr: CrowdFrames, W: np.ndarray) -> list[str]:
 
 
 def reply_crowd(
-    col: str = "score_opus_distilled",
+    col: str | None = None,
     model: str | None = None,
     n_boot: int | None = None,
     seed: int | None = None,
@@ -1617,6 +1618,7 @@ def reply_crowd(
 ) -> tuple[dict[str, pd.DataFrame], dict]:
     """Every reply-crowd table and a summary for the console. Reads the
     frames once; no API, no writes."""
+    col = col or settings.REPLY_POPULATION_COL
     n_boot = settings.BOOTSTRAP_N if n_boot is None else n_boot
     seed = settings.BOOTSTRAP_SEED if seed is None else seed
     fr = crowd_frames(col, model)

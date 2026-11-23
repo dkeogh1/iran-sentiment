@@ -546,12 +546,16 @@ def _weighted(
     return coverage, reps, []
 
 
-def _reply_frames(col: str, fresh: bool) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
+def _reply_frames(col: str | None, fresh: bool) -> tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     """(population, random draws, replies without text per post) as
     reply_population weighs them: the population is each post's replies
     with text and a `col` and RoBERTa score, one row per id, bucketed by
     current valence; the draws are reply_draws (with the fresh ones when
-    `fresh`), each with its draw_set and draw-time bucket."""
+    `fresh`), each with its draw_set and draw-time bucket. `col` defaults to
+    settings.REPLY_POPULATION_COL; a reply with text and no `col` score
+    refuses (ValueError), since leaving it out would weight its post's
+    other replies up for it."""
+    col = col or settings.REPLY_POPULATION_COL
     replies = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
     replies["id"] = replies["id"].astype(str)
     draws = reply_draws(replies, fresh=fresh)  # fixed first
@@ -561,15 +565,20 @@ def _reply_frames(col: str, fresh: bool) -> tuple[pd.DataFrame, pd.DataFrame, pd
     replies = replies.drop_duplicates("id")  # a few ids were collected twice
     text = has_text(replies["text"])
     n_no_text = (~text).groupby(replies["tracked_slug"]).sum()
-    pop = replies[text & replies[col].notna() & replies["score_transformer"].notna()].copy()
+    if col not in replies:
+        raise ValueError(
+            f"{col} is not in {settings.REPLY_SENTIMENT_OUTPUT.name}: score the replies first "
+            "(score-distilled, or reply-distill --crossfit on the GPU for a cross-fit column)"
+        )
     unscored = text & replies[col].isna()
     if unscored.any():
-        logger.warning(
-            "reply population: %d replies with text have no %s and are left out: %s",
-            int(unscored.sum()),
-            col,
-            _per_post(replies[unscored]),
+        # Leaving them out would weight the post's other replies up for them.
+        raise ValueError(
+            f"{int(unscored.sum())} replies with text have no {col} "
+            f"({_per_post(replies[unscored])}): score them first (score-distilled, or "
+            "reply-distill --crossfit on the GPU for a cross-fit column)"
         )
+    pop = replies[text & replies[col].notna() & replies["score_transformer"].notna()].copy()
     pop["bucket"] = stance_bucket(pop["score_transformer"]).astype(int)
     return pop, draws, n_no_text
 
@@ -595,7 +604,7 @@ def _whole_fresh_posts(lab: pd.DataFrame, pop: pd.DataFrame, draws: pd.DataFrame
 
 
 def reply_population(
-    col: str = "score_opus_distilled",
+    col: str | None = None,
     model: str = settings.TEACHER_CHECK_MODEL,
     n_boot: int = settings.BOOTSTRAP_N,
     seed: int = settings.BOOTSTRAP_SEED,
@@ -642,6 +651,7 @@ def reply_population(
         reply_labels_path,
     )
 
+    col = col or settings.REPLY_POPULATION_COL
     fit = reply_column_entry(col)
     if fit and fit.get("trained_on_reply_labels") and not fit.get("crossfit"):
         raise ValueError(
@@ -714,7 +724,7 @@ def reply_population(
 def reply_population_paired(
     a: str = "v2",
     b: str = "v2b",
-    col: str = "score_opus_distilled",
+    col: str | None = None,
     model: str = settings.TEACHER_CHECK_MODEL,
     n_boot: int = settings.BOOTSTRAP_N,
     seed: int = settings.BOOTSTRAP_SEED,
@@ -819,7 +829,7 @@ def replier_tiers(replies: pd.DataFrame, as_of=None) -> pd.DataFrame:
 
 
 def reply_loyalty(
-    col: str = "score_opus_distilled",
+    col: str | None = None,
     model: str = settings.TEACHER_CHECK_MODEL,
     n_boot: int = settings.BOOTSTRAP_N,
     seed: int = settings.BOOTSTRAP_SEED,
