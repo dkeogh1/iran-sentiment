@@ -17,6 +17,7 @@ Commands:
   reply-label     Opus reply labels by job (v2b, cat-v2, v2-fresh), Batch API (paid)
   reply-fresh-sample  Draw and freeze the fresh random reply sample (free)
   reply-loyalty   Opus stance by replier loyalty tier, high minus low (free)
+  reply-crowd     Same accounts or a different crowd? Returners, the crowd split (free)
   status          Report what's been collected and what's missing
   run-all         Full pipeline: collect → analyze → visualize → summary
 """
@@ -2359,6 +2360,199 @@ def reply_loyalty_cmd(col: str, n_boot: int, labels_version: str, first_draws: b
 
 def _fmt_share(r, k: str) -> str:
     return f"{r[k]:.0%} [{r[k + '_lo']:.0%}, {r[k + '_hi']:.0%}]"
+
+
+@main.command("reply-crowd")
+@click.option(
+    "--col",
+    default="score_opus_distilled",
+    show_default=True,
+    help="Census column for the GREG check (a cross-fit once recorded)",
+)
+@click.option("--n-boot", default=settings.BOOTSTRAP_N, show_default=True)
+@click.option(
+    "--late-phase",
+    default=None,
+    help=f"A PHASES label (default settings.REPLY_CROWD_LATE_PHASE, "
+    f"{settings.REPLY_CROWD_LATE_PHASE!r})",
+)
+@click.option("--per-account", is_flag=True, help="Each account once per post (robustness)")
+@click.option("--no-robustness", is_flag=True, help="Record tables only")
+def reply_crowd_cmd(
+    col: str, n_boot: int, late_phase: str | None, per_account: bool, no_robustness: bool
+):
+    """Same accounts or a different crowd? Returners vs one-off repliers on the same post,
+    and the move from the earlier posts to the late phase split into accounts seen in both
+    periods and turnover, with a reference over every pair of posts. Opus v2 labels,
+    post-stratified, bootstrap CIs. Free: no API. Aggregates only."""
+    from src.analysis.reply_crowd import output_names, reply_crowd
+
+    try:
+        tables, n = reply_crowd(
+            col=col,
+            n_boot=n_boot,
+            late_phase=late_phase,
+            per_account=per_account,
+            robustness=not no_robustness,
+        )
+    except (FileNotFoundError, ValueError) as e:
+        click.secho(str(e), fg="yellow")
+        sys.exit(1)
+    names = output_names(col, per_account, late_phase)
+    for key, df in tables.items():
+        df.to_csv(settings.PROCESSED_DIR / names[key], index=False)
+    _print_reply_crowd(tables, n)
+    click.echo(f"\nWrote {', '.join(names[k] for k in tables)} to {settings.PROCESSED_DIR}")
+
+
+def _ci_or_dash(r, k: str, pct: bool = False) -> str:
+    v = r.get(k)
+    if v is None or pd.isna(v):
+        return "-"
+    if pct:
+        return f"{100 * v:+.1f} [{100 * r[k + '_lo']:+.1f}, {100 * r[k + '_hi']:+.1f}]"
+    return _fmt_ci(r, k)
+
+
+def _print_reply_crowd(tables: dict, n: dict) -> None:
+    """reply-crowd's console report: aggregates only."""
+    click.echo(
+        f"Opus labels: {n['labels']} (first + fresh draws pooled: {n['n_first']} + "
+        f"{n['n_fresh']}); post-stratified direct estimator (the record), {n['weight']} "
+        f"weights, {n['n_boot']} replicates"
+    )
+    click.echo(
+        f"{n['n_replies']} replies with text from {n['repliers']} repliers "
+        f"({n['replies_all']} replies in all for the groups; {n['no_account']} with no "
+        f"account); {n['n_labelled']} labelled draws"
+    )
+    click.echo("Earlier: " + ", ".join(f"{p} ({ph})" for p, ph in n["early"]))
+    click.echo("Late:    " + ", ".join(f"{p} ({ph})" for p, ph in n["late"]))
+
+    rt = tables["returners"]
+    click.echo(
+        "\nR1: returners (replied to another tracked post) minus one-off repliers, "
+        "same post; points [95% CI], shares in points"
+    )
+    click.echo(
+        f"{'post':36s}{'period':>8s}{'ret share':>10s}  {'mean gap':24s}"
+        f"{'pro gap':24s}{'neutral gap'}"
+    )
+    for _, r in rt.iterrows():
+        share = r.get("share_returner")
+        share = f"{share:.0%}" if pd.notna(share) else ""
+        click.echo(
+            f"{r['post']:36s}{r['period'] or ''!s:>8s}{share:>10s}  "
+            f"{_ci_or_dash(r, 'direct_mean_gap'):24s}{_ci_or_dash(r, 'direct_pro_gap', True):24s}"
+            f"{_ci_or_dash(r, 'direct_neutral_gap', True)}"
+        )
+    w = rt.set_index("post").loc["within posts"]
+    if "direct_mean_gap_acct_lo" in w:
+        click.echo(
+            f"  within posts, account-cluster interval: mean [{w['direct_mean_gap_acct_lo']:+.3f}, "
+            f"{w['direct_mean_gap_acct_hi']:+.3f}]"
+        )
+
+    ch = tables["change"]
+    rec = ch[(ch["contrast"] == "all earlier") & (ch["estimator"] == "direct")]
+    if len(rec):
+        r0 = rec.iloc[0]
+        click.echo(
+            f"\nR2: earlier posts -> late phase, all earlier as the base. Accounts seen in both "
+            f"periods (any reply): {r0['accounts_both']}; with a reply with text, "
+            f"{r0['accounts_both_late']} late ({r0['share_both_of_late_accounts']:.1%} of the late "
+            f"accounts, {r0['share_both_of_late_replies']:.1%} of the late replies) and "
+            f"{r0['accounts_both_earlier']} earlier ({r0['share_both_of_earlier_accounts']:.1%} "
+            f"of the earlier accounts)"
+        )
+        click.echo(
+            f"{'outcome':10s}{'earlier':>9s}{'late':>9s}  {'change':24s}"
+            f"{'same accounts':24s}{'turnover':24s}{'did'}"
+        )
+        for k in ("neutral", "pro", "anti", "mean"):
+            r = rec[rec["outcome"] == k].iloc[0]
+            click.echo(
+                f"{k:10s}{r['earlier']:>+9.3f}{r['late']:>+9.3f}  {_fmt_ci(r, 'change'):24s}"
+                f"{_fmt_ci(r, 'same_accounts'):24s}{_fmt_ci(r, 'turnover'):24s}"
+                f"{_fmt_ci(r, 'did')}"
+            )
+        click.echo("same accounts = post effect + change of mind: not separable")
+        for k in ("neutral", "pro"):
+            r = rec[rec["outcome"] == k].iloc[0]
+            if "same_accounts_acct_lo" in r and pd.notna(r["same_accounts_acct_lo"]):
+                click.echo(
+                    f"  {k} account-cluster intervals: same accounts "
+                    f"[{r['same_accounts_acct_lo']:+.3f}, {r['same_accounts_acct_hi']:+.3f}], "
+                    f"turnover [{r['turnover_acct_lo']:+.3f}, {r['turnover_acct_hi']:+.3f}]"
+                )
+        a = ch[(ch["contrast"] == "all earlier") & (ch["estimator"] == "assisted")]
+        for k in ("neutral", "pro"):
+            ra = a[a["outcome"] == k]
+            if len(ra):
+                ra = ra.iloc[0]
+                click.echo(
+                    f"  {k} assisted (GREG): same accounts {_fmt_ci(ra, 'same_accounts')}, "
+                    f"turnover {_fmt_ci(ra, 'turnover')}"
+                )
+
+    pr = tables["pairs"]
+    summ = pr[pr["kind"].astype(str).str.startswith("summary:")]
+    click.echo("\nReference: noise-corrected RMS of each term over the pairs of posts of a kind")
+    for k in ("neutral", "pro"):
+        for _, r in summ[summ["outcome"] == k].iterrows():
+            if pd.isna(r.get("rms_corrected")):
+                continue
+            click.echo(
+                f"  {k:8s}{r['kind'][8:]:16s}{r['term']:14s}{int(r['n_pairs']):>3d} pairs  "
+                f"rms {r['rms_corrected']:.3f} [{r['rms_lo']:.3f}, {r['rms_hi']:.3f}] "
+                f"(raw {r['rms_raw']:.3f})"
+            )
+    bm = ch[(ch["contrast"] == "benchmark") & (ch["estimator"] == "direct")]
+    for k in ("neutral", "pro"):
+        r = bm[bm["outcome"] == k]
+        if len(r):
+            r = r.iloc[0]
+            click.echo(
+                f"  benchmark ({r['early_posts']} -> {r['late_posts']}), {k}: change "
+                f"{_fmt_ci(r, 'change')}, same accounts {_fmt_ci(r, 'same_accounts')}, "
+                f"turnover {_fmt_ci(r, 'turnover')}"
+            )
+
+    pn = tables["panel"]
+    parts = []
+    for _, r in pn.iterrows():
+        if pd.isna(r["r_opus"]):
+            parts.append(f"{r['kind']} n/a ({r['accounts']} accounts)")
+        else:
+            parts.append(
+                f"{r['kind']} {r['r_opus']:+.2f} [{r['r_opus_lo']:+.2f}, {r['r_opus_hi']:+.2f}] "
+                f"({r['accounts']} accounts)"
+            )
+    click.echo("\nPanel (exploratory, post-centred r of the same account): " + "; ".join(parts))
+
+    rb = tables.get("robustness")
+    if rb is not None and len(rb):
+        click.echo(
+            "\nRobustness (R1 within-posts mean gap; R2 neutral / pro same accounts and turnover):"
+        )
+        cells = [
+            ("R1", "within_posts_gap", "mean"),
+            ("R2", "same_accounts", "neutral"),
+            ("R2", "turnover", "neutral"),
+            ("R2", "same_accounts", "pro"),
+            ("R2", "turnover", "pro"),
+        ]
+        click.echo(f"{'variant':34s}" + "".join(f"{c[2] + ' ' + c[1][:9]:>26s}" for c in cells))
+        for v, g in rb.groupby("variant", sort=False):
+            line = f"{v[:33]:34s}"
+            for t, term, k in cells:
+                x = g[(g["table"] == t) & (g["term"] == term) & (g["outcome"] == k)]
+                if len(x) and pd.notna(x.iloc[0]["value"]):
+                    x = x.iloc[0]
+                    line += f"{x['value']:>+8.3f} [{x['lo']:+.3f},{x['hi']:+.3f}]"
+                else:
+                    line += f"{'-':>26s}"
+            click.echo(line)
 
 
 @main.command("teacher-retest")

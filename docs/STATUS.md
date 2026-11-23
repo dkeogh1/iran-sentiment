@@ -367,6 +367,14 @@ posts:
   17; the post says why the Pope is left out. Still worth a look on the
   page: the reply-scatter labels and the audience bars' domains, now with
   ten posts.
+- **`reply-crowd`** (2026-11-23, `docs/decisions.md`): built and run once at
+  200 replicates on `score_opus_distilled`; nothing published. Open: the
+  owner approves the decisions entry (headline rows P1 and P2, the record
+  estimator); then the 1,000-replicate run, and a rerun with
+  `--col score_ctx_crossfit` once that column is recorded with
+  `crossfit: True` in `reply_sentiment_columns.json` (the GPU Job writing
+  it; `sync-data.sh pull` first). Its GREG stays a check unless the owner
+  says otherwise. Publishing it is the owner's call.
 - **Phase 6 is open.** It closes at the next regime change (major
   US/Israeli strikes resume or a deal is signed) or on 2027-01-02,
   whichever comes first, the user's call; its last day then goes into

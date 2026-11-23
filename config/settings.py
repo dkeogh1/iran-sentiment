@@ -550,6 +550,19 @@ REPLY_FRESH_POOL_MIN_SHARE = 0.98
 # as age 0, with a logged count (inference.replier_tiers). (The 2026-11-02
 # findings check ran on datetime.now(), a day later.)
 LOYALTY_REFERENCE_DATE = datetime(2026, 11, 1, tzinfo=UTC)
+# `reply-crowd` (src/analysis/reply_crowd.py; docs/decisions.md 2026-11-23). The late
+# phase is a PHASES label other than the first; tracked posts dated in it are "late",
+# those in earlier phases the base. Never PHASES[-1]: the late phase is named here.
+REPLY_CROWD_LATE_PHASE = "midterms, standoff"
+REPLY_CROWD_NEAR_BASE = ("collapse, blockade", "expiry, strikes")
+REPLY_CROWD_BENCHMARK = (("strikes, ceasefire",), ("expiry, strikes",))
+REPLY_CROWD_MIN_CELL_DRAWS = 15  # below: Hajek over the domain's buckets; 0 draws: NaN, named
+REPLY_CROWD_MIN_ACCOUNTS = 20  # smaller domains are suppressed (NaN, counted) in every output
+REPLY_CROWD_PANEL_MIN_ACCOUNTS = 50
+REPLY_CROWD_HEAVY_REPLIES = 5  # exclude_heavy robustness: an account's text replies on a post
+REPLY_CROWD_STATUS_ON = "all"  # group membership from every reply ("text": robustness)
+# The census table counts each group's accounts created after this day (UTC).
+REPLY_CROWD_NEW_ACCOUNT_DATE = datetime(2026, 9, 30, tzinfo=UTC)
 # Measured on the 2026-10-05 v2 batch (1,141 requests, all end_turn, billed
 # $2.10): input tokens per request = a per-post prefix (the instructions,
 # the parent post and the reply wrapper; least squares with one slope) +

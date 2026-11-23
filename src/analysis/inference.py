@@ -783,6 +783,12 @@ LOYALTY_TIERS = ("low", "medium", "high")
 _LOYALTY_COUNTS = ("replies_", "repliers_", "labelled_")
 
 
+def replier_key(a) -> str | None:
+    """A replier's key: the account's id, else its username; None for a reply
+    with no account record. The id is stable across renames."""
+    return (a.get("id") or a.get("username")) if isinstance(a, dict) else None
+
+
 def replier_tiers(replies: pd.DataFrame, as_of=None) -> pd.DataFrame:
     """id, replier (the account's id, else its username) and loyalty tier
     (event_study.loyalty_tier of loyalty_score, the account's age taken on
@@ -798,7 +804,7 @@ def replier_tiers(replies: pd.DataFrame, as_of=None) -> pd.DataFrame:
         logger.warning(
             "loyalty tiers: %d replies from %d accounts created after %s: counted as age 0",
             int(late.sum()),
-            acct[late].map(lambda a: a.get("id") or a.get("username")).nunique(),
+            acct[late].map(replier_key).nunique(),
             pd.Timestamp(as_of).isoformat(),
         )
 
@@ -807,11 +813,8 @@ def replier_tiers(replies: pd.DataFrame, as_of=None) -> pd.DataFrame:
             return "unknown"
         return loyalty_tier(loyalty_score({"account": a}, as_of))
 
-    def who(a):
-        return (a.get("id") or a.get("username")) if isinstance(a, dict) else None
-
     return pd.DataFrame({"id": replies["id"].astype(str).to_numpy(),
-                         "replier": acct.map(who).astype(object).to_numpy(),
+                         "replier": acct.map(replier_key).astype(object).to_numpy(),
                          "loyalty": acct.map(tier).to_numpy()})
 
 

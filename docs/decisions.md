@@ -4,6 +4,132 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-23: Reply crowd split (`reply-crowd`)
+
+This is the agent's design, built and run read-only. Nothing from it is
+published: whether to publish, the wording and the headline rows below are
+the owner's calls (still to approve), and so is everything in *Owner's
+calls* at the end.
+
+- **Question:** between the eight earlier tracked posts and the two phase-6
+  posts, did the reply audience's stance move because the same accounts
+  replied differently, or because a different crowd replied? And on the
+  same post, do returning accounts differ from one-off ones?
+- **Definitions:**
+  - An account is `account.id` (`inference.replier_key`, lifted out of
+    `replier_tiers` with its behaviour unchanged). Group membership comes
+    from every collected reply, textless ones included, over the tracked
+    posts with replies; groups from the replies with text only are a
+    robustness row. Groups are census attributes, never a label or a score.
+  - **R1:** a *returner* replied to at least one other tracked post (earlier
+    or later), a *one-off* to none: "returner" means another of the ten
+    tracked posts, not another Trump post.
+  - **R2:** the late side is the tracked posts dated in
+    `settings.REPLY_CROWD_LATE_PHASE` ("midterms, standoff"), the base the
+    posts of every phase before it (never `PHASES[-1]`). *Both* accounts
+    replied to a base post and a late post, *earlier_only* and *late_only*
+    to one side; recomputed for each base.
+  - The unit is the reply (a_i = 1), the published estimand;
+    `--per-account` (each account once per post) is a robustness check.
+    Outcomes: the mean label and the pro / anti / neutral shares (the
+    `STANCE_BAND` bands), neutral written as "took no side on the war".
+- **Estimator of record:** the v2 labels of the random draws, first and
+  fresh pooled (the 81 non-random labels excluded), post-stratified by
+  group inside each (post, RoBERTa bucket) cell on the known census cell
+  totals. A domain with a cell of 1 to 14 draws
+  (`REPLY_CROWD_MIN_CELL_DRAWS`) collapses to the Hajek ratio over its
+  buckets (counted); a cell with population and no draw makes the domain
+  NaN, named (in the log), never renormalised: a within-posts average
+  with a NaN post is NaN. A domain under
+  `REPLY_CROWD_MIN_ACCOUNTS` (20) accounts is suppressed (NaN) in every
+  output and counted in its rows' `suppressed_domains`.
+  A GREG with an estimated slope on the census `--col` score is a check
+  (the mean on the score; the pro / anti / neutral shares together on the
+  score's pro and anti bands, one slope matrix, so they sum to 1):
+  if it and direct differ by more than direct's half-width, or in sign, on
+  a headline term, the direct figure is reported and the disagreement
+  noted. A column fit on the reply labels that is not a cross-fit is
+  refused, as in `reply-population`.
+- **The split (R2):** post-standardised (each period's posts weighted by
+  size, shared by every term) with *both* as the anchor:
+  change = same_accounts + turnover exactly, in every replicate (a run-time
+  assert). Beside it: the post-mix term the standardising removes, a
+  difference-in-differences row (both-period accounts' gap to the rest,
+  late minus earlier; also scaled by each post's label SD), every
+  ordered pair of posts split the same way on the accounts that replied to
+  both, the noise-corrected RMS of each term over the pairs of a kind (the
+  reference), and a phase 1 -> phase 4 benchmark with no phase-6 post in
+  it.
+- **Intervals:** one replicate-weight matrix (the stratum resample with the
+  finite-population correction, as `_weighted`, with an rng stream per
+  post keyed by its place in `TRACKED_POSTS`) serves every estimate, so
+  identities and contrasts hold replicate by replicate; percentile
+  intervals. An account-cluster bootstrap (a Poisson(1) weight per
+  account, shared across posts) is quoted beside any sentence about
+  accounts; a no-FPC row covers label noise.
+- **Headline rows, fixed now and post hoc (previews were seen):**
+  - **P1:** R1 within posts (each post's returner minus one-off gap,
+    averaged by post size), mean and pro.
+  - **P2:** R2 on the all-earlier base, neutral and pro: change,
+    same_accounts, turnover.
+  - Context, not headline: the reference RMS by kind and the benchmark.
+    Everything else is descriptive; a per-post claim needs its own interval
+    to exclude 0, with Holm across the posts quoted.
+- **Disclosure:** scratch previews were seen before this entry: point
+  estimates, 200-replicate intervals and matched-pair figures, and then one
+  200-replicate run of the command itself (2026-11-23). So the headline rows
+  are post hoc, though fixed here; the matched pairs are not primaries (all
+  pairs are shown). The scratch numbers are never published.
+- **What it cannot separate:**
+  - Change of mind from the post. A stance is seen only as a reply to a
+    post, and the two phase-6 posts are mostly domestic, so
+    "same_accounts" is the post effect plus any change of mind. Never
+    write that anyone changed their mind, softened or turned.
+  - Cause. The split is accounting with *both* as the anchor, not
+    attribution: never "a new crowd drove it".
+  - Literal sameness: on each post *both* is the both-period accounts that
+    replied to that post, by reply; only the pair rows fix the account set.
+  - Why groups differ (loyalty, activity, account age, survival to
+    collection), anything about Truth Social users, voters or "the base",
+    person-level switching rates, and any group contrast from census model
+    scores. The mean's split is expected to be inconclusive (pro and anti
+    fall together).
+- **Robustness (same run, `reply_crowd_robustness_<col>_v2.csv`, reply
+  weights whatever `--per-account` says):** no collapse (every cell
+  post-stratified, `MIN_CELL` 1), hajek
+  (ratio domains with estimated shares; at replicate 0 its post means are
+  `reply-population`'s `opus_*`), the GREG check, per account, account
+  cluster, no FPC, status on text, first and fresh draws apart, excluding
+  accounts created after the base's first post, heavy repliers (5+ text
+  replies on a post), and duplicate-text accounts, equal post weights,
+  leaving out each earlier post, each earlier phase as the base, the near
+  base (phases 3 and 4), the benchmark, loyalty-standardised R1, and side
+  balance (levels only, with the praise-rule flag). None left out.
+- **Rejected:**
+  - Lean or side balance as a primary outcome (the praise rule moves it).
+  - Transition tables, a kept-side share and switching rates (regression to
+    the mean and label noise); the panel is one exploratory line.
+  - The unweighted panel; the slope-1 assisted (difference) estimator,
+    which widens intervals on several posts; an assisted panel under the
+    leave-one-post-out cross-fit (a labelled pair is in the sample exactly
+    when the account's other label trained the fold).
+  - Two-way fixed effects (period is collinear with the phase-6 post
+    effects) and alternative anchors (Griliches-Regev): the split is stated
+    as accounting only.
+- **Also recorded:** `reply-population`'s published `assisted_*` intervals
+  (the slope-1 difference estimator) are wider than its direct ones on five
+  posts. That weakness predates this command; changing it would move the
+  published reply intervals, so it is the owner's call.
+- **Owner's calls:** approve this entry (the late phase, the all-earlier
+  base, P1 and P2, the post-stratified direct estimator and the reply
+  weight as the record); whether GREG on `score_ctx_crossfit` becomes the
+  record once that column is recorded (default: it stays a check);
+  publishing and wording on the dkweb draft branch; the `reply-population`
+  assisted fix; and any paid labels for it (a praise-rule check on the
+  phase-6 first draws, a label retest, a census of the both-period
+  accounts' earlier replies), each a new job with its own caps and file
+  that never joins `reply-population` or the v2 set.
+
 ## 2026-11-22: The reply figures are ten posts, 11,344 labelled draws
 
 - **Decision (the user's call, 2026-11-22):** the reply basis is the ten tracked posts

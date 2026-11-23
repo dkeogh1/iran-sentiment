@@ -214,6 +214,8 @@ python -m src.cli reply-population  # reply audience's Opus stance per post, dir
                                     #   [--labels v1|v2|v2b] [--first-draws]; v2 pools the fresh draws
 python -m src.cli reply-label report --job v2b  # v2 vs v2b, paired on the first draws (free)
 python -m src.cli reply-loyalty     # Opus stance by replier loyalty tier, high - low (free)
+python -m src.cli reply-crowd       # same accounts or a different crowd: returners vs one-offs,
+                                    #   the earlier -> late split, pairs, panel (free, aggregates)
 python -m src.cli reply-fresh-sample  # draw and record the fresh reply sample (free; --dry-run)
 python -m src.cli reply-label estimate --job v2b|cat-v2|v2-fresh|v2-rater [--post SLUG]  # no API call
 python -m src.cli post-label estimate --job stance-topic|rater|stance-topic-nohandle  # no API call
@@ -271,7 +273,8 @@ src/     cli.py (every command), backup.py
                   checks, batch transport), reply_labels.py (v2b, cat-v2, v2-fresh),
                   batch_io.py (results download, batch delete), pricing.py (model prices, tags),
                   post_labels.py (alternate post raters: stance-topic, second rater, no-handle),
-                  window_weights.py (optional X window weights for `phases --weights`)
+                  window_weights.py (optional X window weights for `phases --weights`),
+                  reply_crowd.py (`reply-crowd`: returners, the crowd split, pairs, panel)
   visualization/  plots.py, web_export.py
 data/    raw/x/<handle>.jsonl, raw/x_sampling/ (collect and fill windows), raw/x_counts/,
          raw/x_archive/ (probe, fill state, request log, set-aside posts), raw/truthsocial/,
@@ -431,6 +434,20 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   run date. A tier
   is per reply (that reply's account snapshot): a replier whose bio
   differs between replies is in two, and the output counts them.
+- `reply-crowd` (src/analysis/reply_crowd.py, free; [docs/decisions.md](docs/decisions.md)
+  2026-11-23) splits the reply audience by fixed census groups of accounts:
+  groups come from every collected reply (textless ones too) keyed on the
+  account id (`inference.replier_key`), never from a label or a score. The
+  late phase is `settings.REPLY_CROWD_LATE_PHASE`, never `PHASES[-1]`; the
+  base is every phase before it. The post-stratified direct estimator on
+  the v2 labels is the record; GREG on `--col` is a check and the panel
+  takes no column. "Same accounts" is the post effect plus any change of
+  mind and is never written as a change of mind. A variant never writes
+  over the record's CSVs: another `--late-phase` suffixes every file,
+  `--per-account` the returners and change, and every file names `--col`
+  (a column missing or partly written is refused). Any future targeted labels
+  for it get their own job and file and never join `reply-population` or
+  the v2 set. Publishing its figures and its headline rows are the owner's call.
 - A model's relabel columns are `score_<tag>` with a tag no other model has
   (`settings.MODEL_TAGS`: claude-opus-5 `opus`, claude-opus-5-5 `opus55`,
   claude-fable-5-1 `fable51`); `relabel merge` refuses a column
