@@ -4,6 +4,59 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-23: The reply scorer retrained on the pooled labels: a better auxiliary, not a calibrated scorer
+
+- **What ran:** the parent-post reply scorer (`reply-distill`, variant
+  `ctx`, the 2026-10-06 recipe unchanged) cross-fitted on the whole v2
+  label set, the stance sample's labels and the fresh draws' (11,425 Opus
+  labels on ten posts, against 1,157 on eight on 2026-10-07): per post, a
+  fit on the other nine posts' labels scored that post's replies into
+  `score_ctx_crossfit` (`reply-crossfit-ctx` on dkbl2's 3080, 4 h 1 min,
+  ten folds of ~10,300 labels; free). Every reply with text is scored
+  (101,380); held-out agreement per post is in
+  `data/models/reply_lopo_pooled/crossfit_score_ctx_crossfit.json`. The
+  owner asked what the GPU could do and said go; the agent chose this run.
+- **Held out, against the Opus labels** (Pearson, new vs the published
+  `score_opus_distilled`): higher on eight posts (deal_complete 0.79 vs
+  0.06, ceasefire 0.78 vs 0.32, hold_off_attack 0.90 vs 0.57,
+  massie_hegseth 0.72 vs 0.58, no_deal_needed 0.77 vs 0.58), level on
+  strikes_resume_sep (0.78), lower on power_plant_day (0.64 vs 0.75);
+  pooled 0.68 vs 0.57. But its level on a post it never saw is often far
+  off: mean prediction +0.45 and +0.40 on the two phase-6 posts, whose
+  mean label is about +0.03; -0.32 on power_plant_day (+0.07). Three-way
+  sign agreement (54.9% vs 55.9%) and mean error (0.336 vs 0.321) are no
+  better pooled. With nine training posts it must guess how a reply such as
+  plain praise reads against an unseen post (the v2 praise rule ties it to
+  the post's direction), and it guesses the level wrong. It ranks replies
+  within a post well; its scores do not compare across posts.
+- **As `reply-population`'s auxiliary** (the Opus-label correction removes
+  any level offset, so only interval width changes): the assisted mean's
+  95% interval is narrower than the published one on nine posts (by 30-45%
+  on ceasefire, hold_off_attack, deal_complete, massie_hegseth and
+  no_deal_needed) and wider on one (power_plant_day, +6%); ALL 23%
+  narrower. The pro share's is narrower on nine (wider on
+  strikes_resume_sep, +9%); ALL 21% narrower. Against direct (the labels
+  alone): the published scorer's assisted interval is wider on five posts
+  for the mean and eight for the pro share; the cross-fit's on one for the
+  mean (massie_hegseth, by 0.0002) and four for the pro share (by up to
+  0.006). The estimates agree (ALL mean +0.100 vs +0.101, pro 42.7% vs
+  42.6%). Output:
+  `reply_population_score_ctx_crossfit_v2.csv`; the published
+  `reply_population_score_opus_distilled_v2.csv` is untouched.
+- **Decision:** `score_opus_distilled` stays the reply scorer of record and
+  the published reply figures stay on it. `score_ctx_crossfit` is recorded
+  (`reply_sentiment_columns.json`, `crossfit: True`) and may be weighted by
+  `reply-population --col` and used as `reply-crowd`'s GREG check. Moving
+  the published assisted figures onto it (narrower intervals, same
+  estimates) is the owner's call. Never compare its raw scores across posts
+  or use them for a group contrast or a person-level panel: the per-post
+  offsets above.
+- **Rejected:** a second seed or the `text` variant (no published figure
+  turns on them); per-post calibration of the column on the post's own
+  labels (in-sample for the correction it would feed); retraining with
+  accounts held out (only an assisted panel would need it, and the panel
+  takes no column).
+
 ## 2026-11-23: Reply crowd split (`reply-crowd`)
 
 This is the agent's design, built and run read-only. Nothing from it is

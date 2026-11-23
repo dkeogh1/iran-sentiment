@@ -367,14 +367,19 @@ posts:
   17; the post says why the Pope is left out. Still worth a look on the
   page: the reply-scatter labels and the audience bars' domains, now with
   ten posts.
-- **`reply-crowd`** (2026-11-23, `docs/decisions.md`): built and run once at
-  200 replicates on `score_opus_distilled`; nothing published. Open: the
-  owner approves the decisions entry (headline rows P1 and P2, the record
-  estimator); then the 1,000-replicate run, and a rerun with
-  `--col score_ctx_crossfit` once that column is recorded with
-  `crossfit: True` in `reply_sentiment_columns.json` (the GPU Job writing
-  it; `sync-data.sh pull` first). Its GREG stays a check unless the owner
-  says otherwise. Publishing it is the owner's call.
+- **`reply-crowd`** (2026-11-23, `docs/decisions.md`): built; run at 1,000
+  replicates with `--col score_ctx_crossfit` as its GREG check (outputs
+  `data/processed/reply_crowd_*_score_ctx_crossfit_v2.csv`); nothing
+  published. Open, the owner's calls: approve the decisions entry (headline
+  rows P1 and P2, the record estimator); whether and how to publish (README,
+  the dkweb draft). Its GREG stays a check unless the owner says otherwise.
+- **`score_ctx_crossfit`** (2026-11-23, `docs/decisions.md`): the parent-post
+  reply scorer cross-fitted on the 11,425 pooled v2 labels, on every reply
+  with text. It narrows `reply-population`'s assisted intervals on nine of
+  ten posts with the same estimates; the published figures stay on
+  `score_opus_distilled` until the owner moves them. Its raw scores do not
+  compare across posts. The GPU namespace is up until the owner deletes it
+  (nothing else is planned on it).
 - **Phase 6 is open.** It closes at the next regime change (major
   US/Israeli strikes resume or a deal is signed) or on 2027-01-02,
   whichever comes first, the user's call; its last day then goes into
