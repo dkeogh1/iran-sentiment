@@ -135,6 +135,42 @@ def test_training_rows_refuse_clashing_missing_or_moved_replies(files):
         sl.reply_training_rows()
 
 
+def test_training_rows_pool_the_label_sets_files(files, tmp_path):
+    """v2 trains on the stance sample's labels and the fresh draws' (one label
+    set, REPLY_LABEL_SETS); an id in both keeps the stance sample's label."""
+    reps = files()
+    lab = pd.read_parquet(sl.reply_labels_path(version="v2"))
+    only_fresh, both = list(lab["id"].iloc[:3]), list(lab["id"].iloc[3:5])
+    files(reps, lab[~lab["id"].isin(only_fresh)])
+    fresh = lab[lab["id"].isin(only_fresh + both)].assign(score_teacher=0.5)
+    fresh.to_parquet(sl.reply_labels_path(version="v2-fresh"), index=False)
+    rows = sl.reply_training_rows()
+    assert rows["id"].is_unique and len(rows) == len(lab)
+    got = rows.set_index("id")["score_teacher"]
+    assert (got[only_fresh] == 0.5).all()
+    assert (got[both] == lab.set_index("id")["score_teacher"][both]).all()
+    base = settings.MODELS_DIR / settings.REPLY_DISTILL_BASE
+    cfg = sl._reply_config(base, rows, settings.TEACHER_CHECK_MODEL, "v2")
+    assert cfg["label_files"] == [sl.reply_labels_path(version="v2").name,
+                                  sl.reply_labels_path(version="v2-fresh").name]
+    assert cfg["n_rows"] == len(lab)
+
+
+def test_training_rows_refuse_a_fresh_file_from_another_prompt_or_with_twice_labelled_ids(files):
+    reps = files()
+    lab = pd.read_parquet(sl.reply_labels_path(version="v2"))
+    fresh_path = sl.reply_labels_path(version="v2-fresh")
+    lab.iloc[:2].assign(prompt_version="reply-v3").to_parquet(fresh_path, index=False)
+    with pytest.raises(ValueError, match="prompt"):
+        sl.reply_training_rows()
+    pd.concat([lab.iloc[:2], lab.iloc[:1]]).to_parquet(fresh_path, index=False)
+    with pytest.raises(ValueError, match="labelled twice"):
+        sl.reply_training_rows()
+    fresh_path.unlink()
+    assert len(sl.reply_training_rows()) == len(lab)  # no fresh file: the stance sample alone
+    assert len(reps)
+
+
 # ── 2. Pair inputs ─────────────────────────────────────────────────
 
 

@@ -2373,8 +2373,8 @@ def teacher_batch_collect(
 # settings.REPLY_DISTILL_BASE, the posts-only scorer of record, fine-tuned
 # warm on the Opus-labelled replies, with the reply alone ("text", what it
 # sees today) or with the Trump post the reply answers ("ctx"):
-#   reply_lopo          leave-one-post-out: fit on seven posts' labelled
-#                       replies, predict the eighth's, for every post,
+#   reply_lopo          leave-one-post-out: fit on the other posts' labelled
+#                       replies, predict the held-out post's, for every post,
 #                       variant and seed, against the published scores
 #   reply_fit_all       one variant fit on every labelled reply (a final dir)
 #   score_replies_with  that model on every reply with text, into a new column
@@ -2441,6 +2441,22 @@ def reply_inputs(tok, replies, parents, variant: str, max_len: int, **kw):
     return tok(cut, list(parents), truncation="only_second", max_length=max_len, **kw)
 
 
+def reply_training_label_files(model: str = settings.TEACHER_CHECK_MODEL,
+                               version: str | None = None) -> list[tuple[str, Path]]:
+    """(version, path) of the label files a reply fit trains on: a label
+    set's files (REPLY_LABEL_SETS; v2 is the stance sample's and the fresh
+    draws') that exist, the first required, or one version's file alone. The fresh draws
+    joined on 2026-11-23: 1,430 v2 labels on the stance sample and 9,995 on
+    the fresh draws, over ten posts (the 2026-10-06/07 runs had the 1,157 v2
+    labels on eight)."""
+    version = version or settings.REPLY_TEACHER_LABELS_VERSION
+    versions = REPLY_LABEL_SETS.get(version, (version,))
+    paths = [reply_labels_path(model, v) for v in versions]
+    if not paths[0].exists():
+        raise FileNotFoundError(f"no {version} reply labels from {model} yet ({paths[0].name})")
+    return [(v, p) for i, (v, p) in enumerate(zip(versions, paths)) if i == 0 or p.exists()]
+
+
 def reply_training_rows(model: str = settings.TEACHER_CHECK_MODEL,
                         version: str | None = None) -> pd.DataFrame:
     """The Opus-labelled replies with text as training rows, by id: id,
@@ -2448,15 +2464,27 @@ def reply_training_rows(model: str = settings.TEACHER_CHECK_MODEL,
     parent_text (the Trump post it answers, as the v2 labelling sent it),
     score_teacher (the label) and the published scorer's score
     (settings.REPLY_DISTILL_BASE_COL). `version` defaults to
-    settings.REPLY_TEACHER_LABELS_VERSION. Raises when a labelled id has no
-    reply row, more than one distinct one, or one under another post."""
+    settings.REPLY_TEACHER_LABELS_VERSION and reads that label set's files
+    (reply_training_label_files: for v2, the stance sample's and the fresh
+    draws' since 2026-11-23). Raises when a labelled id has no reply row,
+    more than one distinct one, or one under another post, or is labelled
+    twice in one file; an id in two files keeps the first file's label."""
     version = version or settings.REPLY_TEACHER_LABELS_VERSION
-    prompt = REPLY_TEACHER_V2_PROMPT_VERSION if version == "v2" else None
-    labels = read_label_cache(reply_labels_path(model, version), prompt)
-    labels = labels[labels["score_teacher"].notna()]
-    if labels["id"].duplicated().any():
-        raise ValueError(f"{int(labels['id'].duplicated().sum())} reply ids are labelled twice in "
-                         f"{reply_labels_path(model, version).name}")
+    frames = []
+    for file_version, path in reply_training_label_files(model, version):
+        prompt = REPLY_TEACHER_V2_PROMPT_VERSION if file_version in ("v2", "v2-fresh") else None
+        lab = read_label_cache(path, prompt)
+        lab = lab[lab["score_teacher"].notna()]
+        if lab["id"].duplicated().any():
+            raise ValueError(f"{int(lab['id'].duplicated().sum())} reply ids are labelled twice "
+                             f"in {path.name}")
+        frames.append(lab)
+    labels = pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+    twice = labels["id"].duplicated()
+    if twice.any():
+        logger.warning("reply training rows: %d ids are in more than one label file; the first "
+                       "file's label is kept", int(twice.sum()))
+        labels = labels[~twice]
     base = settings.REPLY_DISTILL_BASE_COL
     reps = pd.read_parquet(settings.REPLY_SENTIMENT_OUTPUT)
     reps["id"] = reps["id"].astype(str)
@@ -2499,7 +2527,8 @@ def _reply_config(base_dir: Path, rows: pd.DataFrame, model: str, version: str) 
     marker = Path(base_dir) / "recipe.txt"
     return {"base_model_dir": _model_ref(base_dir),
             "base_recipe": marker.read_text().strip() if marker.exists() else None,
-            "label_version": version, "label_file": reply_labels_path(model, version).name,
+            "label_version": version,
+            "label_files": [p.name for _, p in reply_training_label_files(model, version)],
             "n_rows": len(rows), "rows_sha": _rows_sha(rows),
             "max_len": {v: reply_max_len(v, base_dir) for v in settings.REPLY_DISTILL_VARIANTS},
             "min_parent_tokens": settings.REPLY_CTX_MIN_PARENT_TOKENS,
@@ -2655,7 +2684,7 @@ def reply_lopo_summary(rows: pd.DataFrame, preds: pd.DataFrame) -> list[dict]:
 def _fit_identity(meta: dict) -> dict:
     """The parts of a reply fit's metadata that say which fit it is."""
     keys = ("recipe", "variant", "max_len", "seed", "base_model_dir", "base_recipe",
-            "label_version", "label_file", "rows_sha", "min_parent_tokens",
+            "label_version", "label_files", "rows_sha", "min_parent_tokens",
             *settings.REPLY_DISTILL)
     return {k: meta.get(k) for k in keys}
 

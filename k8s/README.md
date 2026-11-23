@@ -16,10 +16,10 @@ runs free on dkbl2's RTX 3080, plus a check that Haiku is a fit teacher:
 | `score-trump-feed` | `score-posts /data/raw/truthsocial/realDonaldTrump.jsonl ...` | yes | Trump's own Truth Social posts scored with the Opus-taught model |
 | `sweep-opus` | `stance-sweep --label-col score_opus` | yes | the same sweep + CV + final fit on the Opus labels (~3 h) |
 | `sweep` | `stance-sweep` | yes | every recipe in `DISTILL_SWEEP` on the shared split, 5-fold CV on the best, final fit on all labels (~3 h, resumable) |
-| `reply-distill-lopo` | `reply-distill --lopo` | yes | does the posts-only scorer of record, fine-tuned on the v2 Opus reply labels, track them better, with the reply alone (`text`) or the pair (reply, parent post) (`ctx`)? Leave-one-post-out over the 8 posts, 2 seeds, against the published `score_opus_distilled` on the same rows -> `models/reply_ctx_lopo/` (~1.5-2.5 h, resumable) |
-| `reply-distill-final` | `reply-distill --fit-all --variant ctx` | yes | the variant LOPO picks, fit on all 1,157 labelled replies -> `models/stance_distilled_final_reply_ctx` (~5-10 min) |
+| `reply-distill-lopo` | `reply-distill --lopo` | yes | does the posts-only scorer of record, fine-tuned on the v2 Opus reply labels, track them better, with the reply alone (`text`) or the pair (reply, parent post) (`ctx`)? Leave-one-post-out over the labelled posts, 2 seeds, against the published `score_opus_distilled` on the same rows -> `models/reply_lopo_pooled/` (`reply_ctx_lopo/` holds the 2026-10-06 run: 1,157 labels, 8 posts, ~1.5-2.5 h; on the 11,425 pooled labels each fold takes ~10x as long). Resumable |
+| `reply-distill-final` | `reply-distill --fit-all --variant ctx` | yes | the variant LOPO picks, fit on every labelled reply (11,425 since 2026-11-23) -> `models/stance_distilled_final_reply_ctx` (~5-10 min on 1,157; ~25 min on 11,425, estimated) |
 | `score-replies-ctx` | `score-replies-ctx --model-dir .../stance_distilled_final_reply_ctx --col score_ctx_distilled` | yes | every reply with text scored by that model, with its parent post at 384 tokens (~45-75 min). Not for `reply-population`: the model saw the labelled sample |
-| `reply-crossfit-ctx` | `reply-distill --crossfit --variant ctx` | yes | per post, a fit on the other seven posts' labels scores that post's replies -> `score_ctx_crossfit`, the column `reply-population --col` can weight (~1.5-2 h, resumable per post) |
+| `reply-crossfit-ctx` | `reply-distill --crossfit --variant ctx` | yes | per post, a fit on the other posts' labels scores that post's replies -> `score_ctx_crossfit`, the column `reply-population --col` can weight; the per-post held-out agreement is in `models/reply_lopo_pooled/crossfit_score_ctx_crossfit.json`. Ten folds of ~10,300 labels each: ~4-5 h estimated (2026-11-23), resumable per post |
 
 Layout follows the quant tenant conventions (homelab-infra
 `docs/k8s-workloads.md`): one namespace, image built in-cluster and
@@ -44,7 +44,7 @@ scripts/k8s/run-now.sh distill       # ~15 min on the 3080
 scripts/k8s/run-now.sh local-llm     # first run downloads ~15 GB of weights into /data/hf
 scripts/k8s/run-now.sh score-distilled
 scripts/k8s/run-now.sh sweep         # overnight; sweep_results.json / cv_results.json / sweep_summary.json
-scripts/k8s/run-now.sh reply-distill-lopo   # models/reply_ctx_lopo/lopo_results.json + lopo_predictions.parquet
+scripts/k8s/run-now.sh reply-distill-lopo   # models/reply_lopo_pooled/lopo_results.json + lopo_predictions.parquet
 scripts/k8s/sync-data.sh pull        # models/, metrics, parquet <- PVC, then a checksum verify
 scripts/k8s/sync-data.sh verify      # checksum dry-run only: what on dkbl1 differs from the PVC
 ```

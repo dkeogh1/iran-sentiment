@@ -839,7 +839,12 @@ REPLY_DISTILL = {"epochs": 3, "lr": 1e-5, "batch_size": 4, "grad_accum": 4,
                  "optim": "adamw_bnb_8bit", "gradient_checkpointing": True}
 REPLY_DISTILL_SEEDS = 2            # LOPO seeds: DISTILL_SEED, DISTILL_SEED + 1, ...
 REPLY_SCORE_BATCH = 32             # inference batch at up to 384 tokens
-REPLY_LOPO_DIR = "reply_ctx_lopo"  # under MODELS_DIR: results JSON + held-out predictions
+# Under MODELS_DIR: LOPO results JSON + held-out predictions, and the
+# cross-fit report. reply_ctx_lopo holds the 2026-10-06/07 run (1,157 v2
+# labels, eight posts) behind the 2026-10-07 decision; runs since
+# 2026-11-23 train on the whole v2 set (stance sample + fresh draws, ten
+# posts) and write here.
+REPLY_LOPO_DIR = "reply_lopo_pooled"
 # Final fits go to a stance_distilled_final* dir: never overwritten, and
 # sync-data.sh carries those whole.
 REPLY_FINAL_DIR = "stance_distilled_final_reply_{variant}"
