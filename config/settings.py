@@ -360,8 +360,10 @@ X_ARCHIVE_PROBE_RECALL_LOW = 0.5
 # tallied from data/raw/x_archive/fill_requests.jsonl) stops at this. The
 # pilot ran under $1 (2026-11-03, $0.19); the user approved the full fill
 # (~$25.35 expected for --scope below, ~$30.56 if posts bunch inside hours)
-# with the cap at $32 on 2026-11-03. Raise it only on the user's say.
-X_ARCHIVE_FILL_MAX_USD = 32.00
+# with the cap at $32 on 2026-11-03 ($26.64 billed). Lowered 2026-11-22 to
+# $26.64 + $1: the user approved the Nov 22 refresh's fill (38 windows,
+# ~$0.39 expected, ceiling $2.17) up to $1. Raise it only on the user's say.
+X_ARCHIVE_FILL_MAX_USD = 27.64
 # A window never reads more than its need (X's count with edge buckets whole,
 # or the cap, less what it holds) plus this, so a window that still wants
 # posts can always send one more request of search/all's 10-post minimum.
@@ -510,7 +512,7 @@ TEACHER_SAMPLE_SEED = 42           # --limit pilot order and the Trump sample
 # parent post) on the stance sample reuse REPLY_TEACHER_V2_MAX_CALLS; the
 # fresh random sample (`reply-fresh-sample`, then `reply-label --job
 # v2-fresh --post <slug>`, one batch a post) has its own caps, sized to one
-# run of REPLY_FRESH_PER_POST replies for each of the eight posts. They
+# run of REPLY_FRESH_PER_POST replies for each tracked post. They
 # bound the whole run: a submit refuses when the calls its earlier batches
 # sent plus its own are over the call cap, or their billed spend plus its
 # ceiling (batch prices, no cache hits: every request on a cacheable post
@@ -519,18 +521,23 @@ TEACHER_SAMPLE_SEED = 42           # --limit pilot order and the Trump sample
 REPLY_FRESH_PER_POST = 1000
 REPLY_FRESH_SEED = 20261102
 REPLY_FRESH_DRAWS_NAME = "reply_sample_draws_fresh.parquet"  # under PROCESSED_DIR
-REPLY_FRESH_MAX_CALLS = 8500
-# The 7,995-call run's ceiling is $20.21 on claude-opus-5 (expected $14.90):
-# this leaves the ~6% slack the call cap has, for resubmitted failures.
-REPLY_FRESH_MAX_USD = 21.5
+# Raised 2026-11-22 for the two phase-6 posts (massie_hegseth,
+# no_deal_needed: up to 1,000 fresh draws each, ~$2.1 expected a post);
+# the user approved 10,500 calls and $25 on 2026-11-22.
+REPLY_FRESH_MAX_CALLS = 10500
+# The eight posts' 7,995-call run had a ceiling of $20.21 on claude-opus-5
+# (expected $14.90); the $21.5 cap then left the ~6% slack the call cap has,
+# for resubmitted failures.
+REPLY_FRESH_MAX_USD = 25.0
 # Whether reply-population (and so export-web) pools the fresh draws' v2
 # labels with the first draws' once they exist: both its direct (opus_*) and
 # its model-assisted columns use every labelled random draw. A post's fresh
 # draws join only once this share of them carry a label (before its batch
 # is collected, the only labelled ones are reused flipper labels, not a
-# random part). The pooled draws (1,071 first + 8,000 fresh = 9,071) are
-# the published basis since 2026-11-02 (the user's call, docs/decisions.md);
-# set False only to reproduce the 1,071-draw figures.
+# random part). The pooled draws are 1,344 first + 10,000 fresh = 11,344 on
+# ten posts since 2026-11-22 (the published basis was 1,071 + 8,000 = 9,071
+# on eight from 2026-11-02, the user's call; docs/decisions.md); set False
+# only to reproduce the first-draw-only figures.
 REPLY_POPULATION_FRESH_DRAWS = True
 REPLY_FRESH_POOL_MIN_SHARE = 0.98
 # `reply-loyalty` (inference.reply_loyalty): a replier's loyalty tier
@@ -932,6 +939,8 @@ WEB_POST_LABELS = {
     "ceasefire": "Two-week ceasefire", "hold_off_attack": "\u201cHold off\u201d on the attack",
     "deal_complete": "\u201cThe Deal is complete\u201d", "strikes_resume_sep": "Strikes near Hormuz",
     "these_fools": "\u201cThese fools\u201d", "trump_strait": "\u201cTRUMP STRAIT\u201d",
+    "massie_hegseth": "\u201cPraised, not Impeached\u201d",
+    "no_deal_needed": "\u201cWe don\u2019t need a deal\u201d",
 }
 WEB_EVENTS = [
     ("2026-02-28", "Strikes"), ("2026-04-08", "Ceasefire"), ("2026-06-17", "Islamabad MOU"),

@@ -2,7 +2,7 @@
 
 Stance analysis of US political messaging on the 2026 Iran war: X broadcaster
 accounts in political tiers, plus Trump's Truth Social feed and the replies to
-eight of his posts, scored by Claude models. `README.md` is the public write-up;
+ten of his posts, scored by Claude models. `README.md` is the public write-up;
 where the data stands is in [docs/STATUS.md](docs/STATUS.md).
 
 This repo is **public** on GitHub: no IP addresses, account IDs, bucket names,
@@ -31,7 +31,9 @@ Hand these to the user, with the estimate, instead of running them:
     bounds every fill run together (tallied from
     `x_archive/fill_requests.jsonl`), and a run refuses past
     `X_RUN_BUDGET_USD`. The full fill ran on 2026-11-03 ($26.45, after a
-    $0.19 pilot) with the cap at $32, and every window is done
+    $0.19 pilot) with the cap at $32; the Nov 22 refresh's fill (38
+    windows, $0.47) ran with it lowered to $27.64, the $26.64 billed plus
+    the $1 approved. All fill runs: $27.11, and every window is done
     (`--estimate` plans none). Raise the cap only on the user's say. Ask for
     the X credit balance first; `backup` after.
   - `relabel submit|resubmit` and `topic-label submit` (Anthropic Batch API):
@@ -62,7 +64,8 @@ Hand these to the user, with the estimate, instead of running them:
     (`reply-fresh-sample`, free, records them first and refuses a run over
     the caps) one post at a time (`--post`, enforced; without it only a
     `--limit` pilot of at most `REPLY_UNMEASURED_PILOT_MAX_CALLS`);
-    `REPLY_FRESH_MAX_CALLS` and `REPLY_FRESH_MAX_USD` bound the whole run,
+    `REPLY_FRESH_MAX_CALLS` and `REPLY_FRESH_MAX_USD` (10,500 calls and $25
+    since 2026-11-22, for the two phase-6 posts) bound the whole run,
     earlier batches included. Another `--model` writes its own label file;
     a job with a dollar cap sends a model whose output length is unmeasured
     no more than `REPLY_UNMEASURED_PILOT_MAX_CALLS` calls in all (its earlier
@@ -79,10 +82,11 @@ Hand these to the user, with the estimate, instead of running them:
     too, and its report leads with coverage (replies still unlabelled,
     failures by outcome, stop reasons). `status|collect|report` are free.
   - `teacher-check --source trump --all` (his whole feed on score_opus's
-    model and prompt; `TRUMP_TEACHER_CHECK_MAX_CALLS` covers every post with
-    text): `--all --estimate` adds a usage-fit figure from the check's own
-    batches (all 3,222 posts with text are labelled since 2026-11-03; with
-    none left it says "nothing to label", fixed 2026-11-22). Then
+    model and prompt; `TRUMP_TEACHER_CHECK_MAX_CALLS` bounds each run's
+    posts still to label): `--all --estimate` adds a usage-fit figure from
+    the check's own batches (all 3,716 posts with text are labelled since
+    2026-11-22, the 494 new ones by batch that day; with none left it says
+    "nothing to label", fixed 2026-11-22). Then
     `--merge` (free) writes score_opus / label_opus onto the feed parquet by
     id. score-posts keeps them on the rows it has (a row that gains text
     loses them and is rescored), and the posts it adds have none until the
@@ -118,8 +122,9 @@ Hand these to the user, with the estimate, instead of running them:
   - `post-label submit --job stance-topic-census`: stance-topic's prompt,
     model, label file and columns on every other post with text (X
     accounts and Trump's feed), so the topic flag of record rests on an
-    Opus label everywhere (19,598 calls: ~16,000 approved at about $22 on
-    2026-11-02, then the X archive fill's 3,551 new posts on 2026-11-03).
+    Opus label everywhere (20,840 calls, $28.35: ~16,000 approved at about
+    $22 on 2026-11-02, then the X archive fill's 3,551 new posts on
+    2026-11-03 and the Nov 22 pull's 1,242 on 2026-11-22).
     `post-label estimate --job stance-topic-census` makes no
     call and prints the calls by set, the expected cost and the ceiling
     against `POST_CENSUS_MAX_CALLS` / `POST_CENSUS_MAX_USD`. The caps
@@ -156,7 +161,7 @@ Hand these to the user, with the estimate, instead of running them:
   kept thin over importable modules; tunables go in `config/settings.py`,
   lists (accounts, search terms, events, tracked posts) in their `config/`
   module. A one-off data migration is run and deleted, never committed.
-- `data/raw/` holds ~99k replies from private individuals: keep rows out of
+- `data/raw/` holds ~108k replies from private individuals: keep rows out of
   git, issues and chat. Only the pipeline's own scoring calls send them out.
 
 ## Fast path
@@ -227,8 +232,8 @@ timeline horizon eats the gap; `analyze`; `relabel submit` -> `status` ->
 `collect` -> `merge` for the new posts; `topic-label estimate|submit|status|collect`;
 `post-label estimate|submit|status|collect --job stance-topic` for new war
 candidates, then `--job stance-topic-census` for the rest (the topic flag of
-record); `phases`, `visualize`, `export-web` (not into dkweb while *Blog
-charts* says to hold); `backup`. While the last phase is open, each pull
+record); `phases`, `visualize`, `export-web` (into whatever branch the
+dkweb checkout has: a draft branch, see *Blog charts*); `backup`. While the last phase is open, each pull
 moves `ANALYSIS_END` (`config/timeline.py`) to its last whole UTC day; once
 the owner has closed it, it stays put (see *Phases and the analysis
 window*).
@@ -305,8 +310,7 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   comes first: the owner's call, and its last day is then written into
   `PHASES`. `ANALYSIS_END` then stays at that day (the last phase ends at
   it: tests/test_timeline.py), and a pull adds nothing to any phase, until
-  the owner opens the next phase, which rolls the same way (this reading
-  awaits the owner's confirmation; decisions.md). The whole war
+  the owner opens the next phase, which rolls the same way. The whole war
   (`inference.WHOLE_WAR`) is Feb 1 to the last phase's end. Figures size to `len(PHASES)`; nothing may assume a count of
   phases or take `PHASES[-1]` as a fixed contrast.
 - export-web's decomposition stays on `settings.WEB_DECOMPOSITION_PHASE`
@@ -319,7 +323,9 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   reply counts as of the 2026-11-22 feed pull. The bound is pinned at that
   pull, so a later pull does not move it: dated 2026-11-02 to 2026-11-21
   by UTC date (`inference.assign_phase`), so the 12 feed posts dated Nov 22
-  are out (this reading awaits the owner's confirmation; decisions.md).
+  are out.
+  Picked on 2026-11-22: `massie_hegseth` and `no_deal_needed`
+  (`config/tracked_posts.py`); ten tracked posts are collected.
 
 ### Tiers and scorers
 
@@ -409,8 +415,12 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   nearly all are labelled (`REPLY_FRESH_POOL_MIN_SHARE`): until its batch
   is collected the labelled ones are reused flipper labels. The reply
   bootstrap CIs carry the finite-population correction. The published
-  reply figures are the pooled first + fresh draws (9,071; the user's call,
-  2026-11-02): v2 is the label set of record, v2b reported beside it.
+  reply figures are the pooled first + fresh draws on the collected
+  posts: 9,071 on eight from 2026-11-02 (the user's call), 11,344 on ten
+  since 2026-11-22 (the two phase-6 posts joined under the user's rule,
+  the user's call): v2 is the label set
+  of record, v2b reported beside it
+  (it, cat-v2 and v2-rater cover the eight older posts only).
 - `reply-loyalty` (inference.reply_loyalty, free) is the loyalty gradient:
   the Opus stance of low-, medium- and high-loyalty repliers and high minus
   low per post, pooled and within posts, on reply-population's sample,
@@ -663,8 +673,10 @@ Guardrails in `src/analysis/sentiment.py` + `config/settings.py`; keep them:
 7. `del pipe; gc.collect()` in `try/finally`.
 
 Baseline: RoBERTa peaks at ~1.3 GB RSS and takes ~1-1.7 s per 16-post batch
-(~9 min for 5.6k posts, ~33 min for 26k replies). A big drift means a leak or
-a removed thread cap. Treat any bulk transfer the same way: one steady,
+(~9 min for 5.6k posts, ~33 min for 26k replies). The distilled scorer
+(`score-distilled`, DeBERTa at 256 tokens, batched by input length) took
+67 min for 9,070 replies on this CPU (2026-11-22; ~4 h in file order). A
+big drift means a leak or a removed thread cap. Treat any bulk transfer the same way: one steady,
 rate-capped, resumable process.
 
 ### GPU Jobs (`k8s/`)
@@ -694,17 +706,22 @@ Rerun `export-web` after any rescoring, then `npm run build` in dkweb.
 `settings.WEB_DECOMPOSITION_PHASE` ("midterm hold", the post's contrast),
 never the last phase; export-web refuses a label that is not in `PHASES`,
 or the first (the contrasts' base).
-**Hold since 2026-11-22: don't run export-web into dkweb** until the owner
-has decided the post's window. export-web now writes six-phase, rolling
-data: `accounts.json` over the whole war (Feb 1 to `ANALYSIS_END`),
-`maga_weekly.json` to `ANALYSIS_END` and a sixth bar in
-`trump_phases.json`, while the post's text and captions still say the data
-stop on Nov 1 (dkweb `src/content/blog/iran-war-stance/index.mdx`: the
-accounts caption, "The data stop on Nov 1", the weekly chart's alt text).
-The JSONs and those dates change together, in one dkweb change.
-`replies.json` pools the fresh draws (`REPLY_POPULATION_FRESH_DRAWS`, the
-published basis since 2026-11-02: 9,071 draws); export-web warns only
-when it exports without them. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
+**Drafts live on a dkweb branch (the owner's call, 2026-11-22).** The post
+is being extended to phase 6 as a draft on dkweb's local branch
+`iran-post-phase6` (not pushed, not merged). export-web writes into
+whatever branch the dkweb checkout has, so check out the draft branch
+before running it; nothing reaches dkweb `main` until the owner says.
+export-web writes six-phase, rolling data: `accounts.json` over the whole
+war (Feb 1 to `ANALYSIS_END`), `maga_weekly.json` to `ANALYSIS_END` and a
+sixth bar in `trump_phases.json`, so the post's dates (dkweb
+`src/content/blog/iran-war-stance/index.mdx`: the accounts caption, the
+data's end date, the weekly chart's alt text) change with the JSONs, in
+the same dkweb change. Switching `WEB_DECOMPOSITION_PHASE` and the post's
+date and description are the owner's calls. `replies.json` pools the
+fresh draws (`REPLY_POPULATION_FRESH_DRAWS`): on the draft branch, 11,344
+draws on ten posts (2026-11-22); dkweb `main` keeps the published
+9,071-draw, eight-post basis until the owner merges. export-web warns
+only when it exports without them. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
 `global.css`.
 
 ## Docs map

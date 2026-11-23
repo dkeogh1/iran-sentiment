@@ -301,6 +301,19 @@ def test_score_with_distilled_leaves_textless_nan(tmp_path, monkeypatch):
     assert loaded == []                                     # nothing to score: no model load
 
 
+def test_score_with_distilled_batches_by_length_and_keeps_each_score_in_place(
+        tmp_path, monkeypatch):
+    # A batch pads to its longest input: batching by length cuts the padding,
+    # and each score must still land on its own text.
+    seen, _ = _stub_model(monkeypatch)
+    texts = ["a much longer reply here", "abc", "", "a medium one", "abcd"]
+    out = sl.score_with_distilled(texts, tmp_path, batch_size=2)
+    assert seen == [["abc", "abcd"], ["a medium one", "a much longer reply here"]]
+    assert out[0] == pytest.approx(0.24) and out[1] == pytest.approx(0.03)
+    assert np.isnan(out[2])
+    assert out[3] == pytest.approx(0.12) and out[4] == pytest.approx(0.04)
+
+
 def test_score_post_file_and_replies_never_resend_textless(tmp_path, monkeypatch):
     import json as _j
     f = tmp_path / "posts.jsonl"

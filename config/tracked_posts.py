@@ -146,6 +146,33 @@ TRACKED_POSTS: list[TrackedPost] = [
                     "control'. ~11,300 replies when shortlisted.",
         post_id="117202132375758936",
     ),
+    # ── Added 2026-11-22: phase 6, "midterms, standoff" ─────────────
+    # Picked by the rule fixed before any reply was read (decisions.md
+    # 2026-11-22): the two most-replied Trump posts dated Nov 2-21 that the
+    # stance-topic (Opus) label calls iran_war, reply counts from the
+    # 2026-11-22 feed pull. Nov 6 (4,548) and Nov 16 (4,697) ranked next.
+    TrackedPost(
+        slug="massie_hegseth",
+        label="'Pete Hegseth should be praised, not Impeached'",
+        event_date=date(2026, 11, 9),  # 2026-11-10 01:36 UTC, Nov 9 evening ET
+        category="rhetoric",
+        description="Trump attacks 'Defeated Republican Congressman Thomas Massie' "
+                    "for trying to impeach Hegseth, citing 'TWO VICTORIES, "
+                    "Venezuela and Iran'. The House shelved the impeachment "
+                    "211-204 the next day. 4,895 replies at the 2026-11-22 pull.",
+        post_id="117589581287691662",
+    ),
+    TrackedPost(
+        slug="no_deal_needed",
+        label="'We don't need a deal with Iran'",
+        event_date=date(2026, 11, 12),
+        category="rhetoric",
+        description="Trump moves Vance off Iran to 'Corruption and Crime' in "
+                    "Democrat-run states and closes: 'We don't need a deal with "
+                    "Iran. Those days have long since passed... we've got their "
+                    "Strait!' 4,888 replies at the 2026-11-22 pull.",
+        post_id="117603621591099598",
+    ),
     # Control post used by the NYT for comparison. Not about Iran — lets us
     # check whether base anger is Iran-specific or a baseline grumble.
     TrackedPost(

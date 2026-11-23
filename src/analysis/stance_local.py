@@ -537,6 +537,12 @@ def score_with_distilled(texts: list[str], model_dir: Path | None = None,
     keep = [i for i, t in enumerate(texts) if has_text(t)]
     if not keep:
         return out
+    # Batch by input length: a batch pads to its longest input, so in file
+    # order a few long replies pad most batches (2026-11-22: 3.7x the work
+    # for 9,070 replies, a median of ~29 tokens and a p90 of ~109). Each
+    # score is written back to its own index, and padding is masked, so the
+    # order changes no score beyond float noise.
+    keep.sort(key=lambda j: len(texts[j]) + (len(parents[j] or "") if parents is not None else 0))
     import torch
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
 

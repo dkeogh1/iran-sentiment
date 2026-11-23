@@ -4,6 +4,126 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-22: The reply figures are ten posts, 11,344 labelled draws
+
+- **Decision (the user's call, 2026-11-22):** the reply basis is the ten tracked posts
+  (the eight of 2026-11-02 and the two phase-6 posts, which joined under
+  the reply-post rule the owner fixed, *Phase 6* below), first and fresh
+  random draws pooled under the v2 labels (claude-opus-5):
+  11,344 labelled draws, 1,344 first (50 per sentiment bucket per post,
+  those with text) and 10,000 fresh (1,000 per post). It replaces the
+  eight-post basis of 9,071 (1,071 + 8,000) published on 2026-11-02.
+  `reply-population`'s ALL row, `reply-loyalty`'s pooled and within-post
+  rows and export-web's replies.json (on dkweb's draft branch) cover the
+  ten. The user chose the rule's two posts knowing they change the
+  published basis (the question put to them said so); dkweb `main` keeps
+  the eight-post basis until the draft branch is merged.
+- **Why:** the reply analysis follows the war into phase 6 with posts
+  picked by a rule fixed before any reply was read, so they join as
+  picked, whatever their audiences turned out to be; every pooled figure
+  then rests on one basis. The eight posts' own rows are unchanged, so
+  the eight-post figures stay comparable beside it.
+- **The two posts:** picked by the rule fixed before any reply was
+  collected or read (*Phase 6* below): the two most-replied Trump posts
+  dated Nov 2-21 whose current stance-topic label is `iran_war`, reply
+  counts from the 2026-11-22 feed pull. `massie_hegseth` (Nov 10 01:36 UTC,
+  the evening of Nov 9 in Washington; 4,895 replies at the pull, 4,869
+  collected, 99.5%) and `no_deal_needed` (Nov 12; 4,888, 4,872 collected,
+  99.7%). Next in line were the Nov 16 post attacking 60 Minutes over its
+  Iran report (4,697 replies) and the Nov 6 post saying Israel "WOULD NOT
+  EXIST TODAY" but for him (4,548) (sources in
+  docs/timeline_candidates_2026-11-01_to_2026-11-22.json).
+  Each post got the first draws' design (150: 50 per sentiment bucket,
+  with Haiku stance on them; v2 labels on the 273 of the two posts' 300
+  with text) and 1,000 fresh draws (frozen in
+  `reply_sample_draws_fresh.parquet`, labelled `v2-fresh` one post at a
+  time under `REPLY_FRESH_MAX_CALLS` / `REPLY_FRESH_MAX_USD`, raised to
+  10,500 and $25 as approved the same day).
+  Every reply batch was deleted on the API at its collect.
+- **What moves:** only the pooled rows. The eight posts' own rows do not
+  move (their draws and labels are as they were), so the ALL row changes
+  because two posts joined it: corrected mean +0.11 [+0.10, +0.12] -> +0.10
+  [+0.09, +0.11], pro-war 45% [44%, 46%] -> 43% [42%, 44%], anti-war 29%
+  [28%, 30%] -> 27% [26%, 28%] (30% neutral, Opus direct). Loyalty, high
+  minus low: +0.145 [+0.10, +0.20] -> +0.128 [+0.08, +0.17] pooled, +0.125
+  [+0.07, +0.18] -> +0.118 [+0.06, +0.17] within posts; 65,051 repliers
+  (60,852), the high tier 3,645 (3,330) with 701 labelled draws (523).
+  `LOYALTY_REFERENCE_DATE` stays 2026-11-01, so 149 replies from 128
+  accounts created after it count as age 0.
+- **The two audiences:** mostly neutral on the war. `massie_hegseth`:
+  corrected +0.04 [+0.02, +0.06], 29% [27%, 32%] pro-war, 8% [6%, 10%]
+  anti-war, 62% neutral (Opus direct). `no_deal_needed`: +0.03 [+0.02,
+  +0.05], 12% [10%, 14%] pro, 5% [3%, 8%] anti, 82% neutral. The eight
+  earlier posts run 12% to 49% neutral. Why: both posts are mainly
+  domestic politics with Iran in a line. The first attacks Rep. Thomas
+  Massie for trying to impeach Hegseth and cites "TWO VICTORIES, Venezuela
+  and Iran"; the second moves Vance off Iran to crime in Democrat-run
+  states and closes "We don't need a deal with Iran". The rule reads the
+  post's Opus topic label, not what its repliers argue about, and the v2
+  prompt asks each reply for a position on the war, which most of these
+  replies do not take. In tone they are as negative as most (RoBERTa
+  -0.39 and -0.36, 64% and 61% critical, more negative than five of the
+  eight earlier posts, which run from +0.20 to -0.50): tone, not stance.
+- **Rejected:** keeping the eight-post ALL row as the headline with the two
+  posts beside it (one basis for every pooled figure);
+  swapping either post for one whose audience argues about the war (that
+  picks posts by their replies after reading them, which the rule fixed
+  in advance exists to prevent).
+
+## 2026-11-22: Distilled scoring batches by input length; no GPU, no retrain
+
+- **Decision:** `stance_local.score_with_distilled` sorts the texts it
+  scores by input length (the text, plus the parent post where there is
+  one) before cutting batches, and writes each score back to its own
+  index. The two new posts' 9,070 replies with text were scored with the
+  scorer of record (`stance_distilled_final_score_opus` into
+  `score_opus_distilled`, 256 tokens) on dkbl1's CPU, torch capped at 2
+  threads, batch 16: 67 minutes. The GPU path (namespace, PVC,
+  `sync-data.sh` push and pull) was not revived: the user asked whether
+  the GPU would be faster, and the agent chose the CPU fix (below).
+- **Why:** a batch pads to its longest input. In file order a few long
+  replies padded most batches: for these 9,070 (a median of ~29 tokens, a
+  p90 of ~109) that was 3.7 times the padded work, about 4 hours on this
+  CPU. Padding is masked, so the order changes nothing beyond float noise:
+  on 48 Trump posts the largest difference from the file-order scores was
+  6.7e-8 (a one-off check; a test in tests/test_stance_local.py pins the
+  length-sorted batching and that each score lands on its own index). At
+  about an hour on the CPU, reviving the GPU Job (build, deploy, PVC, sync
+  both ways, outside quant's windows) would have cost more than it saved.
+- **Drift check, no retrain:** on the fresh draws, `score_opus_distilled`
+  against the v2-fresh Opus labels: `massie_hegseth` 0.580 Pearson (4.5%
+  sign flips, mean bias +0.032), `no_deal_needed` 0.584 (2.0%, -0.008),
+  the eight older posts pooled 0.574 (15.2%, -0.014); on all 1,430
+  sampled replies with v2 labels 0.575, where the 2026-10-07
+  leave-one-post-out check had 0.58. It over-calls pro-war on the new posts
+  as on the old (45% against Opus's 30%, 30% against 12%), the known bias
+  `reply-population` corrects with each post's own Opus labels. Nothing
+  says the November replies are outside its range: the scorer of record
+  stays, with no refit.
+- **Rejected:** reviving the GPU Job for 9,070 replies (slower end to end than the sorted CPU run);
+  a retrain or refit on the new labels (a new model is a new column over
+  every reply, and a `stance_distilled_final*` dir is never overwritten).
+
+## 2026-11-22: The archive-fill cap is lowered to what was billed plus the approval
+
+- **Decision (the owner's approval, 2026-11-22):** `X_ARCHIVE_FILL_MAX_USD`
+  goes from $32 to $27.64: the $26.64 the 2026-11-03 fill runs billed plus
+  the $1 the owner approved for the Nov 22 refresh's fill. The cap bounds
+  every fill run together (tallied from `x_archive/fill_requests.jsonl`), so
+  at $32 this run could have spent up to $5.36.
+- **Run:** after `x-counts` for Nov 1-22 (17 requests, $0.17), the estimate
+  planned the 38 windows the Nov 22 collect had left empty (19) or short
+  (19): ~$0.39 expected, ceiling $2.17. It read 94 posts in 66 requests
+  ($0.47), stored 72 and set 22 aside; 35 windows ended done and 3 on
+  their window budget, which a cleanup pass closed with no request. All
+  fill runs: 5,422 posts, $27.11 of $27.64; `--estimate` plans none.
+- **Why:** a cap at the approval makes the approval the bound, as the
+  census caps do. It is raised only on the owner's say. The 106 posts of
+  room left cover a fill about the size of Nov 22's (94 posts); a larger
+  one needs it raised.
+- **Rejected:** leaving $32, approved for the 2026-11-03 fill, as the bound
+  for later ones.
+
 ## 2026-11-22: Optional window weights for the X series (raw stays the record)
 
 - **Decision (the owner's call, 2026-11-22):** `phases --weights
