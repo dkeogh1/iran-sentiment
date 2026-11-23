@@ -371,13 +371,13 @@ posts:
 ## Open
 
 - **The dkweb post** `iran-war-stance` is behind Cloudflare Access until
-  launch (merged to dkweb `main` 2026-10-04 and again 2026-11-02). dkweb
+  launch (merged to dkweb `main` 2026-10-04, 2026-11-02 and 2026-11-23). dkweb
   is a private repo; the findings are public only through this repo.
   From 2026-11-22 (the user's call) it was extended to phase 6 on dkweb's
   local branch `iran-post-phase6`: export-web's six-phase, ten-post JSONs
   (replies.json on the cross-fit census since 2026-11-23), the post's text
   and the *Who came back in November* finding. The owner's calls of
-  2026-11-23 (`docs/decisions.md`): the branch merges to `main` that day,
+  2026-11-23 (`docs/decisions.md`): the branch merged to `main` that day,
   with the post dated 2026-11-23 (it never launched, so no update note);
   the description stays; the decomposition chart stays strikes ->
   "midterm hold" (`settings.WEB_DECOMPOSITION_PHASE`). Still open:

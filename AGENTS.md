@@ -756,11 +756,12 @@ never the last phase; export-web refuses a label that is not in `PHASES`,
 or the first (the contrasts' base).
 **Drafts live on a dkweb branch (the owner's call, 2026-11-22).** The post
 was extended to phase 6 as a draft on dkweb's local branch
-`iran-post-phase6`, which merges to `main` on 2026-11-23 (the owner's
-call), the post dated that day; `main` is behind Cloudflare Access and
-launch stays the owner's step. export-web writes into whatever branch the
-dkweb checkout has, so a later draft gets its own branch, checked out
-before export-web runs; nothing reaches dkweb `main` until the owner says.
+`iran-post-phase6`, merged to `main` on 2026-11-23 (the owner's call),
+the post dated that day; the dkweb checkout is on `main` again. `main` is
+behind Cloudflare Access and launch stays the owner's step. export-web
+writes into whatever branch the dkweb checkout has, so a later draft gets
+its own branch, checked out before export-web runs; nothing reaches dkweb
+`main` until the owner says.
 export-web writes six-phase, rolling data: `accounts.json` over the whole
 war (Feb 1 to `ANALYSIS_END`), `maga_weekly.json` to `ANALYSIS_END` and a
 sixth bar in `trump_phases.json`, so the post's dates (dkweb
