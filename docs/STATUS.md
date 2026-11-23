@@ -378,8 +378,8 @@ posts:
   with text. It narrows `reply-population`'s assisted intervals on nine of
   ten posts with the same estimates; the published figures stay on
   `score_opus_distilled` until the owner moves them. Its raw scores do not
-  compare across posts. The GPU namespace is up until the owner deletes it
-  (nothing else is planned on it).
+  compare across posts. The GPU namespace was deleted after the pull
+  (2026-11-23); reviving it is in AGENTS.md *Where things run*.
 - **Phase 6 is open.** It closes at the next regime change (major
   US/Israeli strikes resume or a deal is signed) or on 2027-01-02,
   whichever comes first, the user's call; its last day then goes into
