@@ -1,6 +1,6 @@
 # Status
 
-As of 2026-11-23. Update the date and the lines that change after each refresh.
+As of 2026-11-25. Update the date and the lines that change after each refresh.
 
 ## Data
 
@@ -243,13 +243,11 @@ Two layers at different depths. Nothing runs on a schedule.
   `*trump_user_score_opus_opus.csv`,
   `reply_population_score_opus_distilled_v2.csv` and
   `reply_loyalty_v2.csv`; every figure in `data/processed/figures/` and
-  the README's two embedded figures are from the same day. The other CSVs
-  predate the refresh (the Nov 3 five-phase run, a few older):
-  `phases --by user` (X; the README's per-account cells come from
-  `visualize`'s table, the same point estimates), the alternate topic
-  definitions (`either`, `llm`, `keyword`), the alternate scorers
-  (`score_opus55`, `score_opus_stance`, `score_opus_distilled`), the
-  first-draw reply files and the v2 - v2b pairing (*Open*). `export-web`
+  the README's two embedded figures are from the same day. The other
+  phase CSVs (`phases --by user`, the alternate topic definitions and
+  scorers), the first-draw reply-population files and the v2 - v2b pairing
+  were rerun on 2026-11-25 (*Open* has what they can't cover, and the
+  first-draw reply-loyalty file that was not). `export-web`
   wrote the six-phase JSONs into dkweb's draft branch (*Open*). Sources:
   `docs/timeline_candidates_2026-05-12_to_2026-09-15.json`,
   `docs/timeline_candidates_2026-09-16_to_2026-10-31.json` and
@@ -423,16 +421,41 @@ posts:
   up to twice the density (AGENTS.md *X collection and budget*). The
   census's call cap needs raising before it, and stance-topic's too if the
   pull is much longer than Nov 22's (*What a refresh needs*).
-- **Five-phase CSVs left over** (2026-11-22). `phases --by user` (X), the
-  alternate topic definitions and scorers, `summary`, the first-draw reply
-  files (with `--col score_opus_distilled`, the census the README quotes
-  them on; the default is now `score_ctx_crossfit`) and the v2 - v2b
-  pairing (direct, the same on either census) were not rerun on six
-  phases (*Timeline*
-  above): they are free but write `data/processed/`. The next free run
-  should redo them, `phases --by user` first, so the README's phase-6
-  per-account cells (from `visualize`'s table) have a CSV of record, and
-  the README's whole-war tier table and robustness checks catch up.
+- **Five-phase CSVs left over: done 2026-11-25**, all free. Rerun on six
+  phases: `phases --by user` (X; topics `opus`, `either`, `llm`), `--by
+  tier` on `either`, `keyword` and `llm`, on `score_opus55` (`opus`,
+  `either`) and on `score_opus_stance`; Trump's feed on the three other
+  topics and on `score_opus55`, `score_opus_stance` and
+  `score_opus_distilled` (four topics); `summary`; the first-draw
+  reply-population files (v1, v2, v2b, `--col score_opus_distilled`);
+  and the v2 - v2b pairing (`reply-label report --job v2b`). The by-user
+  CSV matches the README's cells from `visualize`. README *Robustness
+  checks* has what moved: in the standoff pro-war MAGA's lead over the administration
+  depends on the topic definition (+0.28, measurable, under two; not
+  measurable under the Opus class and the strict labels),
+  the administration's midterm-hold low is the war's lowest only under
+  the Opus class, Trump's September and midterm-hold intervals are just
+  apart under `either`, and one cell moves by over 0.1 against the strict
+  labels (the administration in the standoff, 0.113).
+  **Not possible, or not in these files:**
+  - Opus 5.5 (`score_opus55`) has no label on any post of the standoff
+    (3,269 of the 5,690 X war posts and 336 of Trump's 381 are covered),
+    so its CSVs have no sixth phase and its checks stop at the midterm
+    hold; the no-handle subsample stops before the archive fill.
+  - The strict labels are thin in the standoff (10 war posts for the
+    administration, 20 and 25 for the MAGA camps, none religious).
+  - The two November posts have no v1 or v2b label: their rows and the
+    pooled `ALL` rows of those first-draw files and of the pairing are now
+    NaN. The eight-post `ALL` figures README quotes are the Nov 3 run's;
+    the rerun overwrote the files that held them.
+  - `reply_loyalty_v2_first_draws.csv` was not rerun: it is the Nov 3
+    file on the eight older posts, and README's first-draw loyalty gap
+    (+0.073 [-0.06, +0.22] on 88 high-tier draws) is from it.
+  - Whole-war tier intervals and gaps, the RoBERTa column, @Pontifex's
+    contrasts, contrasts between two later phases and the figures without
+    @SecRubio are written by no command: README keeps the Nov 3 run's,
+    marked. `summary` counts posts with no text, so its tier averages are
+    not the README table's.
 - **Uneven density** (from the X archive fill, 2026-11-03). Each sampled
   account is dense where a pull read it whole (parts of Feb-Apr for most,
   and the newest days of each capped 14-day slice) and at 5 a 35 h window

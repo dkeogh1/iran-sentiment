@@ -22,19 +22,22 @@ Jan 2 (`docs/decisions.md`, 2026-11-22); it has its own section below
 whole-war means and the replies are from the Nov 22 run; the corrected
 reply figures were rerun on Nov 23 on a better census scorer (same
 estimates, narrower intervals), and the split of who came back in
-November is from that day. The whole-war
-tier table, the sections that read from it (*The religious sign flip*
-among them) and the post-level robustness checks are still the Nov 3 run
-over Feb 1 -- Nov 1, before phase 6 opened, and say so. Nothing runs on
-a schedule.
+November is from that day. The per-account CSV and the alternate topic
+definitions and scorers were rerun on six phases on Nov 25 (*Robustness
+checks* says which claims that changed). The whole-war tier table's point
+estimates are pooled from the Nov 22 run's phase cells; its intervals and
+RoBERTa column, and the contrasts between two later phases, are still the
+Nov 3 run over Feb 1 -- Nov 1 and say so; the second rater, Opus 5.5, has
+no label in the sixth phase. Nothing runs on a schedule.
 
 **Definitions changed on 2026-11-02.** A war post is now one that Claude
 Opus 5 classes as about the Iran war, read on every post, instead of one
-a keyword pattern or a Haiku label flags: that filter took in 1,527 X
-posts Opus puts off the Iran war and missed 1,576 that are on it. Trump's
-feed is now scored by Opus 5 like the X accounts, and the reply shares
-pool 9,071 random draws instead of 1,071 (`docs/decisions.md`,
-2026-11-02); since Nov 22 they pool 11,344 on ten posts.
+a keyword pattern or a Haiku label flags: to Nov 22 that filter took in
+1,595 X posts Opus puts off the Iran war and missed 1,625 that are on
+it. Trump's feed is now scored by Opus 5 like the X accounts, and the
+reply shares pool 9,071 random draws instead of 1,071
+(`docs/decisions.md`, 2026-11-02); since Nov 22 they pool 11,344 on ten
+posts.
 
 ## Findings
 
@@ -100,20 +103,23 @@ Sep 28 and Oct 5, whose windows hold too few of its war posts (see
 *Limitations*); the week of Oct 26, a gap until phase 6's posts reached
 its window, reads +0.46, the tier's lowest week.
 
-| Tier | Opus, war posts | war share | Opus, all posts | Haiku, all (collected by Sep 18) | RoBERTa, all | n |
-|------|-----------:|--:|-----------:|-------------:|--------:|--:|
-| maga_prowar | **+0.57** [+0.55, +0.58] | 25% | **+0.252** | -0.043 | -0.212 | 6,454 |
-| admin | +0.49 [+0.47, +0.51] | 25% | +0.191 | +0.185 | +0.183 | 7,032 |
-| media | +0.00 [-0.01, +0.02] | 49% | -0.058 | -0.115 | -0.044 | 2,010 |
-| search (public, Feb-May) | | | -0.143 | -0.326 | -0.346 | 1,768 |
-| maga_antiwar | -0.58 [-0.61, -0.55] | 22% | -0.229 | -0.210 | -0.183 | 4,991 |
-| religious_authority | -0.65 [-0.71, -0.60] | 3% | -0.131 | -0.182 | **+0.311** | 2,912 |
-| opposition | -0.91 [-0.93, -0.89] | 12% | -0.206 | -0.392 | -0.320 | 426 |
+| Tier | Opus, war posts | 95% interval to Nov 1 | war share | Opus, all posts | Haiku, all (collected by Sep 18) | RoBERTa, all (to Nov 1) | n |
+|------|-----------:|--:|--:|-----------:|-------------:|--------:|--:|
+| maga_prowar | **+0.57** | [+0.55, +0.58] | 25% | **+0.251** | -0.043 | -0.212 | 6,582 |
+| admin | +0.49 | [+0.47, +0.51] | 24% | +0.191 | +0.185 | +0.183 | 7,342 |
+| media | +0.00 | [-0.01, +0.02] | 49% | -0.058 | -0.115 | -0.044 | 2,074 |
+| search (public, Feb-May) | | | | -0.143 | -0.326 | -0.346 | 1,768 |
+| maga_antiwar | -0.59 | [-0.61, -0.55] | 22% | -0.231 | -0.210 | -0.183 | 5,156 |
+| religious_authority | -0.65 | [-0.71, -0.60] | 3% | -0.127 | -0.182 | **+0.311** | 3,091 |
+| opposition | -0.91 | [-0.93, -0.89] | 11% | -0.197 | -0.392 | -0.320 | 456 |
 
-Feb 1 to Nov 1, posts with text: the Nov 3 run, not yet rerun through
-Nov 21 (phase 6 is in *After the midterms*). Haiku stance was not run on
-the Nov 1 or Nov 22 pulls or on the posts the archive fill added, so its
-column covers the 17,347 account posts with text collected by Sep 18.
+Feb 1 to Nov 21, posts with text: each tier's phase cells pooled by their
+post counts (`phases_x_tier_score_opus_opus.csv`, Nov 22, six phases). The
+intervals and the RoBERTa column are the Nov 3 run's, over Feb 1 to
+Nov 1: the phase files hold neither a whole-war interval nor RoBERTa.
+Haiku stance was not run on the Nov 1 or Nov 22 pulls or on the posts the
+archive fill added, so its column covers the 17,347 account posts with
+text collected by Sep 18.
 
 **Read the war-post column.** The stance prompt asks for a stance on the
 Iran war for every post, so Opus also scores "Deport them!", "Amen" and
@@ -121,17 +127,20 @@ Iran war for every post, so Opus also scores "Deport them!", "Amen" and
 posts are not about the war, so an all-post average is mostly those
 projected scores, and it moves whenever a camp posts more or less about
 the war. The war-post column keeps only posts about the war (those
-Opus's topic class puts on the Iran war, see *Robustness checks*) with
-95% intervals from an account-day block bootstrap.
+Opus's topic class puts on the Iran war, see *Robustness checks*); its
+95% intervals come from an account-day block bootstrap.
 
 On the war itself, the two MAGA camps are **about 1.2 points apart** on
-a two-point scale (+1.15 [+1.12, +1.19]), not the 0.48 the all-post
-averages show. The pro-war influencers are more hawkish than the
-administration (+0.57 vs +0.49, a gap of +0.08 [+0.06, +0.11], intervals
-apart under every topic definition). Anti-war MAGA (-0.58) sits a
-little short of the Vatican tier (-0.65; the gap, +0.07 [+0.00, +0.13],
-only just clears zero, and under the other three topic definitions it
-does not) and well short of Sanders (-0.91).
+a two-point scale (+1.16 through Nov 21; +1.15 [+1.12, +1.19] to Nov 1),
+not the 0.48 the all-post averages show. The pro-war influencers are more
+hawkish than the administration (+0.57 vs +0.49; a gap of +0.08 [+0.06,
++0.11] to Nov 1, with intervals apart under every topic definition, and
+of +0.08 to +0.11 through Nov 21 under the four, on point estimates).
+That is the whole war: in the standoff alone it depends on the definition
+(*After the midterms*). Anti-war MAGA (-0.59) sits a little short of the
+Vatican tier (-0.65; the gap, +0.07, is slightly smaller than to Nov 1,
+where +0.07 [+0.00, +0.13] only just cleared zero, and under the other
+three topic definitions did not) and well short of Sanders (-0.91).
 
 ### The pro-war tier was mislabelled, twice
 
@@ -151,20 +160,21 @@ pro-war influencers are hawks, full stop.
 ### The religious sign flip
 
 RoBERTa reads the Vatican tier as the *most positive* tier in the
-dataset (+0.311 over all posts, Feb 1 -- Nov 1 in the Nov 3 run)
+dataset (+0.311 over all 2,912 posts, Feb 1 -- Nov 1 in the Nov 3 run)
 because faith-based language ("peace",
 "mercy", "dialogue") is lexically positive. Most of that comes from the
 2,828 posts not about the war, where a warm tone is no error. The tier
-has only 84 war posts by Opus's topic class (53 of them @VaticanNews's);
-218 of the 294 that the keyword-or-Haiku filter counted are, to Opus,
-not about the Iran war. On the 84, RoBERTa sits a little below zero
-(-0.07) where Opus puts them at -0.65, and 36 of them (43%) read
-positive to RoBERTa and anti-war to Opus. @Pontifex is -0.291 over all
+has only 84 war posts by Opus's topic class (53 of them @VaticanNews's),
+none of them in the standoff; 226 of the 302 that the keyword-or-Haiku
+filter counts through Nov 21 are, to Opus, not about the Iran war. On
+the 84, RoBERTa sits a little below zero (-0.07) where Opus puts them at -0.65, and 36 of them (43%) read
+positive to RoBERTa and anti-war to Opus. @Pontifex is -0.275 over all
 posts and **-0.84 [-0.88, -0.78] on his 16 war posts, between
 @SenSanders (-0.91) and @mtgreenee (-0.76)** and measurably apart from
 both (+0.07 [+0.02, +0.13] from Sanders, -0.08 [-0.13, -0.02] from
-Greene). The keyword-or-Haiku filter gave him 78 war posts and the
-strict Haiku topic labels 4. Of 2,912 religious-tier posts, Opus
+Greene; intervals and both contrasts from the Nov 3 run). The
+keyword-or-Haiku filter gives him 80 war posts and the strict Haiku
+topic labels 4. Of the 2,912 religious-tier posts to Nov 1, Opus
 labelled none pro-war; Haiku, which scored those collected by
 Sep 18, gave eight a positive score (up to +0.75, the USCCB post below).
 This tier is the reason the project moved to LLM stance scoring in the
@@ -206,13 +216,13 @@ midterms*, below.
 (`python -m src.cli phases`, Nov 22; intervals in
 `data/processed/phases_x_tier_score_opus_opus.csv`.) The religious cells
 rest on 62, 11, 8, 2, 1 and 0 war posts, the opposition's sixth on 2.
-The cells and contrasts of the first five phases quoted in this section
-are from the Nov 3 run, except pro-war MAGA's midterm-hold cell and its
-lead over the administration, which *After the midterms* also gives and
-which are the Nov 22 run's here too; the Nov 22 run gives the same point
-estimates to two decimals and moves their intervals by up to 0.02, as
-the account-day bootstrap now resamples each account's days over six
-phases.
+The cells, the contrasts with the strike phase and the gaps quoted in
+this section are the six-phase runs' (Nov 22 under the Opus class, Nov 25
+under the other topic definitions). Contrasts between two later phases,
+and figures without @SecRubio, are in no CSV and are still the Nov 3
+run's; on X the six-phase runs give the same point estimates and move
+interval ends by at most 0.02, as the account-day bootstrap now resamples
+each account's days over six phases.
 
 **Read changes between columns with one caveat: the heavy accounts are
 not sampled at one density.** From Sep 19, 11 accounts keep the newest
@@ -240,69 +250,83 @@ the raw tables, which stay the record (`docs/decisions.md`, 2026-11-22).
 
 - **The administration's all-post average fell from +0.26 to +0.11,
   about four-fifths of it because it stopped posting about the war.**
-  War posts went from 40% of its output to 8% in September and 9% in the
-  midterm hold. Splitting the -0.15 change from the strike phase to the
-  midterm hold: -0.12 [-0.14, -0.10] is the smaller war share, -0.02
-  [-0.04, +0.00] is softer war posts, -0.02 [-0.03, +0.00] is drift in
-  its other posts. The share part is 63% of the change under the strict
-  labels and a third under the keyword definition (smaller there than
-  the other-post drift, -0.05 and -0.06). Its war posts softened a
-  little after the strike phase (+0.51 to +0.45 in the talks and +0.46
-  in the collapse, -0.06 [-0.11, -0.01] and -0.06 [-0.11, -0.00], both
-  only just significant; into the collapse -0.14 to -0.15 under the
-  other three topic definitions). September's +0.53 is back at the
+  War posts went from 40% of its output to 8% in September and 9% in
+  the midterm hold. Splitting the -0.15 change from the strike phase
+  to the midterm hold: -0.12 [-0.15, -0.10] is the smaller war share,
+  -0.02 [-0.04, +0.00] is softer war posts, -0.02 [-0.03, +0.00] is
+  drift in its other posts. How much of it is volume depends on the
+  topic definition: the share part is 78% of the change under the Opus
+  class, 63% under the strict labels, 47% under the keyword-or-Haiku
+  filter and 34% under the keyword pattern (smaller there than the
+  other-post drift, -0.05 and -0.06), and the softer war posts are
+  12%, 9%, 28% and 26% of it. Its war posts softened a little after
+  the strike phase (+0.51 to +0.45 in the talks and +0.46 in the
+  collapse, -0.06 [-0.11, -0.01] and -0.06 [-0.11, -0.00], both only
+  just significant; into the collapse -0.14 to -0.15 under the other
+  three topic definitions). September's +0.53 is back at the
   strike-phase level (+0.02 [-0.05, +0.08] from it) and measurably, if
-  barely, above the collapse: +0.07 [+0.00, +0.13] (+0.12 [+0.00, +0.24]
-  under the strict labels; the keyword pattern and the keyword-or-Haiku
-  filter do not separate the two). 57 of those 69 September war posts
-  are retweets. @StateDept shows the first effect: war posts fell from
-  60% of its output in the strike phase to 5% (six posts) in September
-  and 7% (nine) in the midterm hold, while those it did make held at
-  +0.43 to +0.48 through September (+0.38 on the nine).
+  barely, above the collapse: +0.07 [+0.00, +0.13] (+0.12 [+0.00,
+  +0.24] under the strict labels, -0.03 [-0.15, +0.07] from the strike
+  phase; the keyword pattern and the keyword-or-Haiku filter do not
+  separate the two, and show no rebound: September is -0.14 [-0.23,
+  -0.04] and -0.13 [-0.23, -0.03] from the strike phase, and every
+  later phase is measurably below it). 57 of those 69 September war
+  posts are retweets. @StateDept shows the first effect: war posts
+  fell from 60% of its output in the strike phase to 5% (six posts) in
+  September and 7% (nine) in the midterm hold, while those it did make
+  held at +0.43 to +0.48 through September (+0.38 on the nine).
 - **In the midterm hold the administration's war posts were the lowest
   of the war by a hair, and not measurably below any earlier phase.**
   They averaged +0.43 [+0.35, +0.51] on 68 war posts (44 of them
-  retweets), against +0.45 in the talks and +0.46 in the collapse (under
-  the keyword definition +0.26 against the collapse's +0.35, also the
-  lowest). Against the strike phase that is -0.08 [-0.16, +0.00], not
-  significant, where the keyword definition and the keyword-or-Haiku
-  filter find a drop (-0.23 [-0.33, -0.13] and -0.22 [-0.32, -0.11]);
-  against September it is -0.09 [-0.19, +0.00], and against the
-  collapse -0.02 [-0.11, +0.06]. Under the strict labels, on 20 war
-  posts, the cell is +0.50, above the collapse's +0.44, and its change
-  from the strike phase, -0.10 [-0.22, +0.04], is not significant
-  either. 10 of the 68 are from @WhiteHouse, and 8 from @SecRubio, read
-  whole and the administration's mildest voice, against 32 of 1,003 in
-  the strike phase (the caveat above). Without him the cell is +0.47
-  [+0.40, +0.54], above the collapse's +0.46 without him, and its change
-  from the strike phase, -0.05 [-0.13, +0.03], is not significant.
+  retweets), against +0.45 in the talks and +0.46 in the collapse
+  (under the keyword definition +0.26 against the collapse's +0.35,
+  the lowest of the first five phases; the standoff's +0.19 is lower
+  still there, though not under the Opus class). Against the strike
+  phase that is -0.08 [-0.16, +0.00], not significant, where the
+  keyword definition and the keyword-or-Haiku filter find a drop
+  (-0.23 [-0.33, -0.13] and -0.22 [-0.32, -0.12]); against September
+  it is -0.09 [-0.19, +0.00], and against the collapse -0.02 [-0.11,
+  +0.06]. Under the strict labels, on 20 war posts, the cell is +0.50,
+  above the collapse's +0.44, and its change from the strike phase,
+  -0.10 [-0.22, +0.03], is not significant either. 10 of the 68 are
+  from @WhiteHouse, and 8 from @SecRubio, read whole and the
+  administration's mildest voice, against 32 of 1,003 in the strike
+  phase (the caveat above). Without him the cell is +0.47 [+0.40,
+  +0.54], above the collapse's +0.46 without him, and its change from
+  the strike phase, -0.05 [-0.13, +0.03], is not significant.
 - **The pro-war influencers pulled back less.** Their war share fell
   from 31% to 11% by September and 12% in the midterm hold (13% to 4%
   and 4% under the strict labels), but the administration's fell further
   from a higher base. That is why their all-post average overtakes the
   administration's from the collapse phase on: volume, not a widening
   gap on the war itself. Their war posts dipped in the talks (+0.59 to
-  +0.49, -0.09 [-0.13, -0.06]) and then held: from the strike phase to
+  +0.49, -0.09 [-0.14, -0.06]) and then held: from the strike phase to
   September the change is -0.01 [-0.07, +0.05], and the
-  administration's over the same span +0.02 [-0.05, +0.08]. The
-  keyword-or-Haiku filter had them easing by -0.13 each, both
-  significant; the off-topic posts it took in, a growing share late in
-  the war, score milder (see *Robustness checks*).
+  administration's over the same span +0.02 [-0.05, +0.08]. Under the
+  strict labels pro-war MAGA's change is not significant either (-0.09
+  [-0.22, +0.05] to September, -0.05 [-0.22, +0.11] to the midterm
+  hold). The keyword-or-Haiku filter and the keyword pattern have both
+  easing by September (-0.13 each under the filter, -0.13 and -0.14
+  under the pattern, all significant), and pro-war MAGA measurably below
+  the strike phase in every phase through the midterm hold (-0.11
+  [-0.21, -0.03] there under the filter, -0.12 [-0.22, -0.03] under the
+  pattern); the off-topic posts they take in, a growing share up to the
+  hold, score milder (see *Robustness checks*).
 - **Pro-war MAGA stayed above the administration in the midterm hold.**
   Its war posts held at +0.57 [+0.50, +0.65] (+0.00 [-0.09, +0.10] from
   September), +0.14 [+0.03, +0.25] above the administration's (keyword
-  +0.20 [+0.07, +0.32]; without @SecRubio +0.10 [+0.00, +0.21]). Under
-  the strict labels, on 12 and 20 war posts, the gap is +0.14 [-0.06,
-  +0.33] and not significant. Both of its accounts are sampled, so this
+  +0.20 [+0.06, +0.31]; without @SecRubio +0.10 [+0.00, +0.21]). Under
+  the strict labels, on 12 and 20 war posts, the gap is +0.14 [-0.07,
+  +0.34] and not significant. Both of its accounts are sampled, so this
   cell is the 35-hour design's (68 account-days).
 - **Anti-war MAGA hardened after the talks and did not measurably ease
   again; the rest of the anti-war side held.** Anti-war MAGA's war posts
   were mildest in the talks (-0.52) and hardest in the collapse (-0.66),
-  -0.13 [-0.21, -0.04] from the talks. September's -0.58 [-0.68, -0.46]
+  -0.13 [-0.21, -0.04] from the talks. September's -0.58 [-0.69, -0.45]
   is +0.08 [-0.04, +0.21] from the collapse, not significant (the
   keyword definition and the keyword-or-Haiku filter find +0.15, both
   significant; strict +0.03 [-0.14, +0.19]), and level with the strike
-  phase (+0.00 [-0.11, +0.13]). In the midterm hold they were at -0.65
+  phase (+0.00 [-0.11, +0.14]). In the midterm hold they were at -0.65
   [-0.72, -0.57], level with the collapse (+0.01 [-0.09, +0.10]) and
   harder than in the talks (-0.13 [-0.22, -0.02]): the collapse and the
   midterm hold are tied for the hardest of the first five phases (-0.658
@@ -320,7 +344,7 @@ the raw tables, which stay the record (`docs/decisions.md`, 2026-11-22).
   the strike phase, 1% by September), but that is the smaller part of
   its all-post "softening" (+0.08 [+0.04, +0.12] from the strike phase
   to the midterm hold, of which +0.03 [+0.02, +0.04] is the share and
-  +0.05 [+0.02, +0.08] drift in its other posts). @SenSanders did not
+  +0.05 [+0.01, +0.08] drift in its other posts). @SenSanders did not
   ease: his war posts went from -0.89 in the strike phase to -0.94 in
   the midterm hold, -0.05 [-0.11, -0.01].
 - **Media stayed near zero.** @BarakRavid's war posts are within 0.02 of
@@ -375,10 +399,41 @@ standoff. The hold ran 44 days, the standoff 20 so far.)
   own feed went from 4% to 3% war posts (13 of 396) at +0.43 [-0.01,
   +0.73], too few to read a level from. Pro-war MAGA's lead over the
   administration's war posts, +0.14 [+0.03, +0.25] in the midterm hold,
-  is +0.04 [-0.10, +0.21] in the standoff: no longer measurable.
+  is +0.04 [-0.10, +0.21] in the standoff: no longer measurable under
+  the Opus class, though the two keyword-based definitions put it at
+  +0.28 (two bullets down).
 - **The religious tier said nothing about the war**: 179 posts with text
   from @Pontifex, @VaticanNews and @USCCB and not one war post. @SenSanders
   wrote 2 of his 30 about it (-0.93), and @BarakRavid stays at zero.
+- **What the other topic definitions change** (Nov 25). The camps'
+  return to the war holds under all four: pro-war MAGA's war share goes
+  from 13% to 27% under the keyword-or-Haiku filter, 13% to 26% under
+  the keyword pattern and 4% to 16% under the strict labels, and
+  anti-war MAGA's from 20% to 30%, 20% to 30% and 6% to 15% (its two
+  intervals are apart under the Opus class and the strict labels and
+  overlap under the other two). So does the camps' gap (+1.08 [+0.95,
+  +1.23], +1.08 [+0.93, +1.23] and +1.28 [+1.10, +1.45]). Anti-war
+  MAGA's point estimate is the hardest of any phase under all four
+  (-0.61, -0.61 and -0.70 under these three), but by only 0.01 over the
+  collapse under the first two, and it is measurably below the strike
+  phase only under the Opus class and the strict labels (-0.11 [-0.18,
+  -0.02] and -0.16 [-0.26, -0.03]; -0.06 [-0.16, +0.07] under the other
+  two). **The administration's cell does not hold.** Its +0.48 becomes
+  +0.19 [+0.05, +0.33] on 35 war posts under the keyword-or-Haiku filter
+  and +0.19 [+0.04, +0.33] on 34 under the keyword pattern, its lowest
+  of the war and -0.31 [-0.46, -0.17] and -0.31 [-0.46, -0.16] from the
+  strike phase; under the strict labels it is +0.595 [+0.48, +0.75] on
+  10, no change (-0.00 [-0.12, +0.16]). Its war share goes from 7% to
+  11%, 6% to 11% and 3% to 3%. Pro-war MAGA's lead over it moves with
+  it: +0.28 [+0.11, +0.46], +0.28 [+0.09, +0.47] and -0.015 [-0.22,
+  +0.18]. The two definitions that read the administration low are close
+  to one test: the filter contains the pattern, which gives 34 of its 35
+  posts, and the off-topic posts both take in, milder on average
+  (*Robustness checks*), pull their administration cell down. On the stance-topic prompt's own
+  score, over the same Opus war posts, the lead is +0.17 [+0.05, +0.31]
+  and pro-war MAGA's +0.705 is level with the strike phase (-0.00
+  [-0.06, +0.06]), so its lower reading above does not show on that
+  score.
 - **Window weights do not change the picture.** Design weights nearly
   equal raw in phases 5 and 6, both read at 5 posts a 35-hour window
   (media's phase-6 cell moves by under 0.01). Weighted to
@@ -420,44 +475,55 @@ of Nov 22 wait for the next pull.
 
 (`python -m src.cli phases --source trump`, Nov 22; the feed now holds
 the rest of Oct 31 and Nov 1, 96 more posts with text in the midterm
-hold, none of them a war post. The contrasts below against September
-and under the other topic definitions are the Nov 3 run's.) The
-intervals overlap in
-every phase and under every topic definition (the strict Haiku labels
-put all five between +0.38 and +0.58). His war posts were mildest in the
-talks phase, but that change from April, -0.135 [-0.29, +0.02], is not
-significant (the two alternate Opus readings in *Robustness checks* do
-find it), and the direct September-minus-April contrast is +0.025
-[-0.11, +0.17] (+0.07 under the strict labels). The midterm hold,
-against April, is -0.11 [-0.29, +0.04] (-0.05 [-0.22, +0.12] under the
+hold, none of them a war post. The other topic definitions were rerun
+on Nov 25; the contrasts below between two later phases, against
+September or from the talks to the collapse, are the Nov 3 run's.)
+The intervals overlap in every phase under the Opus class, the strict
+Haiku labels (which put all six between +0.38 and +0.58) and, by 0.001,
+the keyword pattern. Under the keyword-or-Haiku filter they no longer
+do: Aug 18 -- Sep 18 (+0.43 [+0.36, +0.49]) and the midterm hold (+0.25
+[+0.13, +0.36]) are just apart (0.363 against 0.356), as three of the
+posts added to the hold count as war posts to that filter and none does
+to Opus. His war posts were mildest in the talks phase under the Opus
+class (+0.37), and level with the standoff's 11 posts under the strict
+labels (+0.382 and +0.386); under the keyword pattern and the
+keyword-or-Haiku filter the midterm hold (+0.25) and the standoff (+0.22
+on 19) are milder than the talks (+0.30). The change from April to the
+talks, -0.135 [-0.29, +0.02] under the Opus class, is not significant
+under any of the four (the two alternate Opus readings in *Robustness
+checks* do find it), and the direct September-minus-April contrast is
++0.025 [-0.11, +0.17] (+0.07 under the strict labels). The midterm hold,
+against April, is -0.11 [-0.29, +0.04] (-0.05 [-0.24, +0.12] under the
 strict labels) and against September -0.13 [-0.29, +0.01]: no measurable
 change, though a drop of up to about 0.3 can't be ruled out, and under
 the keyword-or-Haiku filter the drop from September is significant
-(-0.16 [-0.30, -0.04]). What changed is how much he talks about it: a
-third of his posts in April, 11-12% from late April to Sep 18, 4% in
-the midterm hold (32 war posts in 874) and 3% in the standoff (13 in
-396), the lowest of the war. Over all his posts, his stance moved -0.15
-[-0.24, -0.08] from the strike phase to the midterm hold, -0.13 [-0.20,
--0.08] of it the smaller war share, and -0.14 [-0.23, -0.03] to the
-standoff. The standoff's 13 war posts are too few to read a level from
-(-0.08 [-0.56, +0.22] from April). The administration's accounts on X
-also talked about the war far less after the strike phase, but not in
-step with him: in the talks phase his war share fell by nearly
-two-thirds (33% to 12%) and theirs by about a third (40% to 26%); in the
-midterm hold his fell to 4% while theirs went from 8% to 9%, and in the
-standoff his went to 3% and theirs to 10%.
+(-0.16 [-0.30, -0.04]; the point is -0.18 with those three posts in).
+What changed is how much he talks about it: a third of his posts in
+April, 11-12% from late April to Sep 18, 4% in the midterm hold (32 war
+posts in 874) and 3% in the standoff (13 in 396), the lowest of the war.
+Over all his posts, his stance moved -0.15 [-0.24, -0.08] from the
+strike phase to the midterm hold, -0.13 [-0.20, -0.08] of it the smaller
+war share, and -0.14 [-0.23, -0.03] to the standoff. The standoff's 13
+war posts are too few to read a level from (-0.08 [-0.56, +0.22] from
+April). The administration's accounts on X also talked about the war far
+less after the strike phase, but not in step with him: in the talks
+phase his war share fell by nearly two-thirds (33% to 12%) and theirs by
+about a third (40% to 26%); in the midterm hold his fell to 4% while
+theirs went from 8% to 9%, and in the standoff his went to 3% and theirs
+to 10%.
 
 **What the distilled model got wrong.** Until Nov 2 the feed was scored
 by the DeBERTa model distilled from the Opus labels
 (`score_opus_distilled`), checked against Opus on 400 random posts.
-Against Opus on the whole feed it agrees at 0.78 Pearson (0.74 on the
-368 war posts), and its war-post mean is about right on average (0.02
-below Opus), but not phase by phase: it reads the collapse phase's war
-posts 0.08 [0.03, 0.14] too low (+0.38 against +0.46), which turns the
-talks-to-collapse change from +0.09 [-0.05, +0.22] under Opus into
--0.05 [-0.16, +0.07]. Together with the 110 posts the keyword-or-Haiku
-filter took in that Opus puts off the Iran war (+0.05 on average), that
-made the collapse and the midterm hold look like his mildest phases
+Against Opus on the whole feed to Oct 31 it agrees at 0.78 Pearson (0.74
+on its 368 war posts; the Nov 3 run), and its war-post mean is about
+right on average (0.02 below Opus), but not phase by phase: it reads the
+collapse phase's war posts 0.08 [0.03, 0.14] too low (+0.38 against
++0.46), which turns the talks-to-collapse change from +0.09 [-0.05,
++0.22] under Opus into -0.05 [-0.16, +0.07]. Together with the 110 posts
+to Oct 31 that the keyword-or-Haiku filter took in and Opus puts off the
+Iran war (+0.05 on average, the Nov 3 run; 120 and +0.04 to Nov 22),
+that made the collapse and the midterm hold look like his mildest phases
 (+0.30 and +0.29 in the table published before Nov 2), where under Opus
 they are +0.46 and +0.40.
 
@@ -468,15 +534,15 @@ they are +0.46 and +0.40.
 The heatmap is the war-post view by account: the mean Opus stance of
 each account's war posts in each phase and over the whole war (the
 point estimates `phases --by user` writes, computed by `visualize` on
-Nov 22; the by-user CSV in `data/processed/` is still the Nov 3
-five-phase run), with posts with no text left out and a cell left blank
-under 5 war posts. Accounts run from most pro-war to
+Nov 22; the six-phase by-user CSV of Nov 25,
+`phases_x_user_score_opus_opus.csv`, has the same cells), with posts
+with no text left out and a cell left blank under 5 war posts. Accounts run from most pro-war to
 most anti-war over the whole war (Feb 1 -- Nov 21); red is pro-war and
 blue anti-war, the blog post's colours. Generated Nov 22 (`visualize`
 writes it as `account_war_phases_score_opus.png`).
 
 - No account other than @BarakRavid, who stays at zero (-0.00 to
-  +0.02), changes side in any phase.
+  +0.03), changes side in any phase.
 - The anti-war end barely moves: through Sep 18 @SenSanders,
   @mtgreenee, @RealCandaceO, @TuckerCarlson and @Pontifex stay between
   -0.69 and -0.93 in every phase they have, and in the midterm hold
@@ -484,10 +550,11 @@ writes it as `account_war_phases_score_opus.png`).
   @TuckerCarlson (-0.73) stay there; @RealCandaceO has 1 war post in the
   midterm hold and @Pontifex none after the collapse. @RealAlexJones
   moves most (-0.44 in the talks, -0.58 in the collapse, -0.51 from
-  Aug 18 to Sep 18, -0.55 in the midterm hold) and is the least anti-war
-  of the anti-war MAGA accounts in every phase. @TuckerCarlson posts
-  rarely (286 posts with text, 57 about the war, in nine months) but is
-  anti-war in every phase he has (-0.73 to -0.82).
+  Aug 18 to Sep 18, -0.55 in the midterm hold, -0.62 in the standoff)
+  and is the least anti-war of the anti-war MAGA accounts in every
+  phase. @TuckerCarlson posts rarely (311 posts with text, 63 about the
+  war, since February) but is anti-war in every phase he has (-0.68 to
+  -0.82).
 - On the pro-war side the administration's accounts soften less than
   the keyword-or-Haiku filter showed: @POTUS goes from +0.55 in the
   strike phase to +0.49 and +0.42 in the talks and the collapse, then
@@ -502,7 +569,7 @@ writes it as `account_war_phases_score_opus.png`).
   @LauraLoomer at +0.61 (22) and +0.55 (13). @SecRubio, the mildest, is
   at +0.15 on 8 in the midterm hold; @VP has too few war posts after the
   collapse for a cell.
-- Over all posts (not shown), @mtgreenee (-0.323) and @Pontifex (-0.291)
+- Over all posts (not shown), @mtgreenee (-0.327) and @Pontifex (-0.275)
   are the most anti-war accounts, with @TuckerCarlson (-0.268) and
   @RealCandaceO (-0.235) next; on war posts @SenSanders leads.
 - On the posts Haiku scored (those collected by Sep 18) @SenSanders
@@ -641,7 +708,9 @@ or one or two characters) are left out, not imputed.
 `reply-population --first-draws --col score_opus_distilled` gives the
 table published before Nov 2, on the first draws alone; the fresh draws cut the
 intervals about threefold (the eight posts' anti-war share: 28% [25%,
-31%] on the first draws, 29% [28%, 30%] pooled). That comparison and the
+31%] on the first draws, 29% [28%, 30%] pooled; rerun on Nov 25 over all
+ten posts, 26% [22%, 29%] on the 1,344 first draws against 27% [26%, 28%]
+pooled). That comparison and the
 v2b figures below (the praise rule) were run on the distilled model's
 census and stay there (`--col score_opus_distilled`): each compares two
 draw or label sets on one census.
@@ -716,8 +785,8 @@ draw or label sets on one census.
   cheer the deal as anti-war; it also reverses on the ceasefire, within
   its interval (-0.11 [-0.26, +0.04]). The high tier holds 701 of the
   labelled draws (523 on the eight earlier posts). On the 88 among the
-  eight posts' first draws alone the gap is
-  +0.073 [-0.06, +0.22], not measurable; before Nov 2 the README, on
+  eight posts' first draws alone the gap is +0.073 [-0.06, +0.22] (the
+  Nov 3 run), not measurable; before Nov 2 the README, on
   unweighted first-draw means, called the gradient not established.
 - **"These fools" depends on the rater.** Opus 5.5, run as a second
   rater on the 1,157 first-labelled replies (`reply-label report --job
@@ -844,7 +913,9 @@ other way, praise for the post taking its hawkish position: without the
 rule the corrected pro-war share on the first draws falls from 49% to
 31%, and the mean moves -0.070 [-0.089, -0.051] on the paired draws.
 Across all eight posts the rule moves the mean by only -0.012 [-0.022,
--0.003] and the anti-war share from 21% to 27%. Without the rule all
+-0.003] and the anti-war share from 21% to 27% (the Nov 3 run; the Nov 25
+rerun gives the same per-post figures and no pooled one, as the two
+November posts have no v2b label). Without the rule all
 eight posts lean pro-war on the corrected shares. The rule stays in the
 labels of record
 (`docs/decisions.md`, 2026-11-02): a reply that cheers a deal does
@@ -964,9 +1035,8 @@ the same as on the broadcaster data: on Haiku's categories,
   since the archive fill), to the last whole UTC day of the Nov 22 pull,
   with pre-war context events back to Jun 2025. The sixth phase, from
   Nov 2, ends at `ANALYSIS_END`, which rolls to each pull's last whole
-  day until the phase closes (`docs/decisions.md`, 2026-11-22). The
-  whole-war tier table and the post-level robustness checks are still
-  the Nov 3 run over Feb 1 -- Nov 1.
+  day until the phase closes (`docs/decisions.md`, 2026-11-22). What is
+  still the Nov 3 run over Feb 1 -- Nov 1 is marked where it stands.
 
 ### Sentiment scoring
 
@@ -1018,75 +1088,132 @@ post when its class is the Iran war.
 
 All free to rerun from the cached data and labels
 (`src/analysis/inference.py`, `src/analysis/post_labels.py`); the label
-jobs some of them rest on are in *Cost*. The post-level checks below are
-the Nov 3 run over Feb 1 -- Nov 1, not yet rerun with phase 6; the reply
-checks include the November posts:
+jobs some of them rest on are in *Cost*. The alternate topic definitions
+and scorers were rerun on six phases (Feb 1 -- Nov 21) on Nov 25, and the
+census counts are the Nov 22 label report's. The checks whose labels stop
+before November (the second rater, the hidden handle, v2b, the reply
+categories) cannot cover the sixth phase, and figures marked Nov 3 are
+over Feb 1 -- Nov 1 and in no rerun file:
 
 - **What counts as a war post.** The stance prompt makes Opus score
   every post, and it gives off-topic posts a stance from the author
   (Hegseth's "It's time." +0.40, Levin's "Amen" +0.60). Four
   definitions of "about the war": Opus 5's topic class on every post
   (the stance-topic prompt, see *Sentiment scoring*; the default since
-  Nov 2, 23.3% of X posts with text); a keyword pattern
+  Nov 2, 23.0% of X posts with text); a keyword pattern
   (`WAR_TOPIC_PATTERN`, loose: misses unnamed strikes, catches "culture
-  war"; 21.0%); a Haiku 4.5 yes/no label on every post (`topic-label`,
+  war"; 20.8%); a Haiku 4.5 yes/no label on every post (`topic-label`,
   Batch API, $3.70 for 22,197 posts in September, $0.62 for 2,890 on
   Oct 4, mostly the posts re-read in full, $0.49 for 2,666 on Nov 2
   (the Nov 1 pull, Trump's 672 new posts and the 91 link shares
   resubmitted on every run), and $0.78 for 4,671 on Nov 3 (the archive
   fill's 4,575 posts with text and the 96 link shares still without a
   label); strict: drops the Pope's war appeals
-  that never name Iran; posts with text it has no label for, 56 on X
-  and 40 in Trump's feed, fall back to the keyword; 13.8%); and either
-  of the last two (the default until Nov 2; 23.1%).
+  that never name Iran; posts with text it has no label for, 31 on X
+  and 36 in Trump's feed, fall back to the keyword; 13.6%); and either
+  of the last two (the default until Nov 2; 22.9%).
 - **How far off the old default was.** The census settles it. Of the
-  23,825 X posts with text, Opus puts 5,552 on the Iran war: 1,576 of
-  them (28%) were flagged by neither the keyword nor Haiku, and 1,527 of
-  the 5,503 the old default took (28%) are, to Opus, off the Iran war.
-  Posts only the keyword caught are a third Iran-war (32.5% of 2,206);
-  posts Haiku flagged nearly all are (97.4% of the 504 only Haiku
-  flagged, 99.1% of the 2,793 both flagged). The 1,500 random unflagged
-  posts, drawn and labelled before the census and the archive fill, put
-  the missed posts at 8.9% [7.6%, 10.5%] of the unflagged ones, about
-  1,637 [1,391, 1,921] of the 18,322 unflagged now; the census count
-  falls inside, and so does every tier's. Missed posts are 40% of
-  pro-war MAGA's war posts (528 of them @marklevinshow's), 31% of the
-  administration's, 20% of anti-war MAGA's, 17% of media's, 10% of the
-  religious tier's and 2% of the opposition's; off-topic posts were 74%
-  of what the old default called the religious tier's war posts (218 of
-  294) and 44% of the opposition's. Both errors grow as the war goes on:
-  the off-topic share of the old default's war posts rises from 19% in
-  the strike phase to 54% in the midterm hold, and the missed share of
-  Opus's war posts from 28% to 41%. Missed posts lean the way their
+  24,753 X posts with text to Nov 22, Opus puts 5,691 on the Iran war:
+  1,625 of them (29%) were flagged by neither the keyword nor Haiku, and
+  1,595 of the 5,661 the old default took (28%) are, to Opus, off the
+  Iran war. On X and in Trump's feed together, posts only the keyword
+  caught are a third Iran-war (31.1% of 2,434); posts Haiku flagged
+  nearly all are (97.5% of the 514 only Haiku flagged, 99.2% of the 3,181
+  both flagged). The 1,500 random unflagged posts, drawn and labelled
+  before the census and the archive fill, put the missed posts at 8.9%
+  [7.6%, 10.5%] of the unflagged ones, about 1,706 [1,450, 2,002] of the
+  19,092 unflagged now; the census count falls inside, and so does every
+  tier's. Missed posts are 40% of pro-war MAGA's war posts (528 of them
+  @marklevinshow's on Nov 3), 31% of the administration's, 20% of
+  anti-war MAGA's, 17% of media's, 10% of the religious tier's and 2% of
+  the opposition's; off-topic posts were 75% of what the old default
+  called the religious tier's war posts (227 of 303) and 43% of the
+  opposition's. Both errors were larger late in the war, up to the
+  midterm hold: on X the off-topic share of the old default's war posts
+  rose from 19% in the strike phase to 54% in the hold, and the missed
+  share of Opus's war posts from 28% to 41% (Nov 3). In the standoff both
+  ease: with Trump's feed, which the six-phase counts include, the
+  off-topic share goes 19%, 52% and 41% (strike phase, hold, standoff)
+  and the missed share 27%, 37% and 32%. Missed posts lean the way their
   tier's flagged ones do (admin +0.44 against +0.51, pro-war MAGA +0.50
-  against +0.62, anti-war MAGA -0.62 against -0.57); the off-topic ones
-  the old default took are milder (admin +0.18, pro-war MAGA +0.32),
+  against +0.62, anti-war MAGA -0.62 against -0.58); the off-topic ones
+  the old default took are milder (admin +0.17, pro-war MAGA +0.32),
   which pulled its late-phase cells toward zero. In Trump's feed Opus
-  puts 368 of the 3,222 posts with text on the Iran war; 32 were flagged
-  by neither filter, 110 the old default took are off it, and 18.8% of
-  the 133 only the keyword caught are on it.
-- **The headline gaps hold under all four definitions.** Each keeps its
-  sign and order: the MAGA war-post gap (1.08 to 1.21 over the whole
-  war), pro-war MAGA above the administration with whole-war intervals
-  apart, the administration's softening into the collapse (significant
-  under all four, only just under the Opus class), and Trump's phase
-  intervals overlapping. Anti-war MAGA is hardest in the collapse phase
-  under three of them and in the midterm hold under the strict labels.
-  Levels hold less well against the old default: 11 of the 30 X
-  tier-phase cells move by more than 0.1 between it and the Opus class,
-  up to 0.31 (the religious tier in the collapse, 44 old-default war
-  posts against 8), Trump's phases by up to 0.14 and single accounts'
-  whole-war means by up to 0.14 (@TuckerCarlson). Against the strict
-  Haiku labels the Opus class moves none of 28 cells by more than 0.1
-  (at most 0.097, pro-war MAGA in the strike phase), Trump's phases by
-  up to 0.06 and single accounts by up to 0.10 (@LauraLoomer): on levels
-  it sits close to the strict labels, with 68% more war posts. The
-  administration's midterm-hold low is the lowest point estimate under
-  the Opus class (by 0.02), the keyword pattern and the keyword-or-Haiku
-  filter, not under the strict labels. Some cells are too sparse to read
-  under any definition: the religious tier has 11, 8, 2 and 1 Opus war
-  posts in the last four phases (7, 2, 0 and 0 strict), and @Pontifex 16
-  in all (4 strict).
+  puts 381 of the 3,716 posts with text on the Iran war; 33 were flagged
+  by neither filter and 120 of the 468 the old default took are off it
+  (18.8% of the 133 only the keyword caught were on it, Nov 3).
+- **The headline gaps hold under all four definitions over the whole
+  war.** Through Nov 21 each keeps its sign and order: the MAGA war-post
+  gap (1.08 to 1.21 over the whole war, 0.90 to 1.29 in any phase),
+  pro-war MAGA above the administration (+0.08 to +0.11 over the whole
+  war; the whole-war intervals were apart under all four in the Nov 3 run
+  and have not been recomputed), the administration's softening into the
+  collapse (significant under all four, only just under the Opus class)
+  and its shrinking war share (40% in the strike phase to 10% in the
+  standoff under the Opus class, 33% to 11%, 28% to 11% and 25% to 3%
+  under the keyword-or-Haiku filter, the keyword pattern and the strict
+  labels; it is well below the strike phase from the collapse on under
+  all four, while in the talks the keyword pattern's fall, 28% [25%, 31%]
+  to 24% [20%, 29%], is not significant: share effect -0.01 [-0.03,
+  +0.01]). Anti-war MAGA is hardest in the standoff under all four by
+  point estimate only: by 0.01 over the collapse under the
+  keyword-or-Haiku filter and the keyword pattern (-0.614 against -0.603
+  and -0.600), by 0.03 under the Opus class and by 0.04 over the midterm
+  hold under the strict labels, with the intervals overlapping under all
+  four. In the five closed phases it is hardest in the collapse under
+  three and in the midterm hold under the strict labels.
+- **Four claims that held to Nov 1 do not all hold through Nov 21.**
+  Pro-war MAGA above the administration is not established for the
+  standoff on its own: +0.28, measurable, under the keyword-or-Haiku
+  filter and the keyword pattern, +0.04 [-0.10, +0.21] under the Opus
+  class and -0.015 [-0.22, +0.18], on 20 and 10 posts, under the
+  strict labels: not measurable under either of these two. Before the
+  standoff it is positive in every phase under all four, though not
+  significant in every one. The administration's midterm-hold low is
+  the lowest point estimate of the war under the Opus class alone (by
+  0.02); under the keyword pattern and the keyword-or-Haiku filter the
+  standoff is lower (+0.19 against +0.26 and +0.29, and -0.31 from the
+  strike phase, significant), and under the strict labels the collapse
+  is, as before. Trump's phase intervals all overlap under three
+  definitions, not four: under the keyword-or-Haiku filter Aug 18 --
+  Sep 18 and the midterm hold are just apart, and under the keyword
+  pattern they overlap by 0.001 (*Trump's own feed*). And against the
+  strict labels one cell now moves by more than 0.1, below.
+- **Several results depended on the definition before the standoff too**
+  (*Nine months*). The main ones: the administration's September
+  rebound, which the Opus class and the strict labels show and the
+  keyword pattern and the keyword-or-Haiku filter do not; its change
+  from the strike phase to the midterm hold, significant under those two
+  alone (-0.23 and -0.22, against -0.08 and -0.10); how much of its
+  all-post fall to the hold is volume (78%, 63%, 47% and 34% under the
+  Opus class, the strict labels, the keyword-or-Haiku filter and the
+  keyword pattern); pro-war MAGA's level after the talks, no measurable
+  change from the strike phase under the Opus class and the strict
+  labels and -0.11 to -0.13, measurable, in each phase from the collapse
+  to the hold under the other two (in the standoff it is not significant
+  under any of the four, -0.07 to -0.12); and anti-war MAGA's September
+  easing from the collapse (+0.15, significant under the same two only;
+  the Nov 3 run). The pattern and the filter are close to one test: the
+  filter contains the pattern, and from Nov 2 they pick nearly the same
+  posts (35 and 34 of the administration's). The off-topic posts they
+  take in, milder as above, pull their later cells toward zero.
+- **Levels hold less well.** Against the old default 13 of the 35 X
+  tier-phase cells move by more than 0.1 to the Opus class, up to 0.31
+  (the religious tier in the collapse, 44 old-default war posts against
+  8); in the standoff the administration's moves by 0.29 (+0.19 to
+  +0.48) and the opposition's by 0.21 (3 posts against 2). Trump's
+  phases move by up to 0.21 (the standoff, 19 posts against 13; 0.15 in
+  the midterm hold) and single accounts' whole-war means by up to 0.14
+  (@TuckerCarlson). Against the strict Haiku labels the Opus class moves
+  1 of 33 cells by more than 0.1 (the administration in the standoff,
+  +0.48 on 31 posts against +0.595 on 10: 0.113; at most 0.097 in the
+  first five phases, pro-war MAGA in the strike phase), Trump's phases by
+  up to 0.06 and single accounts by up to 0.09 (@LauraLoomer): on levels
+  it sits close to the strict labels, with 69% more war posts. Some cells
+  are too sparse to read under any definition: the religious tier has 11,
+  8, 2, 1 and 0 Opus war posts in the last five phases (7, 2, 0, 0 and 0
+  strict), @Pontifex 16 in all (4 strict), and the strict labels leave
+  the administration 10 in the standoff.
 - **Uncertainty.** 95% intervals resample account-days within each
   account (1,000 replicates), so same-day posts move together. Each
   account keeps its total number of days, but they are drawn from its
@@ -1106,39 +1233,54 @@ checks include the November posts:
   270 pairs where both labels are exactly 0; among the rest, 61% are
   identical. Label noise is small next to every effect reported.
 - **A second rater, Opus 5.5.** Claude Opus 5.5 relabelled with
-  score_opus's prompt the 4,925 X and Trump posts the old default
-  called war posts before the archive fill (`post-label --job rater`,
-  column `score_opus55`); the fill's 1,024 new candidates have no Opus
-  5.5 label, so this check rests on the posts collected before it.
-  It agrees with Opus 5 at 0.97 Pearson. It reads the anti-war-leaning
-  tiers milder (anti-war MAGA +0.12, opposition +0.12, religious +0.17
-  on average) and the rest about the same (admin -0.03, pro-war MAGA
-  -0.01, media -0.00, Trump -0.02). On the same 3,269 Opus-class X war
-  posts the MAGA gap is 1.11 [1.07, 1.16] under Opus 5.5 against 1.22
-  [1.17, 1.26] under Opus 5, pro-war MAGA stays above the
-  administration (+0.13 against +0.11), @Pontifex stays apart from
-  @SenSanders (+0.06 under both, the Opus 5.5 interval touching zero),
-  and every change from the strike phase that is significant under one
-  rater has the same sign under the other. Its weekly MAGA gap runs from
-  0.92 to 1.39 on the weeks it covers. On Trump's flagged war posts it
-  puts the talks phase measurably below April, -0.184 [-0.32, -0.03],
-  where Opus 5 does not; the later phases are not measurably below
+  score_opus's prompt the 4,925 X and Trump posts the old default called
+  war posts before the archive fill (`post-label --job rater`, column
+  `score_opus55`). The fill's 1,024 new candidates and the Nov 22 pull's
+  180 have no Opus 5.5 label: it covers 3,269 of the 5,690 X war posts
+  and 336 of Trump's 381, and none in the standoff, so this check says
+  nothing about the sixth phase (its rows there are missing from the
+  CSVs) and rests on the posts collected before the fill. Those are only
+  posts the old default flagged, not a random set (none of the 1,625 it
+  missed), and they thin out late: 87 of the administration's 232 war
+  posts in the collapse, 24 of 69 in September and 22 of 68 in the
+  midterm hold; 50 of 136, 14 of 48 and 14 of 35 of pro-war MAGA's; 50
+  of 131, 39 of 65 and 35 of 54 of anti-war MAGA's. It agrees with Opus
+  5 at 0.97 Pearson. It reads the anti-war-leaning tiers milder
+  (anti-war MAGA +0.12, opposition +0.12, religious +0.17 on average)
+  and the rest about the same (admin -0.03, pro-war MAGA -0.01, media
+  -0.00, Trump -0.02). On the same 3,269 Opus-class X war posts the MAGA
+  gap is 1.11 [1.07, 1.16] under Opus 5.5 against 1.22 [1.17, 1.26]
+  under Opus 5, pro-war MAGA stays above the administration (+0.13
+  against +0.11), @Pontifex stays apart from @SenSanders (+0.06 under
+  both, the Opus 5.5 interval touching zero), and every change from the
+  strike phase that is significant under one rater has the same sign
+  under the other, through the midterm hold (where pro-war MAGA's lead
+  over the administration is +0.17 [-0.00, +0.37] under Opus 5.5, on 14
+  and 22 posts). Its weekly MAGA gap runs from 0.92 to 1.39 on the weeks
+  it covers. On Trump's flagged war posts it puts the talks phase
+  measurably below April, -0.184 [-0.32, -0.03], where Opus 5 does not;
+  the later phases, through the midterm hold, are not measurably below
   April under either.
 - **The stance-topic prompt's own score.** The prompt that gives the
-  topic class also gives a stance (`score_opus_stance`). On the 4,312
-  flagged posts it puts on the Iran war it agrees with score_opus at
-  0.97 Pearson and runs 0.045 more pro-war on average (0.09 on pro-war
-  MAGA). On all 5,552 X war posts it widens the MAGA gap in every phase
-  (1.27, 1.11, 1.28, 1.24 and 1.31, against 1.17, 1.02, 1.21, 1.15 and
-  1.23 on score_opus) and keeps pro-war MAGA above the administration
-  in the midterm hold (+0.177 [+0.08, +0.28]). Like Opus 5.5, it puts
-  Trump's talks phase measurably below April (-0.185 [-0.33, -0.04]) and
-  none of his later phases.
+  topic class also gives a stance (`score_opus_stance`), on every post
+  it puts on the Iran war, the standoff's included. On the 4,414
+  flagged posts it puts there it agrees with score_opus at 0.97
+  Pearson and runs 0.046 more pro-war on average (0.09 on pro-war
+  MAGA). On all 5,690 X war posts it widens the MAGA gap in every
+  phase (1.27, 1.11, 1.28, 1.24, 1.31 and 1.39, against 1.17, 1.02,
+  1.21, 1.15, 1.23 and 1.21 on score_opus) and keeps pro-war MAGA
+  above the administration in the midterm hold (+0.177 [+0.08, +0.28])
+  and in the standoff (+0.166 [+0.05, +0.31]), where score_opus finds
+  no measurable lead. On it the administration's dip in the talks is
+  measurable (-0.07 [-0.13, -0.02] from the strike phase) and the
+  collapse's is not (-0.06 [-0.12, +0.01]). Like Opus 5.5, it puts
+  Trump's talks phase measurably below April (-0.185 [-0.32, -0.04])
+  and none of his later phases.
 - **Hiding the author's handle.** Both stance prompts name the post's
   author. The stance-topic prompt was rerun without the handle on a
-  paired subsample of 1,957 posts drawn before the archive fill
-  (`post-label --job stance-topic-nohandle`). On the 1,335 pairs both
-  runs put on the Iran war, hiding the handle moves pro-war MAGA -0.107
+  paired subsample of 1,957 posts drawn before the archive fill, so
+  without the sixth phase (`post-label --job stance-topic-nohandle`). On
+  the 1,335 pairs both runs put on the Iran war, hiding the handle moves pro-war MAGA -0.107
   [-0.129, -0.085] and
   the administration -0.063 [-0.078, -0.048], anti-war MAGA +0.070
   [+0.052, +0.088], the religious tier +0.044 [+0.024, +0.063] and the
@@ -1152,7 +1294,8 @@ checks include the November posts:
 - **Reply population shares** are corrected against Opus labels (made
   from the full reply and the post it answers) on a random,
   bucket-stratified sample of 11,344 replies with text, with v2b (no
-  praise rule) beside them, Opus 5.5 as a second rater on 1,157 of them
+  praise rule; the eight posts from April to September only) beside
+  them, Opus 5.5 as a second rater on 1,157 of them
   and Opus categories read with the post (see *Audience replies*). Opus
   5.5 agrees with the v2 labels at 0.94 Pearson (mean absolute
   difference 0.11, 43 opposite-sign pairs on 1,157 replies) and reads
@@ -1523,9 +1666,10 @@ docs/figures/             # LLM-stance figures (two are embedded above)
   keyword pattern and the Haiku labels but not checked against people
   (the 1,500-post random arm measured what those filters missed, by the
   same Opus reading). The headline gaps keep their signs and order under all
-  four definitions; the levels do not all hold. Against the old
-  keyword-or-Haiku default, 11 of 30 tier-phase cells move by more than
-  0.1 (up to 0.31), and the religious tier's late phases are too sparse
+  four definitions over the whole war; in the standoff alone pro-war
+  MAGA's lead over the administration does not, and the levels do not all
+  hold. Against the old keyword-or-Haiku default, 13 of 35 tier-phase
+  cells move by more than 0.1 (up to 0.31), and the religious tier's late phases are too sparse
   to read under any definition (see *Robustness checks*).
 - The sixth phase is open: its cells rest on 20 days and few war posts
   (41 and 44 for the MAGA camps, 31 for the administration, 13 for
