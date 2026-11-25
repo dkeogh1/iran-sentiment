@@ -179,10 +179,11 @@ def _two_estimator_rows() -> pd.DataFrame:
 
 
 def test_replies_json_takes_the_estimator_of_record(tmp_path, monkeypatch, caplog):
-    """settings.REPLY_POPULATION_ESTIMATOR names the published columns. Its
-    default, "assisted", writes the same replies.json as before greg_* was
-    there, byte for byte; "greg" switches every corrected figure; any other
-    name is refused before export-web writes a file."""
+    """settings.REPLY_POPULATION_ESTIMATOR names the published columns: "greg"
+    since 2026-11-25 (the owner's call). "assisted" writes the same
+    replies.json as before greg_* was there, byte for byte; "greg" reads every
+    corrected figure from its own columns; any other name is refused before
+    export-web writes a file."""
     monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
     pd.DataFrame(
         {"id": ["1"], "tracked_slug": ["ceasefire"], "text": ["no war"], "score_transformer": [0.2]}
@@ -193,7 +194,8 @@ def test_replies_json_takes_the_estimator_of_record(tmp_path, monkeypatch, caplo
     def written(name) -> str:
         return we._write(tmp_path, name, we.replies()).read_text()
 
-    assert settings.REPLY_POPULATION_ESTIMATOR == "assisted"
+    assert settings.REPLY_POPULATION_ESTIMATOR == "greg"
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "assisted")
     default = written("default.json")
     assert we.replies() == [
         {
@@ -213,7 +215,7 @@ def test_replies_json_takes_the_estimator_of_record(tmp_path, monkeypatch, caplo
         }
     ]
     full, rp = rp, rp[[c for c in rp if not c.startswith("greg_")]]
-    assert written("without.json") == default  # no greg_* column is read by default
+    assert written("without.json") == default  # "assisted" reads no greg_* column
     rp = full
     monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "greg")
     row = we.replies()[0]

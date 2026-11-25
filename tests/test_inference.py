@@ -570,11 +570,13 @@ def test_greg_is_nan_where_the_coverage_is(reply_files):
     assert list(r.columns[-12:]) == greg  # after every published column
 
 
-def test_published_reply_estimator_is_assisted_until_the_owner_switches_it(monkeypatch):
-    assert settings.REPLY_POPULATION_ESTIMATOR == "assisted"
-    assert inf.published_reply_estimator() == "assisted"
-    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "greg")
+def test_published_reply_estimator_is_the_one_the_owner_set(monkeypatch):
+    # Fitted-slope GREG since 2026-11-25 (docs/decisions.md); the slope-1
+    # "assisted" stays a choice, never another name.
+    assert settings.REPLY_POPULATION_ESTIMATOR == "greg"
     assert inf.published_reply_estimator() == "greg"
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "assisted")
+    assert inf.published_reply_estimator() == "assisted"
     monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "opus")
     with pytest.raises(ValueError, match="REPLY_POPULATION_ESTIMATOR 'opus'"):
         inf.published_reply_estimator()

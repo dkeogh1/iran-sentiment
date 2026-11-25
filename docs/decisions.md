@@ -4,6 +4,74 @@ Newest first: what was decided, why, and what was rejected. The numbers
 behind the stance-model entries are in README *Stance-model experiments* and
 [k8s/README.md](../k8s/README.md).
 
+## 2026-11-25: The reply correction fits its own slope (GREG)
+
+- **Decision (the owner's call, approved 2026-11-25):** the published
+  corrected reply figures are `reply-population`'s `greg_*` columns
+  (`settings.REPLY_POPULATION_ESTIMATOR = "greg"`), not the slope-1
+  `assisted_*`. This closes the question the 2026-11-23 entries left open.
+- **The estimator:** per (post, RoBERTa bucket), the Opus labels' mean plus
+  slope times (the census column's mean over the bucket - its mean over the
+  draws), weighted over the post's buckets. The slope is fit per post by
+  weighted least squares, pooled within its buckets, and refit in every
+  bootstrap replicate, on the same resamples and finite-population
+  correction as the other columns. The mean is regressed on the column; the
+  shares jointly on its pro and anti bands, so they sum to 1. Slope 1 gives
+  `assisted_*`, slope 0 the direct `opus_*`. A bucket with under
+  `REPLY_GREG_MIN_BUCKET_DRAWS` (10) draws would stay out of the slope fit
+  (the smallest real one has 157). The ALL row is the posts' estimates
+  weighted by size. It reuses `reply-crowd`'s slope code
+  (`reply_crowd.population_greg`; commit 5c88e4f, off by default).
+- **Evidence** (`reply_population_score_ctx_crossfit_v2.csv`, four figures
+  on ten posts, 95% interval widths):
+  - Wider than direct: `assisted` in 18 of the 40 cases (mean 1, pro 4,
+    anti 6, neutral 7; worst ceasefire's anti-war share, 37% wider, and
+    hold_off_attack's, 27%), `greg` in one (massie_hegseth's pro-war share,
+    0.0445 against 0.0428, by 0.0017). On ALL, `assisted` was wider for the
+    anti-war (11%) and neutral (3%) shares; `greg` is narrower for all four
+    (mean 35%, pro 18%, anti 7%, neutral 8%).
+  - `greg` against `assisted`: narrower in all 40, by 3-27% on the mean,
+    1-11% pro, 3-30% anti, 1-15% neutral; ALL by 7%, 10%, 16% and 10%.
+  - Estimates: none leaves its `assisted` interval. The largest moves are
+    deal_complete's anti-war share (48.74% to 47.84%, -0.90 points) and
+    massie_hegseth's mean (+0.0381 to +0.0311, -0.0071). The largest gap to
+    the direct estimate on a share falls from 1.4 points (deal_complete
+    anti) to 0.7 (massie_hegseth anti).
+- **What it changes:** README's population table and every corrected reply
+  figure quoted from it, and export-web's replies.json with the dkweb
+  post's reply numbers. ALL (assisted -> greg): mean +0.101 [+0.093,
+  +0.108] -> +0.101 [+0.094, +0.107], pro-war 42.6% [41.8%, 43.4%] ->
+  42.7% [42.0%, 43.4%], anti-war 27.6% [26.7%, 28.5%] -> 27.4% [26.7%,
+  28.2%], neutral 29.8% [29.0%, 30.8%] -> 29.9% [29.1%, 30.7%].
+  deal_complete: pro-war 25.4% -> 25.5%, anti-war 48.7% -> 47.8%.
+  hold_off_attack: pro-war 68.5% -> 68.5% (68.53 -> 68.47, so 69% -> 68%
+  rounded), anti-war 11.2% -> 11.7%. No published sign or lean changes.
+  Against the figures published before 2026-11-23 (distilled census, slope
+  1), one estimate is outside its interval of then: trump_strait's mean,
+  +0.126 against +0.106 [+0.091, +0.123].
+- **What it does not change:** the labels, draws, census
+  (`REPLY_POPULATION_COL`) and direct columns; `assisted_*` stays in the
+  CSV. The first-draw, v2b and distilled-census files, and the corrected
+  figures README quotes from them (v2b's corrected shares, the first draws
+  against the pooled ones), were computed at slope 1 and stay as they are;
+  the paired v2 - v2b differences are the labels alone. `reply-loyalty`
+  (direct) and `reply-crowd` (direct, with its own GREG check) do not move.
+- **In the code:** the setting's default moved from "assisted" to "greg"
+  and the two tests that pinned it were updated:
+  `test_published_reply_estimator_is_the_one_the_owner_set`
+  (tests/test_inference.py) and
+  `test_replies_json_takes_the_estimator_of_record`
+  (tests/test_web_export.py).
+- **Rejected:**
+  - keeping slope 1: wider than the labels alone in 18 of 40 cases, so the
+    census made those figures worse;
+  - publishing the direct estimates only: the labels alone are unbiased, but
+    their interval is wider than `greg`'s in 39 of the 40 cases (ALL's
+    mean by 53%);
+  - a GREG for the published first-draw history: those files are kept as
+    published, each compares two draw or label sets on one estimator, and
+    the first draws leave at most 50 a bucket for the slopes.
+
 ## 2026-11-23: The owner's calls on the reply figures and the post
 
 The owner's calls, made the same day on the questions the two entries
@@ -53,8 +121,8 @@ recommendations, taken as put.
   revives it (AGENTS.md *Where things run*). The test stubs carry no cross-fit
   column, so the tests set the column back to `score_opus_distilled`
   (`tests/conftest.py`).
-- **The slope-1 assisted estimator is still the owner's call.** The
-  reply-crowd entry below recorded that its intervals were wider than
+- **The slope-1 assisted estimator is still the owner's call** (settled
+  2026-11-25, above). The reply-crowd entry below recorded that its intervals were wider than
   direct (the labels alone) on five posts and left the fix (GREG, or
   direct only) to the owner. It was not among the three recommendations
   taken today, so it stays open (docs/STATUS.md *Open*). On the cross-fit

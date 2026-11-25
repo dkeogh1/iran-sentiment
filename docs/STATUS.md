@@ -178,9 +178,13 @@ Two layers at different depths. Nothing runs on a schedule.
   `score_ctx_crossfit` (`settings.REPLY_POPULATION_COL`; below), written
   to `reply_population_score_ctx_crossfit_v2.csv`: same estimates (none
   moved outside its old interval), narrower intervals (the pooled mean's
-  by 23%). The distilled-census file,
+  by 23%, at slope 1). Since 2026-11-25 (the owner's call) the published
+  corrected columns are `greg_*`, the same correction with its slope fit
+  per post (`settings.REPLY_POPULATION_ESTIMATOR`; *Open*). The
+  distilled-census file,
   `reply_population_score_opus_distilled_v2.csv`, is kept as history, and
-  the first-draw and v2b files stay on it. `score_ctx_crossfit` is the
+  the first-draw and v2b files stay on it, at slope 1 (`assisted_*`).
+  `score_ctx_crossfit` is the
   parent-post reply scorer cross-fitted on the 11,425 pooled v2 labels
   (2026-11-23, `reply-crossfit-ctx` on dkbl2's 3080, 4 h 1 min, free):
   every reply with text is scored by a fit that never saw its post's
@@ -324,8 +328,10 @@ posts:
   `REPLY_POPULATION_FRESH_DRAWS`; ten posts the user's call), with v2b
   beside them where the praise rule matters. The correction's census is
   `score_ctx_crossfit` since 2026-11-23 (`settings.REPLY_POPULATION_COL`,
-  the owner's call). `reply-crowd`'s record is its post-stratified direct
-  estimator; its GREG is a check.
+  the owner's call), and its estimator the fitted-slope GREG since
+  2026-11-25 (`settings.REPLY_POPULATION_ESTIMATOR = "greg"`, the owner's
+  call; `assisted`, slope 1, before). `reply-crowd`'s record is its
+  post-stratified direct estimator; its GREG is a check.
 - **Phases and weights** (2026-11-22): six phases, the sixth rolling to
   `ANALYSIS_END` (AGENTS.md *Phases and the analysis window*); raw, every
   post weighing 1, is the record, and `phases --weights design|volume`
@@ -378,7 +384,10 @@ posts:
   2026-11-23 (`docs/decisions.md`): the branch merged to `main` that day,
   with the post dated 2026-11-23 (it never launched, so no update note);
   the description stays; the decomposition chart stays strikes ->
-  "midterm hold" (`settings.WEB_DECOMPOSITION_PHASE`). Still open:
+  "midterm hold" (`settings.WEB_DECOMPOSITION_PHASE`). On 2026-11-25
+  replies.json was re-exported on the fitted-slope correction and the
+  post's reply numbers updated with it, in dkweb's `main` checkout (the
+  post's date, 2026-11-23, left to the owner). Still open:
   launching, the owner's step. Under the Opus flag
   @Pontifex (16 war posts) and @USCCB (15) fall under
   `WEB_MIN_ACCOUNT_POSTS` (20), so the account charts show 15 accounts, not
@@ -396,17 +405,18 @@ posts:
   The GPU namespace was deleted after the pull (2026-11-23); reviving it
   is in AGENTS.md *Where things run*, and every reply refresh now needs
   it (*What a refresh needs*).
-- **The slope-1 assisted estimator** (`reply-population`'s `assisted_*`,
-  the published corrected figures): whether to fix it, by GREG with an
-  estimated slope or by publishing direct only, is the owner's call
-  (`docs/decisions.md` 2026-11-23, reply-crowd's *Owner's calls*). A fix
-  moves the published reply intervals. On the cross-fit census its
-  interval is wider than direct (`opus_*`) on one post's mean
-  (massie_hegseth, by 0.0002), four posts' pro-war shares (by up to
-  0.006), six posts' anti-war shares and the ALL row's (ceasefire 37%
-  wider, hold_off_attack 27%, deal_complete and power_plant_day 14%,
-  trump_strait 7%, civilisation_dies 5%; ALL 11%) and seven posts'
-  neutral shares and the ALL row's (by at most 0.003).
+- **The slope-1 assisted estimator: done 2026-11-25** (the owner's call,
+  `docs/decisions.md`). The published corrected reply figures are
+  `reply-population`'s `greg_*` columns, whose slope is fit per post
+  (`settings.REPLY_POPULATION_ESTIMATOR = "greg"`); `assisted_*` stays in
+  the CSV. At slope 1 the interval was wider than direct (`opus_*`) in 18
+  of the 40 figure-post cases; with the fitted slope in one
+  (massie_hegseth's pro-war share, by 0.0017), and narrower than at slope 1
+  in all 40 and on every ALL figure. The largest move on a share is 0.9
+  points (deal_complete's anti-war share, 48.7% to 47.8%). README, the
+  dkweb post's text and its replies.json carry the new figures; the
+  first-draw, v2b and distilled-census files stay at slope 1.
+  `reply-loyalty` and `reply-crowd` do not move.
 - **Phase 6 is open.** It closes at the next regime change (major
   US/Israeli strikes resume or a deal is signed) or on 2027-01-02,
   whichever comes first, the user's call; its last day then goes into

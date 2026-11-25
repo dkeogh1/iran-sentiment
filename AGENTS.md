@@ -210,7 +210,8 @@ python -m src.cli phases     # tier x phase stance with CIs, split into war post
                              #   [--source x|trump] [--by tier|user] [--topic opus|either|llm|keyword]
                              #   [--score score_opus_stance|score_opus55|...] (post-label columns)
                              #   [--weights none|design|volume] (X window weights; none is the record)
-python -m src.cli reply-population  # reply audience's Opus stance per post, direct and corrected (free)
+python -m src.cli reply-population  # reply audience's Opus stance per post, direct and corrected
+                                    #   (slope fit per post: greg, published; slope 1: assisted) (free)
                                     #   [--labels v1|v2|v2b] [--first-draws]; v2 pools the fresh draws;
                                     #   census --col defaults to settings.REPLY_POPULATION_COL
 python -m src.cli reply-label report --job v2b  # v2 vs v2b, paired on the first draws (free)
@@ -410,7 +411,17 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   (63% vs 49% for the v2 Opus labels on the 1,157 labelled replies with
   text), and `score_ctx_crossfit`'s level is off per post.
   `reply-population`'s direct columns (`opus_*`) weight the labels alone
-  by bucket. The correction's
+  by bucket. Its published corrected columns are
+  `settings.REPLY_POPULATION_ESTIMATOR`'s: `greg` since 2026-11-25 (the
+  owner's call, [docs/decisions.md](docs/decisions.md)), a GREG whose slope
+  is fit per post, pooled within its buckets and refit in every replicate,
+  with the three shares fit together so they sum to 1; a bucket under
+  `REPLY_GREG_MIN_BUCKET_DRAWS` (10) draws stays out of the slope fit.
+  `assisted_*` (slope fixed at 1, published until then) stays in the CSV
+  and is the estimator of the first-draw, v2b and distilled-census CSVs,
+  which are history: read their `assisted_*` columns, never set one against
+  a `greg_*` figure as a change in the labels. Changing the setting moves
+  published figures: the owner's call. The correction's
   census is `settings.REPLY_POPULATION_COL`: `score_ctx_crossfit` since
   2026-11-23 (the owner's call, [docs/decisions.md](docs/decisions.md);
   same estimates, narrower intervals), `score_opus_distilled` before. It is
@@ -425,7 +436,9 @@ k8s/, scripts/k8s/   GPU experiment Jobs
   them: that is a full cross-fit into a new column (~4 h for ten folds),
   and moving `REPLY_POPULATION_COL` to it is the owner's call. The
   first-draw and v2b CSVs stay on `score_opus_distilled`
-  (`--col score_opus_distilled` reproduces them). The tests pin the column
+  (`--col score_opus_distilled` reproduces them in its `assisted_*` columns;
+  a rerun also adds `greg_*` to the file, and prints that as the
+  Opus-corrected table). The tests pin the column
   to `score_opus_distilled` (`tests/conftest.py`): their stubs have no
   cross-fit column.
 - Reply label files: one per prompt, model and id source
@@ -452,7 +465,8 @@ k8s/, scripts/k8s/   GPU experiment Jobs
 - `reply-loyalty` (inference.reply_loyalty, free) is the loyalty gradient:
   the Opus stance of low-, medium- and high-loyalty repliers and high minus
   low per post, pooled and within posts, on reply-population's sample,
-  weights and intervals. A replier's tier takes the account's age on
+  weights and intervals (the direct estimator: no `greg` or `assisted`
+  correction). A replier's tier takes the account's age on
   `settings.LOYALTY_REFERENCE_DATE` (2026-11-01, fixed, so tiers move with
   neither the run date nor `ANALYSIS_END`; an account created after it is
   age 0, with a logged count); event-study's loyalty table still uses the
@@ -772,7 +786,10 @@ date and description are the owner's calls. `replies.json` pools the
 fresh draws (`REPLY_POPULATION_FRESH_DRAWS`; 11,344 draws on ten posts
 since 2026-11-22) on the census of `settings.REPLY_POPULATION_COL`
 (`score_ctx_crossfit` since 2026-11-23), so new replies need the GPU
-cross-fit before export-web. export-web warns only when it exports
+cross-fit before export-web. Its corrected figures are those of
+`settings.REPLY_POPULATION_ESTIMATOR` (`greg` since 2026-11-25; export-web
+refuses any name but `greg` or `assisted`), and the post's reply numbers
+change with the JSON. export-web warns only when it exports
 without the fresh draws. Stance colours are dkweb's `--viz-anti` / `--viz-pro` / `--viz-neutral` tokens in
 `global.css`.
 

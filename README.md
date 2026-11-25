@@ -21,10 +21,12 @@ Jan 2 (`docs/decisions.md`, 2026-11-22); it has its own section below
 (*After the midterms*). The phase tables, both figures, the per-account
 whole-war means and the replies are from the Nov 22 run; the corrected
 reply figures were rerun on Nov 23 on a better census scorer (same
-estimates, narrower intervals), and the split of who came back in
-November is from that day. The per-account CSV and the alternate topic
-definitions and scorers were rerun on six phases on Nov 25 (*Robustness
-checks* says which claims that changed). The whole-war tier table's point
+estimates, narrower intervals) and on Nov 25 with a correction that fits
+its own slope (the largest moves are 0.9 points on a share and 0.007 on
+a mean), and the split of who came back in November is from Nov 23. The
+per-account CSV and the alternate topic definitions and scorers were
+rerun on six phases on Nov 25 (*Robustness checks* says which claims that
+changed). The whole-war tier table's point
 estimates are pooled from the Nov 22 run's phase cells; its intervals and
 RoBERTa column, and the contrasts between two later phases, are still the
 Nov 3 run over Feb 1 -- Nov 1 and say so; the second rater, Opus 5.5, has
@@ -684,66 +686,92 @@ fresh draws made the same way (1,000 per post, kept fixed in
 `reply_sample_draws_fresh.parquet`; 8,000 drawn on Nov 2 for the eight
 posts, 7,995 labelled that day and 5 already labelled, and 2,000 on
 Nov 22 for the two November posts). They are weighted back to each post's count of replies with
-text, and a census scorer's figure is shifted by the weighted gap
-between Opus and that scorer on them (`python -m src.cli
-reply-population`, which writes
-`reply_population_score_ctx_crossfit_v2.csv`; 95% intervals from
-resampling within buckets, with a finite-population correction per
-bucket). Since Nov 23 the census is not the distilled model but the
+text by sentiment bucket, and the labels' figure in each bucket is moved by the gap between a
+census scorer's average over every reply in the bucket and over the
+draws there, times a slope fitted to that post's draws (a GREG estimator:
+the slopes are refitted in every bootstrap replicate, and the three
+shares are fitted together so they sum to 1). `python -m src.cli
+reply-population` does it and writes
+`reply_population_score_ctx_crossfit_v2.csv` (the `greg_*` columns; 95%
+intervals from resampling within buckets, with a finite-population
+correction per bucket).
+
+The slope has been fitted since Nov 25. Before that it was fixed at 1 (the
+scorer's figure shifted by its weighted gap to Opus; `assisted_*`, still
+in the CSV), which trusts the scorer too far where its pro, anti and
+neutral bands fit the labels' badly. Its level on a post is often off, so
+its anti-war cut can miss the labels' even on a post where it ranks the
+replies well: on the ceasefire it calls 69% of them anti-war where the
+labels say 22%. The interval came out wider than the labels alone give in
+18 of the 40 cases (four figures on ten posts), all but one of them
+shares and six of them anti-war shares (by 37% on the ceasefire). With
+the fitted slope it is wider in one (the Hegseth post's pro-war share, by
+0.17 points) and narrower than at slope 1 in all 40: on the ten posts
+together by 7% on the mean, 10% on the pro-war and 16% on the anti-war
+share. The largest moves are 0.9 points on a share and 0.007 on a mean,
+none outside its slope-1 interval (`docs/decisions.md`, 2026-11-25).
+
+Since Nov 23 the census is not the distilled model but the
 parent-post reply scorer cross-fitted on the pooled v2 labels
 (`score_ctx_crossfit`, see *Stance-model experiments*): each post's
 replies are scored by a fit that never saw that post's labels, so its
 errors on the draws are out of sample, as the correction needs. It
 tracks the labels within a post better than the distilled model on eight
-of the ten posts (worse on Power Plant Day), so each figure's interval is
-narrower on nine of them (the pooled mean's by 23%), and the correction
-removes its per-post level offsets, so the estimates are the same: no
-post's moved outside its old interval, and none by more than 0.023 on
-the mean or 2.4 points on a share (`docs/decisions.md`, 2026-11-23). The
-figures published before Nov 23, on the distilled model's census, are
-kept in `reply_population_score_opus_distilled_v2.csv`; the *Model
+of the ten posts (worse on Power Plant Day), so, both measured at slope
+1, the mean's interval and the pro-war share's are narrower on nine of
+them (the pooled mean's by 23%), and the correction removes its per-post
+level offsets, so the estimates are the same: no post's moved outside
+its old interval, and none by more than 0.023 on the mean or 2.4 points
+on a share (`docs/decisions.md`, 2026-11-23). The figures published
+before Nov 23, on the distilled model's census at slope 1, are kept in
+`reply_population_score_opus_distilled_v2.csv`. Both changes together
+move no figure by more than 0.022 on the mean or 2.3 points on a share,
+and one out of its interval of then: TRUMP STRAIT's mean, +0.126 against
++0.106 [+0.091, +0.123]. The *Model
 stance* column is still the distilled model's own reading. The estimand
 is the replies with text: the 7,028 replies with none (an image or GIF,
 or one or two characters) are left out, not imputed.
 `reply-population --first-draws --col score_opus_distilled` gives the
-table published before Nov 2, on the first draws alone; the fresh draws cut the
+table published before Nov 2, on the first draws alone, in its
+`assisted_*` columns; the fresh draws cut the
 intervals about threefold (the eight posts' anti-war share: 28% [25%,
 31%] on the first draws, 29% [28%, 30%] pooled; rerun on Nov 25 over all
 ten posts, 26% [22%, 29%] on the 1,344 first draws against 27% [26%, 28%]
-pooled). That comparison and the
-v2b figures below (the praise rule) were run on the distilled model's
-census and stay there (`--col score_opus_distilled`): each compares two
-draw or label sets on one census.
+pooled). That comparison and the corrected v2b figures below (the
+praise rule) were run on the distilled model's census with the slope-1
+correction and stay there (`--col score_opus_distilled`): each compares
+two draw or label sets on one census and one estimator. The paired
+v2 - v2b differences below are the labels alone.
 
 | Post | Replies | RoBERTa valence | Model stance | **Opus-corrected stance** | Anti-war | Pro-war |
 |---|--:|--:|--:|--:|--:|--:|
-| "Power Plant Day" rant | 22,109 | -0.255 | +0.036 | +0.06 [+0.04, +0.08] | 32% | 37% |
-| "Whole civilisation will die" | 15,282 | -0.387 | -0.011 | -0.08 [-0.10, -0.05] | **45%** | 36% |
-| Two-week ceasefire | 15,978 | -0.328 | +0.195 | +0.23 [+0.21, +0.25] | 23% | 58% |
-| "Hold off on our planned Military attack" | 8,420 | **-0.498** | +0.237 | **+0.42** [+0.40, +0.43] | 11% | **69%** |
-| "The Deal with Iran is now complete" | 11,979 | +0.200 | +0.222 | -0.09 [-0.11, -0.08] | **49%** | 25% |
-| "These fools, who think I haven't been tough enough" | 3,913 | -0.428 | +0.079 | +0.15 [+0.13, +0.17] | 13% | 39% |
-| "Striking Iranian Targets near Hormuz" | 4,193 | -0.273 | +0.322 | **+0.42** [+0.40, +0.44] | 20% | 68% |
-| "Change the name Hormuz Strait to TRUMP STRAIT" | 10,432 | -0.057 | +0.058 | +0.12 [+0.11, +0.13] | 14% | 48% |
-| "Pete Hegseth should be praised, not Impeached" | 4,421 | -0.387 | +0.072 | +0.04 [+0.03, +0.05] | 9% | 30% |
-| "We don't need a deal with Iran" | 4,649 | -0.363 | +0.024 | +0.04 [+0.03, +0.04] | 6% | 12% |
-| All ten | 101,376 | | +0.109 | +0.10 [+0.09, +0.11] | 28% | 43% |
+| "Power Plant Day" rant | 22,109 | -0.255 | +0.036 | +0.06 [+0.04, +0.08] | 32% | 38% |
+| "Whole civilisation will die" | 15,282 | -0.387 | -0.011 | -0.08 [-0.10, -0.06] | **45%** | 36% |
+| Two-week ceasefire | 15,978 | -0.328 | +0.195 | +0.23 [+0.21, +0.25] | 22% | 58% |
+| "Hold off on our planned Military attack" | 8,420 | **-0.498** | +0.237 | **+0.42** [+0.41, +0.43] | 12% | **68%** |
+| "The Deal with Iran is now complete" | 11,979 | +0.200 | +0.222 | -0.09 [-0.11, -0.08] | **48%** | 26% |
+| "These fools, who think I haven't been tough enough" | 3,913 | -0.428 | +0.079 | +0.15 [+0.14, +0.17] | 13% | 39% |
+| "Striking Iranian Targets near Hormuz" | 4,193 | -0.273 | +0.322 | **+0.42** [+0.40, +0.44] | 20% | **68%** |
+| "Change the name Hormuz Strait to TRUMP STRAIT" | 10,432 | -0.057 | +0.058 | +0.13 [+0.12, +0.14] | 14% | 49% |
+| "Pete Hegseth should be praised, not Impeached" | 4,421 | -0.387 | +0.072 | +0.03 [+0.02, +0.04] | 9% | 29% |
+| "We don't need a deal with Iran" | 4,649 | -0.363 | +0.024 | +0.03 [+0.03, +0.04] | 6% | 12% |
+| All ten | 101,376 | | +0.109 | +0.10 [+0.09, +0.11] | 27% | 43% |
 
 - **The audience leans pro-war overall, though not on every post.**
-  Across all ten posts it is 43% [42%, 43%] pro-war to 28% [27%, 28%]
+  Across all ten posts it is 43% [42%, 43%] pro-war to 27% [27%, 28%]
   anti (mean +0.10 [+0.09, +0.11]). The other 30% take no position on
   the war; the distilled model's own scores leave only 13% neutral and
   call 55% pro-war. Eight
   of the ten posts have more pro-war than anti-war replies. On the eight
   posts from April to September alone, the basis published on Nov 2 (on
-  the distilled model's census), it was 45% [44%, 46%] to 29% [28%, 30%]
-  (mean +0.11 [+0.10, +0.12]): the two November posts pull the pooled
+  the distilled model's census, at slope 1), it was 45% [44%, 46%] to
+  29% [28%, 30%] (mean +0.11 [+0.10, +0.12]): the two November posts pull the pooled
   shares toward neutral.
 - **The November audiences mostly take no side on the war.** Opus finds
   no position on the war in 62% of the replies to "praised, not
   Impeached" and 82% of those to "We don't need a deal", against 12% to
-  49% on the eight earlier posts. What they do take leans pro-war: 30%
-  to 9% (mean +0.04 [+0.03, +0.05]) and 12% to 6% (+0.04 [+0.03,
+  49% on the eight earlier posts. What they do take leans pro-war: 29%
+  to 9% (mean +0.03 [+0.02, +0.04]) and 12% to 6% (+0.03 [+0.03,
   +0.04]). Both posts are mainly domestic politics with Iran in a line:
   the first attacks Rep. Thomas Massie for trying to impeach Hegseth,
   citing "TWO VICTORIES, Venezuela and Iran"; the second moves Vance off
@@ -753,29 +781,30 @@ draw or label sets on one census.
   (RoBERTa -0.39 and -0.36, more negative than five of the eight earlier
   posts, which run from +0.20 to -0.50): tone, not stance.
 - **Stance and tone diverge most on May 18.** The angriest post by
-  valence (-0.50) has one of the two most hawkish audiences: 69% pro-war
-  to 11% anti, mean +0.42 [+0.40, +0.43], level on the mean with the
+  valence (-0.50) has one of the two most hawkish audiences: 68% pro-war
+  to 12% anti, mean +0.42 [+0.41, +0.43], level on the mean with the
   September strikes post (+0.42 [+0.40, +0.44], 68% to 20%) and ahead of
   it on pro-war minus anti-war (57 points against 47). The base was
   furious *that Trump held off*.
 - **The June deal post has more anti-war than pro-war replies, by the
-  praise rule**: 49% to 25%, mean -0.09 [-0.11, -0.08]. Read against the
+  praise rule**: 48% to 26%, mean -0.09 [-0.11, -0.08]. Read against the
   post, cheering the deal counts as backing de-escalation. Without that
-  rule (v2b: the same prompt without it, on the first draws) the same
-  audience is 15% anti-war to 35% pro-war, mean +0.12 [+0.04, +0.21]; on
+  rule (v2b: the same prompt without it, on the first draws, at slope 1)
+  the same audience is 15% anti-war to 35% pro-war, mean +0.12 [+0.04, +0.21]; on
   the replies both label, the rule moves the post's mean by -0.161
   [-0.198, -0.125] and its anti-war share from 19% to 46%. Under the
   first labels, which never saw the post, the same audience came out 63%
   pro-war (see below).
-- **"Civilisation will die" leans anti-war**: 45% [42%, 48%] anti to
-  36% [34%, 38%] pro, mean -0.08 [-0.10, -0.05]. The NYT's "majority
+- **"Civilisation will die" leans anti-war**: 45% [43%, 47%] anti to
+  36% [34%, 38%] pro, mean -0.08 [-0.10, -0.06]. The NYT's "majority
   critical" reading of that post was about tone; on stance the anti-war
-  share is not a majority (its interval stops at 48%).
+  share is not a majority (its interval stops at 47%).
 - **Loyal repliers are more hawkish, except on the deal.** `reply-loyalty`
   gives the Opus stance of low-, medium- and high-loyalty repliers (tiers
-  from each replier's bio and account age on Nov 1), design-weighted like
-  the table: +0.071, +0.117 and +0.198 across the ten posts, high minus
-  low +0.128 [+0.08, +0.17] (+0.118 [+0.06, +0.17] within posts; on the
+  from each replier's bio and account age on Nov 1), design-weighted by
+  bucket from the labels alone (no correction, unlike the table): +0.071,
+  +0.117 and +0.198 across the ten posts, high minus low +0.128
+  [+0.08, +0.17] (+0.118 [+0.06, +0.17] within posts; on the
   eight earlier posts +0.145 [+0.10, +0.20] and +0.125 [+0.07, +0.18]).
   On the two November posts it is small (+0.06 [+0.02, +0.10] and +0.03
   [-0.03, +0.07]). The gap
@@ -860,8 +889,9 @@ the ten tracked posts, a one-off to none. For the split, the late period
 is the posts of phase 6 and the earlier period every post before it; an
 account seen in both periods replied in both. The estimates use the Opus
 labels alone (Opus direct), post-stratified by group within each post's
-sentiment buckets on the known reply counts, so they differ by a point
-or two from the corrected table. Each period's posts weigh by their
+sentiment buckets on the known reply counts, so they are not quite the
+corrected figures (the two periods' no-side and pro-war shares come out
+within half a point of them). Each period's posts weigh by their
 size, and the change is exactly the term for accounts seen in both
 periods (the change in their replies' shares) plus turnover (the
 one-period groups' gaps to the accounts seen in both on the same posts,
@@ -902,7 +932,8 @@ the hold-off post the change runs the other way: angry replies, which v1
 often scored anti-war, now read against the post as wanting the strike
 (of the 19 sampled replies Haiku files as `pro_war_critical`, v1 called
 26% anti-war, v2 5%), and the post's estimate went from +0.07 to +0.37
-on the first draws (+0.42 with the fresh ones).
+on the first draws (+0.41 with the fresh ones, on the same distilled
+census at slope 1; +0.42 in the table above).
 
 **The praise rule, measured.** v2b (Nov 2, `reply-label report --job
 v2b`) is the v2 prompt without the praise rule, on the same 1,157
@@ -910,14 +941,14 @@ replies of the eight posts from April to September. The two agree at 0.95 Pearso
 and the rule matters on two posts. On the deal post it moves the
 anti-war share from 19% to 46% (above). On TRUMP STRAIT it works the
 other way, praise for the post taking its hawkish position: without the
-rule the corrected pro-war share on the first draws falls from 49% to
-31%, and the mean moves -0.070 [-0.089, -0.051] on the paired draws.
-Across all eight posts the rule moves the mean by only -0.012 [-0.022,
--0.003] and the anti-war share from 21% to 27% (the Nov 3 run; the Nov 25
-rerun gives the same per-post figures and no pooled one, as the two
-November posts have no v2b label). Without the rule all
-eight posts lean pro-war on the corrected shares. The rule stays in the
-labels of record
+rule the corrected pro-war share on the first draws (at slope 1) falls
+from 49% to 31%, and the mean moves -0.070 [-0.089, -0.051] on the paired
+draws. Across all eight posts the rule moves the mean by only -0.012
+[-0.022, -0.003] and the anti-war share from 21% to 27% (the labels
+alone, paired; the Nov 3 run; the Nov 25 rerun gives the same per-post
+figures and no pooled one, as the two November posts have no v2b label).
+Without the rule all eight posts lean pro-war on the corrected shares
+(first draws, at slope 1). The rule stays in the labels of record
 (`docs/decisions.md`, 2026-11-02): a reply that cheers a deal does
 oppose escalation.
 
@@ -1472,12 +1503,18 @@ and it guesses the level wrong. So its scores do not compare across
 posts, and it is no scorer of record. As the census of the Opus
 correction it is better, because the correction removes each post's
 offset and how well it tracks the labels within a post sets the
-interval: the corrected mean's interval narrows on nine posts (by 30-45%
+interval: at slope 1, the correction published then, the corrected
+mean's interval narrows on nine posts (by 30-45%
 on the ceasefire, hold-off, deal and both November posts) and widens on
 Power Plant Day (by 6%), and the pooled mean's narrows by 23%; the
 pro-war share's narrows on nine (widens by 9% on the September strikes)
-and pooled by 21%. It has been that census since Nov 23
-(*Population-level stance*). The per-post results are in
+and pooled by 21%. It has been that census since Nov 23, and since Nov 25
+the correction on it fits its own slope, which is narrower than slope 1
+on the same census for every figure on all ten posts
+(*Population-level stance*). Against the distilled census at slope 1,
+Power Plant Day's mean is now 2% narrower and the September strikes'
+pro-war share still 6% wider, the only figure that is. The per-post
+results are in
 `data/models/reply_lopo_pooled/crossfit_score_ctx_crossfit.json`.
 
 **The reply scores came from an overwritten fit (fixed 2026-09-30).**
