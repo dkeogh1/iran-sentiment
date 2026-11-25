@@ -263,6 +263,322 @@ def test_reply_population_defaults_to_the_record_column_and_refuses_unscored_rep
         inf.reply_population(col="score_nope", n_boot=20)
 
 
+# ── greg_*: the correction with an estimated slope ─────────────────
+
+KS = ("mean", "pro", "anti", "neutral")
+GREG_COL = "score_opus_distilled"
+
+
+def _greg_stub(reply_files, model, opus, spec=None, n_per_bucket=40):
+    """Population with a census column model(frame, rng) and labels
+    opus(frame, rng) on n_per_bucket random draws a bucket; returns
+    (replies, labelled draws)."""
+    from src.analysis.event_study import bucket_draws
+
+    reps = _replies(spec or {"p": [-0.9] * 160 + [0.9] * 120, "q": [-0.9] * 70 + [0.9] * 90})
+    rng = np.random.default_rng(3)
+    reps[GREG_COL] = model(reps, rng)
+    reps["truth"] = opus(reps, rng)
+    drawn = bucket_draws(reps, n_per_bucket=n_per_bucket, score_col="score_transformer")
+    drawn = drawn.assign(bucket=inf.stance_bucket(drawn["score_transformer"]).astype(int))
+    drawn[["id", "tracked_slug", "bucket"]].to_parquet(settings.REPLY_DRAWS_MANIFEST, index=False)
+    lab = drawn.assign(score_teacher=drawn["truth"])
+    reply_files(reps.drop(columns="truth"), lab)
+    return reps, lab
+
+
+def _noise(reps, rng):
+    return rng.choice([-0.6, -0.2, 0.0, 0.3, 0.7], len(reps))
+
+
+def _informative(reps, rng):
+    return np.clip(0.5 * reps[GREG_COL] + rng.normal(0, 0.15, len(reps)), -1, 1).round(2)
+
+
+def _wide(r, e, k):
+    return r[f"{e}_{k}_hi"] - r[f"{e}_{k}_lo"]
+
+
+def test_greg_is_the_slope_one_estimate_when_the_slope_is_one(reply_files):
+    # Labels = column + a constant in the critical bucket, the same band;
+    # in the supportive one the column is constant, so only its offset is
+    # off. Slope 1 (and the identity for the shares) in every replicate:
+    # greg = assisted, which is exact here.
+    def model(reps, rng):
+        v = rng.choice([-0.5, 0.0, 0.5], len(reps))
+        return np.where(reps["score_transformer"] < 0, v, 0.5)
+
+    def opus(reps, rng):
+        f = reps[GREG_COL]
+        return np.where(reps["score_transformer"] < 0, np.where(f != 0, f + 0.1, f), 0.0)
+
+    def opus_mean(reps, rng):
+        return np.where(reps["score_transformer"] < 0, reps[GREG_COL] + 0.1, 0.0)
+
+    _greg_stub(reply_files, model, opus)
+    rp = inf.reply_population(n_boot=40).set_index("post")
+    for post in ("p", "q", "ALL"):
+        for k in ("pro", "anti", "neutral"):
+            assert rp.loc[post, f"greg_{k}"] == pytest.approx(rp.loc[post, f"assisted_{k}"])
+            assert _wide(rp.loc[post], "greg", k) < 1e-6
+    _greg_stub(reply_files, model, opus_mean)
+    rp = inf.reply_population(n_boot=40).set_index("post")
+    for post in ("p", "q", "ALL"):
+        for s in ("", "_lo", "_hi"):
+            assert rp.loc[post, f"greg_mean{s}"] == pytest.approx(rp.loc[post, f"assisted_mean{s}"])
+
+
+def test_greg_with_the_slope_forced_to_one_is_assisted_replicate_by_replicate(
+    reply_files, monkeypatch
+):
+    # Noisy labels and column, slopes replaced by 1 (the identity for pro and
+    # anti, -1 -1 for neutral): point and interval are assisted's, so greg
+    # runs on the same resamples and finite-population correction.
+    from src.analysis import reply_crowd as rc
+
+    _greg_stub(reply_files, _noise, _informative)
+    free = inf.reply_population(n_boot=60).set_index("post")
+
+    def ones(S, idx, aux):
+        n = S["a"].shape[1]
+        row = {"mean": [1.0], "mean_sq": [1.0], "pro": [1.0, 0.0], "anti": [0.0, 1.0]}
+        row["neutral"] = [-1.0, -1.0]
+        return {k: np.tile(row[k], (n, 1)) for k in aux}
+
+    monkeypatch.setattr(rc, "_greg_slopes", ones)
+    rp = inf.reply_population(n_boot=60).set_index("post")
+    for post in ("p", "q", "ALL"):
+        for k in KS:
+            for s in ("", "_lo", "_hi"):
+                assert rp.loc[post, f"greg_{k}{s}"] == pytest.approx(
+                    rp.loc[post, f"assisted_{k}{s}"], abs=1e-6
+                )
+                assert rp.loc[post, f"assisted_{k}{s}"] == free.loc[post, f"assisted_{k}{s}"]
+    assert abs(free.loc["p", "greg_mean"] - free.loc["p", "assisted_mean"]) > 1e-3
+
+
+def test_greg_interval_collapses_when_the_column_is_the_labels(reply_files):
+    _greg_stub(reply_files, _noise, lambda reps, rng: reps[GREG_COL])
+    rp = inf.reply_population(n_boot=60).set_index("post")
+    for post in ("p", "q", "ALL"):
+        for k in KS:
+            assert rp.loc[post, f"greg_{k}"] == pytest.approx(rp.loc[post, f"model_{k}"], abs=1e-6)
+            assert _wide(rp.loc[post], "greg", k) < 1e-5
+            assert _wide(rp.loc[post], "opus", k) > 1e-2
+    # Every reply labelled (n = N in every bucket): width 0 with a noise column.
+    _greg_stub(reply_files, _noise, _noise, spec={"p": [-0.9] * 30 + [0.9] * 30})
+    r = inf.reply_population(n_boot=60).set_index("post").loc["p"]
+    for k in KS:
+        assert _wide(r, "greg", k) < 1e-6 and r[f"greg_{k}"] == pytest.approx(r[f"opus_{k}"])
+
+
+def test_greg_with_a_useless_column_is_about_direct(reply_files):
+    _greg_stub(reply_files, lambda reps, rng: 0.3, _noise)  # constant: exactly direct
+    rp = inf.reply_population(n_boot=60).set_index("post")
+    for post in ("p", "q", "ALL"):
+        for k in KS:
+            for s in ("", "_lo", "_hi"):
+                assert rp.loc[post, f"greg_{k}{s}"] == pytest.approx(
+                    rp.loc[post, f"opus_{k}{s}"], abs=1e-6
+                )
+    _greg_stub(  # noise: near direct, and narrower than the slope-1 correction
+        reply_files, _noise, _noise, {"p": [-0.9] * 900 + [0.9] * 900}, n_per_bucket=300
+    )
+    r = inf.reply_population(n_boot=400).set_index("post").loc["p"]
+    for k in KS:
+        half = _wide(r, "opus", k) / 2
+        assert abs(r[f"greg_{k}"] - r[f"opus_{k}"]) < 0.5 * half
+        assert _wide(r, "greg", k) < 1.1 * _wide(r, "opus", k)
+        assert _wide(r, "assisted", k) > 1.2 * _wide(r, "greg", k)
+
+
+def test_greg_shares_sum_to_one_and_all_is_the_posts_weighted_by_size(reply_files):
+    _greg_stub(reply_files, _noise, _informative)
+    rp = inf.reply_population(n_boot=40).set_index("post")
+    total = rp[["greg_pro", "greg_anti", "greg_neutral"]].sum(axis=1)
+    assert np.allclose(total, 1, atol=1e-9)
+    n = rp.loc[["p", "q"], "n_replies"]
+    for k in KS:
+        want = (rp.loc[["p", "q"], f"greg_{k}"] * n).sum() / n.sum()
+        assert rp.loc["ALL", f"greg_{k}"] == pytest.approx(want, abs=1e-6)
+        assert np.isfinite(rp.loc["ALL", f"greg_{k}_lo"])
+
+
+def _brute_greg(reps, smp, seed, n_boot):
+    """Post p's GREG from scratch: _weighted's resamples, weighted least
+    squares with bucket intercepts (lstsq), the census means of the column."""
+    rng = np.random.default_rng(seed)
+    buckets = {b: np.flatnonzero(smp["bucket"] == b) for b in sorted(smp["bucket"].unique())}
+    Nh = reps.groupby("bucket").size()
+    w = np.zeros((len(smp), 1 + n_boot))
+    for b, idx in buckets.items():
+        n, N = len(idx), Nh[b]
+        a = np.sqrt(1 - n / N)
+        pick = rng.integers(0, n, (n_boot, n))
+        c = np.stack([np.bincount(row, minlength=n) for row in pick], axis=1)
+        w[idx, 0] = N / n
+        w[idx, 1:] = N / n * (1 - a + a * c)
+    s = smp["score_teacher"].to_numpy()
+    fl, fp = smp[GREG_COL].to_numpy(), reps[GREG_COL].to_numpy()
+
+    def bands(v):
+        return np.column_stack([v > 0.05, v < -0.05]).astype(float)
+
+    phi = {"mean": s, "pro": s > 0.05, "anti": s < -0.05, "neutral": abs(s) <= 0.05}
+    out = {}
+    for k, y in phi.items():
+        y = y.astype(float)
+        x, X = (fl[:, None], fp[:, None]) if k == "mean" else (bands(fl), bands(fp))
+        D = np.column_stack([x] + [(smp["bucket"] == b).to_numpy(float) for b in buckets])
+        est = []
+        for r in range(1 + n_boot):
+            v, root = w[:, r], np.sqrt(w[:, r])
+            beta = np.linalg.lstsq(D * root[:, None], y * root, rcond=None)[0][: x.shape[1]]
+            mu = 0.0
+            for b, i in buckets.items():
+                census = X[(reps["bucket"] == b).to_numpy()].mean(0)
+                gap = census - np.average(x[i], axis=0, weights=v[i])
+                mu += Nh[b] / len(reps) * (np.average(y[i], weights=v[i]) + beta @ gap)
+            est.append(mu)
+        out[k] = np.array(est)
+    return out
+
+
+def test_greg_matches_reply_crowd_domain_means_and_a_from_scratch_fit(reply_files):
+    from src.analysis import reply_crowd as rc
+
+    reps, lab = _greg_stub(
+        reply_files, _noise, _informative, {"p": [-0.9] * 160 + [0.0] * 90 + [0.9] * 120}
+    )
+    r = inf.reply_population(n_boot=50, seed=11).set_index("post").loc["p"]
+    reps = reps.assign(bucket=inf.stance_bucket(reps["score_transformer"]).astype(int))
+    smp = reps.merge(lab[["id", "score_teacher"]], on="id")
+    brute = _brute_greg(reps, smp, 11, 50)
+
+    def frame(d):
+        return pd.DataFrame(
+            {
+                "id": d["id"],
+                "tracked_slug": "p",
+                "bucket": d["bucket"],
+                "f": d[GREG_COL],
+                "m": 1,
+                "replier": "u" + d["id"],
+            }
+        )
+
+    fr = rc.CrowdFrames(
+        frame(reps), frame(smp).assign(y=smp["score_teacher"]), reps.iloc[:0], GREG_COL, ["p"]
+    )
+    W = rc.replicate_weights(fr.lab, fr.pop, 50, 0, rng=np.random.default_rng(11))
+    ds = rc.domain_means(fr, pd.Series("g", index=fr.pop["id"]), W, assist=True)
+    assert not ds.collapsed and not ds.nan_cells
+    for k in KS:
+        for reps_k in (ds.mean("p", "g", k), brute[k]):
+            for name, v in zip(("", "_lo", "_hi"), inf._ci(reps_k)):
+                assert r[f"greg_{k}{name}"] == pytest.approx(v, abs=1e-6)
+        assert abs(r[f"greg_{k}"] - r[f"assisted_{k}"]) > 1e-4
+
+
+def _labelled_post(reply_files, reps, ids, buckets, truth):
+    """The draws `ids` of one-post `reps`, labelled, as reply_population reads them."""
+    pd.DataFrame({"id": ids, "tracked_slug": "p", "bucket": buckets}).to_parquet(
+        settings.REPLY_DRAWS_MANIFEST, index=False
+    )
+    lab = reps.set_index("id").loc[ids].reset_index()
+    reply_files(reps, lab.assign(score_teacher=truth(lab)))
+
+
+def test_greg_leaves_a_bucket_under_the_minimum_out_of_the_slope(reply_files):
+    # One draw short of the minimum in each bucket: no bucket enters the slope
+    # fit, so greg is direct. At the minimum it enters.
+    reps = _replies({"p": [-0.9] * 40 + [0.9] * 40})
+    rng = np.random.default_rng(5)
+    reps[GREG_COL] = rng.uniform(-1, 1, len(reps)).round(2)
+    least = settings.REPLY_GREG_MIN_BUCKET_DRAWS
+    for n in (least - 1, least):
+        _labelled_post(
+            reply_files,
+            reps,
+            [f"p-{i}" for i in (*range(n), *range(40, 40 + n))],
+            [0] * n + [2] * n,
+            lambda lab: (0.8 * lab[GREG_COL] + rng.normal(0, 0.1, len(lab))).round(2),
+        )
+        r = inf.reply_population(n_boot=30).set_index("post").loc["p"]
+        gap = abs(r["greg_mean"] - r["opus_mean"])
+        assert bool(gap < 1e-6) == (n < least)
+        ends = [f"greg_{k}{s}" for k in KS for s in ("_lo", "_hi")]
+        assert np.isfinite(r[ends].astype(float)).all()
+
+
+def test_greg_does_not_interpolate_a_three_draw_bucket(reply_files):
+    # Three draws covering the column's three bands: the shares' two slopes
+    # and intercept pass through them exactly, in every replicate, and the
+    # interval would have no width. The minimum keeps the bucket out: direct.
+    reps = _replies({"p": [-0.9] * 400 + [0.9] * 400})
+    rng = np.random.default_rng(8)
+    reps[GREG_COL] = rng.choice([-0.6, 0.0, 0.6], len(reps), p=[0.5, 0.2, 0.3])
+    f = [-0.6, 0.0, 0.6, 0.6, -0.6]
+    ids = ["p-0", "p-1", "p-2", "p-400", "p-401"]
+    reps.loc[reps["id"].isin(ids), GREG_COL] = f
+    _labelled_post(reply_files, reps, ids, [0, 0, 0, 2, 2], lambda lab: [-0.5, 0.5, 0.0, 0.5, -0.5])
+    r = inf.reply_population(n_boot=200).set_index("post").loc["p"]
+    for k in KS:
+        for s in ("", "_lo", "_hi"):
+            assert r[f"greg_{k}{s}"] == pytest.approx(r[f"opus_{k}{s}"], abs=1e-6)
+        assert _wide(r, "greg", k) > 0.1
+
+
+def test_greg_leaves_the_published_columns_draws_alone(reply_files):
+    # opus_* and assisted_* are _weighted's on one generator walked through the
+    # posts and then ALL: greg, which runs between them, draws nothing from it.
+    reps, lab = _greg_stub(reply_files, _noise, _informative)
+    rp = inf.reply_population(n_boot=60, seed=11).set_index("post")
+    reps = reps.assign(bucket=inf.stance_bucket(reps["score_transformer"]).astype(int))
+    smp_all = reps.merge(lab[["id", "score_teacher"]], on="id")
+    rng = np.random.default_rng(11)
+
+    def phi(v):
+        v = np.asarray(v, float)
+        return dict(zip(KS, (v, 1.0 * (v > 0.05), 1.0 * (v < -0.05), 1.0 * (abs(v) <= 0.05))))
+
+    for post in ("p", "q", "ALL"):
+        pop, smp = (d if post == "ALL" else d[d["tracked_slug"] == post] for d in (reps, smp_all))
+        y, f, census = phi(smp["score_teacher"]), phi(smp[GREG_COL]), phi(pop[GREG_COL])
+        arrays = {f"opus_{k}": y[k] for k in KS}
+        arrays |= {f"assisted_{k}": y[k] - f[k] for k in KS}
+        _, reps_k, _ = inf._weighted(pop, smp, arrays, 60, rng)
+        for name, v in reps_k.items():
+            if name.startswith("assisted_"):
+                v = v + census[name.removeprefix("assisted_")].mean()
+            want = inf._ci(v)
+            got = tuple(rp.loc[post, [name, f"{name}_lo", f"{name}_hi"]])
+            assert got == pytest.approx(want, abs=1e-12), (post, name)
+
+
+def test_greg_is_nan_where_the_coverage_is(reply_files):
+    from src.analysis.event_study import bucket_draws
+
+    reps = _replies({"p": [-0.9] * 20 + [0.9] * 20, "q": [-0.9] * 20 + [0.9] * 20})
+    drawn = bucket_draws(reps, n_per_bucket=5, score_col="score_transformer")
+    labelled = drawn[(drawn["tracked_slug"] == "p") | (drawn["score_transformer"] < 0)]
+    reply_files(reps, _opus(labelled), sampled=drawn)
+    r = inf.reply_population(n_boot=20).set_index("post")
+    greg = [c for c in r.columns if c.startswith("greg_")]
+    assert len(greg) == 12
+    assert r.loc["p", greg].notna().all() and r.loc[["q", "ALL"], greg].isna().all().all()
+    assert list(r.columns[-12:]) == greg  # after every published column
+
+
+def test_published_reply_estimator_is_assisted_until_the_owner_switches_it(monkeypatch):
+    assert settings.REPLY_POPULATION_ESTIMATOR == "assisted"
+    assert inf.published_reply_estimator() == "assisted"
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "greg")
+    assert inf.published_reply_estimator() == "greg"
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "opus")
+    with pytest.raises(ValueError, match="REPLY_POPULATION_ESTIMATOR 'opus'"):
+        inf.published_reply_estimator()
+
 
 def _growing_post():
     """Post x before and after a later reply collection: 60 replies per

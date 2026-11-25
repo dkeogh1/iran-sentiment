@@ -13,7 +13,8 @@ Uncertainty and composition checks behind the published numbers.
   reply_population   per-post Opus stance of Trump's reply audience, estimated
                      from the Opus-labelled reply sample weighted back to the
                      population, directly and model-assisted (distilled score
-                     + the sample's mean correction)
+                     + the sample's mean correction, at slope 1 and at a slope
+                     estimated per post)
   reply_loyalty      the same estimate by replier loyalty tier (bio keywords and
                      account age on a fixed date): low / medium / high and high
                      minus low, per post, pooled and within posts
@@ -35,6 +36,7 @@ manifest before any of them is sent.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import logging
 import warnings
@@ -603,6 +605,20 @@ def _whole_fresh_posts(lab: pd.DataFrame, pop: pd.DataFrame, draws: pd.DataFrame
     return lab[~(is_fresh & lab["tracked_slug"].isin(set(drawn.index[short])))]
 
 
+REPLY_POPULATION_ESTIMATORS = ("assisted", "greg")
+
+
+def published_reply_estimator() -> str:
+    """The prefix of reply_population's published corrected columns
+    (settings.REPLY_POPULATION_ESTIMATOR); ValueError on any other name."""
+    est = settings.REPLY_POPULATION_ESTIMATOR
+    if est not in REPLY_POPULATION_ESTIMATORS:
+        raise ValueError(
+            f"settings.REPLY_POPULATION_ESTIMATOR {est!r}: one of {REPLY_POPULATION_ESTIMATORS}"
+        )
+    return est
+
+
 def reply_population(
     col: str | None = None,
     model: str = settings.TEACHER_CHECK_MODEL,
@@ -639,11 +655,24 @@ def reply_population(
     covered. CIs resample the labelled rows within each bucket; the model
     terms are a census and carry no sampling error.
 
+    greg_* is the same model-assisted estimate with the slope estimated
+    instead of set to 1 (reply_crowd.population_greg, on the same
+    resamples): within each (post, bucket) the labels' mean plus slope times
+    (the column's census mean - its sample mean), the slopes per post, by
+    weighted least squares pooled within its buckets and refit in every
+    replicate. The mean is regressed on the column; pro and anti jointly on
+    the column's pro and anti bands, so the shares sum to 1. Slope 1 gives
+    assisted_*, slope 0 opus_*. A bucket with under
+    settings.REPLY_GREG_MIN_BUCKET_DRAWS draws stays out of the slope fit.
+    ALL is the posts' estimates weighted by population. NaN where assisted_*
+    is. settings.REPLY_POPULATION_ESTIMATOR names the published columns.
+
     A `col` whose model was fit on the labelled replies is refused (its
     recorded fit, stance_local.reply_column_entry): its errors on the sample
     are in-sample, so the correction would shrink with no gain in accuracy.
     A cross-fit column (`reply-distill --crossfit`) scores each post with a
     model that never saw that post's labels."""
+    from src.analysis.reply_crowd import population_greg  # it imports this module
     from src.analysis.stance_local import (
         REPLY_LABEL_SETS,
         read_reply_label_set,
@@ -691,6 +720,7 @@ def reply_population(
             **{f"opus_{k}": y[k] for k in model_pop},
             **{f"assisted_{k}": y[k] - f[k] for k in model_pop},
         }
+        before = copy.deepcopy(rng)  # GREG takes _weighted's own resamples
         coverage, reps, uncovered = _weighted(p, smp, arrays, n_boot, rng)
         row = {
             "post": slug,
@@ -712,9 +742,12 @@ def reply_population(
                 ", ".join(uncovered),
             )
             reps = {name: np.full(1 + n_boot, np.nan) for name in arrays}
+            reps |= {f"greg_{k}": np.full(1 + n_boot, np.nan) for k in model_pop}
         else:
             for k, v in model_pop.items():
                 reps[f"assisted_{k}"] += v
+            greg = population_greg(p, smp, col, n_boot, before)
+            reps |= {f"greg_{k}": greg[k] for k in model_pop}
         for name, v in reps.items():
             row[name], row[f"{name}_lo"], row[f"{name}_hi"] = _ci(v)
         rows.append(row)

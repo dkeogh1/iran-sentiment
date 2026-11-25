@@ -691,6 +691,38 @@ def _centred(S: dict, idx: np.ndarray, Sa: np.ndarray):
     return f
 
 
+def _greg_slopes(S: dict, idx: np.ndarray, aux: dict) -> dict[str, np.ndarray]:
+    """{outcome: (replicates, auxiliaries) slopes} of one post: the weighted
+    least-squares slopes of each outcome on its auxiliaries, centred within
+    the cells idx and pooled over them, per replicate. A direction with
+    (about) no within-cell variance gets slope 0, the same for every outcome,
+    so the shares still sum to 1; with no cell the slopes are 0 and the
+    estimate is direct."""
+    beta = {}
+    with np.errstate(invalid="ignore", divide="ignore"):
+        Sa = S["a"][idx]
+        centred = _centred(S, idx, Sa)
+        tol = 1e-9 * np.maximum(Sa.sum(0), 1.0)
+        for k, xs in aux.items():
+            if len(xs) == 1:
+                x = xs[0]
+                num = centred(f"xy_{x}_{k}", f"x_{x}", f"y_{k}")
+                den = centred(f"xx_{x}_{x}", f"x_{x}", f"x_{x}")
+                beta[k] = np.where(den > tol, num / den, 0.0)[:, None]
+                continue
+            C = np.empty((Sa.shape[1], len(xs), len(xs)))
+            for i, x in enumerate(xs):
+                for j in range(i, len(xs)):
+                    x2 = xs[j]
+                    C[:, i, j] = C[:, j, i] = centred(f"xx_{x}_{x2}", f"x_{x}", f"x_{x2}")
+            c = np.stack([centred(f"xy_{x}_{k}", f"x_{x}", f"y_{k}") for x in xs], axis=1)
+            val, vec = np.linalg.eigh(C)  # truncated pseudo-inverse
+            inv = np.where(val > tol[:, None], 1.0 / np.where(val > 0, val, 1.0), 0.0)
+            P = np.einsum("rij,rj,rkj->rik", vec, inv, vec)
+            beta[k] = np.einsum("rij,rj->ri", P, c)
+    return beta
+
+
 def domain_means(
     fr: CrowdFrames,
     groups: pd.Series,
@@ -700,6 +732,8 @@ def domain_means(
     estimator: str = "poststrat",
     assist: bool = False,
     min_cell: int | None = None,
+    min_accounts: int | None = None,
+    slope_min_cell: int = 1,
 ) -> DomainSet:
     """Domain means on the cells (post, bucket, group) of the replies that
     `groups` (id -> group) assigns. poststrat (the record): each domain's
@@ -713,7 +747,10 @@ def domain_means(
     intercepts are the partition's), refit in every replicate: the mean on
     x = f (mean_sq on f^2); the pro / anti / neutral shares together on one
     auxiliary vector (pro(f), anti(f)) with a 2 x 2 slope matrix, so their
-    g-weights do not depend on the outcome and the shares sum to 1.
+    g-weights do not depend on the outcome and the shares sum to 1; a cell
+    with under slope_min_cell draws is left out of the slope fit (1: none
+    is). A domain of under min_accounts accounts
+    (settings.REPLY_CROWD_MIN_ACCOUNTS by default) is suppressed.
     a_i = 1 (replies) or 1 / m (per_account)."""
     if estimator not in ("poststrat", "hajek"):
         raise ValueError(f"estimator {estimator!r}")
@@ -721,7 +758,7 @@ def domain_means(
         raise ValueError("the assisted estimator is post-stratified")
     ks = tuple(outcomes) + (("mean_sq",) if "mean" in outcomes else ())
     min_cell = settings.REPLY_CROWD_MIN_CELL_DRAWS if min_cell is None else min_cell
-    min_acc = settings.REPLY_CROWD_MIN_ACCOUNTS
+    min_acc = settings.REPLY_CROWD_MIN_ACCOUNTS if min_accounts is None else min_accounts
     R = W.shape[1]
 
     pg = fr.pop["id"].map(groups)
@@ -769,33 +806,9 @@ def domain_means(
     post_of = cdf["tracked_slug"].to_numpy()
     beta = {}  # (post, k) -> (R, len(aux[k])) slopes
     if assist:
-        with np.errstate(invalid="ignore", divide="ignore"):
-            for post in np.unique(post_of):
-                idx = np.flatnonzero((post_of == post) & (n_c > 0))
-                Sa = S["a"][idx]
-                centred = _centred(S, idx, Sa)
-                for k in ks:
-                    xs = aux[k]
-                    if len(xs) == 1:
-                        x = xs[0]
-                        num = centred(f"xy_{x}_{k}", f"x_{x}", f"y_{k}")
-                        den = centred(f"xx_{x}_{x}", f"x_{x}", f"x_{x}")
-                        beta[(post, k)] = np.where(den > 1e-12, num / den, 0.0)[:, None]
-                        continue
-                    C = np.empty((R, len(xs), len(xs)))
-                    for i, x in enumerate(xs):
-                        for j in range(i, len(xs)):
-                            x2 = xs[j]
-                            C[:, i, j] = C[:, j, i] = centred(f"xx_{x}_{x2}", f"x_{x}", f"x_{x2}")
-                    c = np.stack([centred(f"xy_{x}_{k}", f"x_{x}", f"y_{k}") for x in xs], axis=1)
-                    # Truncated pseudo-inverse: a direction with (about) no
-                    # within-cell variance gets slope 0, the same for every
-                    # outcome, so the shares still sum to 1.
-                    val, vec = np.linalg.eigh(C)
-                    tol = 1e-9 * np.maximum(Sa.sum(0), 1.0)
-                    inv = np.where(val > tol[:, None], 1.0 / np.where(val > 0, val, 1.0), 0.0)
-                    P = np.einsum("rij,rj,rkj->rik", vec, inv, vec)
-                    beta[(post, k)] = np.einsum("rij,rj->ri", P, c)
+        for post in np.unique(post_of):
+            idx = np.flatnonzero((post_of == post) & (n_c >= max(1, slope_min_cell)))
+            beta.update({(post, k): b for k, b in _greg_slopes(S, idx, aux).items()})
 
     names = dict(enumerate(("critical", "mid", "supportive")))
     mu, pi, Ad, acc, reps, labd = {}, {}, {}, {}, {}, {}
@@ -859,6 +872,55 @@ def domain_means(
     return DomainSet(
         mu, pi, Ad, A_post, acc, reps, labd, cdf, collapsed, nan_cells, empty, suppressed, R
     )
+
+
+def population_greg(
+    pop: pd.DataFrame,
+    lab: pd.DataFrame,
+    col: str,
+    n_boot: int,
+    rng: np.random.Generator,
+) -> dict[str, np.ndarray]:
+    """inference.reply_population's greg_* columns: {outcome: replicates} of
+    the mean of `pop` (its posts' GREG domain means, one domain a post,
+    weighted by post size), for the labelled draws `lab` (score_teacher and
+    draw-time bucket). With `rng` at the state inference._weighted starts
+    from, the replicates are its resamples. No cell collapses and nothing is
+    suppressed (the caller has checked that every stratum has a draw); a
+    bucket with under settings.REPLY_GREG_MIN_BUCKET_DRAWS draws keeps its
+    own intercept but does not enter the slopes, and a post with no other
+    bucket is direct."""
+    pop = pop[pop["tracked_slug"].notna()]
+
+    def frame(d: pd.DataFrame, **cols) -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "id": d["id"].astype(str).to_numpy(),
+                "tracked_slug": d["tracked_slug"].to_numpy(),
+                "bucket": d["bucket"].astype(int).to_numpy(),
+                "f": d[col].astype(float).to_numpy(),
+                "m": 1,
+                "replier": d["id"].astype(str).to_numpy(),
+                **cols,
+            }
+        )
+
+    posts = list(pd.unique(pop["tracked_slug"]))
+    fr = CrowdFrames(
+        frame(pop), frame(lab, y=lab["score_teacher"].to_numpy(float)), pop.iloc[:0], col, posts
+    )
+    W = replicate_weights(fr.lab, fr.pop, n_boot, 0, rng=rng)
+    ds = domain_means(
+        fr,
+        pd.Series("all", index=fr.pop["id"].unique()),
+        W,
+        assist=True,
+        min_cell=1,
+        min_accounts=0,
+        slope_min_cell=settings.REPLY_GREG_MIN_BUCKET_DRAWS,
+    )
+    total = sum(ds.A_post[p] for p in posts)
+    return {k: sum(ds.A_post[p] / total * ds.mean(p, "all", k) for p in posts) for k in OUTCOMES}
 
 
 # ── The decomposition (R2) ─────────────────────────────────────────

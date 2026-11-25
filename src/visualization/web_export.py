@@ -259,6 +259,12 @@ def _log_reply_basis(rp: pd.DataFrame) -> None:
         )
 
 
+def _published(r: pd.Series, k: str) -> float:
+    """A reply_population row's published corrected figure `k` (mean,
+    mean_lo, pro, ...): settings.REPLY_POPULATION_ESTIMATOR's column."""
+    return r[f"{inf.published_reply_estimator()}_{k}"]
+
+
 def replies() -> list[dict]:
     """Per tracked post, over its replies with text (as reply_population). A
     post whose Opus estimate is NaN (replies in a valence bucket with no
@@ -275,7 +281,7 @@ def replies() -> list[dict]:
     posts = {p.slug: p for p in TRACKED_POSTS}
     rows = []
     for _, r in rp[rp["post"] != "ALL"].iterrows():
-        if r[["assisted_mean", "assisted_pro", "assisted_anti"]].isna().any():
+        if any(pd.isna(_published(r, k)) for k in ("mean", "pro", "anti")):
             logger.warning(
                 "export-web: %s left out of replies.json: %.0f%% of its replies are in "
                 "a valence bucket with no Opus-labelled draw",
@@ -284,7 +290,7 @@ def replies() -> list[dict]:
             )
             continue
         p = posts[r["post"]]
-        pro, anti = r["assisted_pro"], r["assisted_anti"]
+        pro, anti = _published(r, "pro"), _published(r, "anti")
         # Shares to 4 decimals: the chart labels them in whole percent, and a share
         # cut to 3 that ends in 5 (0.4548 -> 0.455) rounds up a point there.
         rows.append(
@@ -296,9 +302,9 @@ def replies() -> list[dict]:
                 "anti": _r(anti, 4),
                 "neutral": _r(1 - pro - anti, 4),
                 "pro": _r(pro, 4),
-                "stance": _r(r["assisted_mean"]),
-                "lo": _r(r["assisted_mean_lo"]),
-                "hi": _r(r["assisted_mean_hi"]),
+                "stance": _r(_published(r, "mean")),
+                "lo": _r(_published(r, "mean_lo")),
+                "hi": _r(_published(r, "mean_hi")),
                 "valence": _r(val.get(r["post"])),
                 "labelled": int(r["n_labelled"]),
                 "labelled_fresh": int(r.get("n_labelled_fresh", 0)),
@@ -309,6 +315,7 @@ def replies() -> list[dict]:
 
 def export(out_dir: Path, score: str = settings.STANCE_SCORE_COL) -> list[Path]:
     decomposition_phase()  # refuse a bad setting before any file is written
+    inf.published_reply_estimator()
     out_dir.mkdir(parents=True, exist_ok=True)
     df = pd.read_parquet(settings.SENTIMENT_OUTPUT)
     d = inf.prepare(df, score)

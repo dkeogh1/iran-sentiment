@@ -1191,6 +1191,43 @@ def test_reply_population_cli_prints_the_direct_estimate(env):
     assert "Direct: the labels alone" in res.output and "neutral" in res.output
     csv = pd.read_csv(settings.PROCESSED_DIR / "reply_population_score_opus_distilled_v2.csv")
     assert {"opus_neutral", "opus_neutral_lo", "n_labelled_fresh", "assisted_neutral"} <= set(csv)
+    assert {
+        f"greg_{k}{s}" for k in ("mean", "pro", "anti", "neutral") for s in ("", "_lo", "_hi")
+    } <= set(csv)
+    published = settings.REPLY_POPULATION_ESTIMATOR
+    assert f"published: {published} (settings.REPLY_POPULATION_ESTIMATOR)" in res.output
+    assert "CI width:" in res.output
+
+
+def test_reply_population_cli_main_table_is_the_published_estimator(env, monkeypatch):
+    """The "Opus-corrected" table reads the columns settings.REPLY_POPULATION_ESTIMATOR
+    names, points and bounds, and a bad name is refused before the CSV is written."""
+    from src.cli import main
+
+    env()
+    out = settings.PROCESSED_DIR / "reply_population_score_opus_distilled_v2.csv"
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "bad")
+    res = CliRunner().invoke(main, ["reply-population", "--n-boot", "10"])
+    assert res.exit_code == 1 and "REPLY_POPULATION_ESTIMATOR 'bad'" in res.output
+    assert isinstance(res.exception, SystemExit) and not out.exists()
+
+    est = {
+        f"{e}_{k}{s}": v + d
+        for e, v in (("assisted", 0.2), ("greg", 0.4), ("opus", 0.6))
+        for k in ("mean", "pro", "anti", "neutral")
+        for s, d in (("", 0.0), ("_lo", -0.03), ("_hi", 0.05))
+    }
+    row = {"post": "p", "n_replies": 9, "n_labelled": 4, "n_labelled_fresh": 0}
+    row |= {"model_mean": 0.0, "model_pro": 0.0, "model_anti": 0.0}
+    monkeypatch.setattr(inf, "reply_population", lambda **kw: pd.DataFrame([row | est]))
+    shown = {"assisted": "20% [17%, 25%]", "greg": "40% [37%, 45%]"}
+    for name, other in (("assisted", "greg"), ("greg", "assisted")):
+        monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", name)
+        res = CliRunner().invoke(main, ["reply-population", "--n-boot", "10"])
+        assert res.exit_code == 0, res.output
+        table = res.output.split("Direct:")[0]
+        assert f"Opus-corrected: the {name}_* columns" in table
+        assert table.count(shown[name]) == 2 and shown[other] not in table
 
 
 # ── review fixes: per-post pilots, the rater's run caps, max_tokens stops ──

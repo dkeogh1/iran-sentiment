@@ -552,6 +552,16 @@ REPLY_POPULATION_FRESH_DRAWS = True
 # them: a full cross-fit into a new column, and moving this setting to it is
 # the owner's call.
 REPLY_POPULATION_COL = "score_ctx_crossfit"
+# Which of reply-population's corrected columns are the published ones
+# (export-web's replies.json): "assisted" (the slope-1 correction) or "greg"
+# (the slope estimated per post). Changing it moves published figures: the
+# owner's call. Below this many draws a bucket keeps its own intercept in
+# greg but does not enter the slope fit: the shares are fit on two slopes and
+# an intercept, so three draws are interpolated exactly and the interval
+# collapses, and in simulation greg's intervals cover less often than the
+# direct ones under about 10 draws a bucket (the smallest real one has 157).
+REPLY_POPULATION_ESTIMATOR = "assisted"
+REPLY_GREG_MIN_BUCKET_DRAWS = 10
 REPLY_FRESH_POOL_MIN_SHARE = 0.98
 # `reply-loyalty` (inference.reply_loyalty): a replier's loyalty tier
 # (event_study.loyalty_score: bio keywords plus account age) takes the

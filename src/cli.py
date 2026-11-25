@@ -2253,11 +2253,16 @@ def reply_population_cmd(col: str, n_boot: int, labels_version: str, first_draws
     """Opus stance of each tracked post's whole reply audience, estimated from
     the Opus-labelled reply sample: direct (design-weighted labels of the
     random draws, first and fresh) and model-assisted (distilled census +
-    weighted correction), with bootstrap CIs. No API. The CSV name carries
-    the label set past v1."""
-    from src.analysis.inference import reply_population
+    weighted correction, at slope 1 and at a slope fit per post: greg), with
+    bootstrap CIs. No API. The CSV name carries the label set past v1."""
+    from src.analysis.inference import published_reply_estimator, reply_population
 
     col = col or settings.REPLY_POPULATION_COL
+    try:
+        published = published_reply_estimator()
+    except ValueError as e:  # before the bootstrap and the CSV
+        click.secho(str(e), fg="yellow")
+        sys.exit(1)
 
     try:
         rp = reply_population(
@@ -2273,16 +2278,19 @@ def reply_population_cmd(col: str, n_boot: int, labels_version: str, first_draws
     suffix += "_first_draws" if first_draws else ""
     rp.to_csv(settings.PROCESSED_DIR / f"reply_population_{col}{suffix}.csv", index=False)
     click.echo(f"Opus labels: {labels_version}")
+    click.echo(f"Opus-corrected: the {published}_* columns (settings.REPLY_POPULATION_ESTIMATOR)")
     click.echo(
         f"\n{'post':20s}{'replies':>8s}{'lab':>5s}  {'model mean':>10s}  {'Opus-corrected mean':24s}"
         f"{'model pro':>10s}  {'corrected pro':24s}{'model anti':>11s}  {'corrected anti'}"
     )
     for _, r in rp.iterrows():
+        pro, pro_lo, pro_hi = (r[f"{published}_pro{s}"] for s in ("", "_lo", "_hi"))
+        anti, anti_lo, anti_hi = (r[f"{published}_anti{s}"] for s in ("", "_lo", "_hi"))
         click.echo(
             f"{r['post']:20s}{r['n_replies']:>8d}{r['n_labelled']:>5d}  {r['model_mean']:>+10.3f}  "
-            f"{_fmt_ci(r, 'assisted_mean'):24s}{r['model_pro']:>10.0%}  "
-            f"{r['assisted_pro']:.0%} [{r['assisted_pro_lo']:.0%}, {r['assisted_pro_hi']:.0%}]{'':8s}"
-            f"{r['model_anti']:>11.0%}  {r['assisted_anti']:.0%} [{r['assisted_anti_lo']:.0%}, {r['assisted_anti_hi']:.0%}]"
+            f"{_fmt_ci(r, f'{published}_mean'):24s}{r['model_pro']:>10.0%}  "
+            f"{pro:.0%} [{pro_lo:.0%}, {pro_hi:.0%}]{'':8s}"
+            f"{r['model_anti']:>11.0%}  {anti:.0%} [{anti_lo:.0%}, {anti_hi:.0%}]"
         )
     click.echo("\nDirect: the labels alone, weighted by bucket (n labelled, of them fresh draws):")
     click.echo(
@@ -2294,6 +2302,20 @@ def reply_population_cmd(col: str, n_boot: int, labels_version: str, first_draws
             f"{_fmt_ci(r, 'opus_mean'):24s}{_fmt_share(r, 'opus_pro'):18s}"
             f"{_fmt_share(r, 'opus_anti'):18s}{_fmt_share(r, 'opus_neutral')}"
         )
+    click.echo(
+        "\nCorrected at slope 1 (assisted) and at a slope fit per post (greg); "
+        f"published: {published} (settings.REPLY_POPULATION_ESTIMATOR)"
+    )
+    click.echo(
+        f"{'post':20s}{'outcome':9s}{'assisted':>9s}{'greg':>9s}{'direct':>9s}   "
+        f"CI width: {'assisted':>9s}{'greg':>9s}{'direct':>9s}"
+    )
+    for _, r in rp.iterrows():
+        for k in ("mean", "pro", "anti", "neutral"):
+            est = [f"{e}_{k}" for e in ("assisted", "greg", "opus")]
+            point = "".join(f"{r[e]:>+9.4f}" if k == "mean" else f"{r[e]:>9.4f}" for e in est)
+            width = "".join(f"{r[e + '_hi'] - r[e + '_lo']:>9.4f}" for e in est)
+            click.echo(f"{r['post']:20s}{k:9s}{point}{'':13s}{width}")
 
 
 @main.command("reply-loyalty")

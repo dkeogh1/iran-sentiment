@@ -56,6 +56,7 @@ def test_trump_phases_take_score_opus_and_leave_out_unscored_posts(tmp_path, mon
 
 
 def test_replies_skips_uncovered_posts(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "assisted")  # the stub's columns
     monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
     pd.DataFrame(
         {
@@ -96,6 +97,7 @@ def test_replies_skips_uncovered_posts(tmp_path, monkeypatch, caplog):
 def test_reply_shares_keep_four_decimals(tmp_path, monkeypatch):
     """The chart labels shares in whole percent: 0.4548 must not reach it as
     0.455, which Math.round labels 46%."""
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "assisted")  # the stub's columns
     monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
     pd.DataFrame(
         {"id": ["1"], "tracked_slug": ["ceasefire"], "text": ["no war"], "score_transformer": [0.2]}
@@ -114,6 +116,7 @@ def test_replies_says_when_fresh_draws_are_pooled(tmp_path, monkeypatch, caplog)
     """The pooled first + fresh draws are the published basis (2026-11-02):
     an export says how many draws of each it rests on, each record carries
     them, and an export without fresh draws is warned about."""
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "assisted")  # the stub's columns
     monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
     pd.DataFrame(
         {"id": ["1"], "tracked_slug": ["ceasefire"], "text": ["no war"], "score_transformer": [0.2]}
@@ -160,6 +163,68 @@ def test_replies_says_when_fresh_draws_are_pooled(tmp_path, monkeypatch, caplog)
             assert "rests on the 130 first draws only" in caplog.text
             assert "WARNING" in caplog.text
             assert ("is False" in caplog.text) is (not flag)
+
+
+def _two_estimator_rows() -> pd.DataFrame:
+    row = {"post": "ceasefire", "n_replies": 2, "coverage": 1.0}
+    row |= {"n_labelled": 130, "n_labelled_fresh": 100}
+    for est, d in (("assisted", 0.0), ("greg", 0.01)):
+        for k, v in (("mean", 0.1234), ("pro", 0.35), ("anti", 0.4548), ("neutral", 0.1952)):
+            row |= {
+                f"{est}_{k}": v + d,
+                f"{est}_{k}_lo": v + d - 0.02,
+                f"{est}_{k}_hi": v + d + 0.03,
+            }
+    return pd.DataFrame([row])
+
+
+def test_replies_json_takes_the_estimator_of_record(tmp_path, monkeypatch, caplog):
+    """settings.REPLY_POPULATION_ESTIMATOR names the published columns. Its
+    default, "assisted", writes the same replies.json as before greg_* was
+    there, byte for byte; "greg" switches every corrected figure; any other
+    name is refused before export-web writes a file."""
+    monkeypatch.setattr(settings, "REPLY_SENTIMENT_OUTPUT", tmp_path / "replies.parquet")
+    pd.DataFrame(
+        {"id": ["1"], "tracked_slug": ["ceasefire"], "text": ["no war"], "score_transformer": [0.2]}
+    ).to_parquet(settings.REPLY_SENTIMENT_OUTPUT)
+    rp = _two_estimator_rows()
+    monkeypatch.setattr(we.inf, "reply_population", lambda: rp)
+
+    def written(name) -> str:
+        return we._write(tmp_path, name, we.replies()).read_text()
+
+    assert settings.REPLY_POPULATION_ESTIMATOR == "assisted"
+    default = written("default.json")
+    assert we.replies() == [
+        {
+            "post": settings.WEB_POST_LABELS["ceasefire"],
+            "slug": "ceasefire",
+            "date": "2026-04-07",
+            "replies": 2,
+            "anti": 0.4548,
+            "neutral": 0.1952,
+            "pro": 0.35,
+            "stance": 0.123,
+            "lo": 0.103,
+            "hi": 0.153,
+            "valence": 0.2,
+            "labelled": 130,
+            "labelled_fresh": 100,
+        }
+    ]
+    full, rp = rp, rp[[c for c in rp if not c.startswith("greg_")]]
+    assert written("without.json") == default  # no greg_* column is read by default
+    rp = full
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "greg")
+    row = we.replies()[0]
+    assert (row["anti"], row["pro"], row["neutral"]) == (0.4648, 0.36, 0.1752)
+    assert (row["stance"], row["lo"], row["hi"]) == (0.133, 0.113, 0.163)
+    rp = full.assign(greg_mean=np.nan)
+    assert we.replies() == [] and "ceasefire left out" in caplog.text
+    monkeypatch.setattr(settings, "REPLY_POPULATION_ESTIMATOR", "direct")
+    with pytest.raises(ValueError, match="REPLY_POPULATION_ESTIMATOR"):
+        we.export(tmp_path / "web")
+    assert not (tmp_path / "web").exists()
 
 
 def _tier_posts() -> pd.DataFrame:
